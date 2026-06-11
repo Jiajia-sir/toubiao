@@ -174,8 +174,8 @@ const Login: React.FC = () => {
             maxWidth: '75vw',
           }}
           logo={<img alt="logo" src="/logo.svg" />}
-          title="Ant Design"
-          subTitle={intl.formatMessage({ id: 'pages.layouts.userLayout.title' })}
+          title="智能文档处理平台"
+          subTitle="统一的文档识别、解析与管理工作台"
           initialValues={{
             autoLogin: true,
           }}

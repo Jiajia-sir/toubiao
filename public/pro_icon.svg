@@ -1,5 +1,16 @@
-<svg width="42" height="42" xmlns="http://www.w3.org/2000/svg">
- <g>
-  <path fill="#070707" d="m6.717392,13.773912l5.6,0c2.8,0 4.7,1.9 4.7,4.7c0,2.8 -2,4.7 -4.9,4.7l-2.5,0l0,4.3l-2.9,0l0,-13.7zm2.9,2.2l0,4.9l1.9,0c1.6,0 2.6,-0.9 2.6,-2.4c0,-1.6 -0.9,-2.4 -2.6,-2.4l-1.9,0l0,-0.1zm8.9,11.5l2.7,0l0,-5.7c0,-1.4 0.8,-2.3 2.2,-2.3c0.4,0 0.8,0.1 1,0.2l0,-2.4c-0.2,-0.1 -0.5,-0.1 -0.8,-0.1c-1.2,0 -2.1,0.7 -2.4,2l-0.1,0l0,-1.9l-2.7,0l0,10.2l0.1,0zm11.7,0.1c-3.1,0 -5,-2 -5,-5.3c0,-3.3 2,-5.3 5,-5.3s5,2 5,5.3c0,3.4 -1.9,5.3 -5,5.3zm0,-2.1c1.4,0 2.2,-1.1 2.2,-3.2c0,-2 -0.8,-3.2 -2.2,-3.2c-1.4,0 -2.2,1.2 -2.2,3.2c0,2.1 0.8,3.2 2.2,3.2z" class="st0" id="Ant-Design-Pro"/>
- </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="42" height="42" viewBox="0 0 42 42" fill="none">
+  <defs>
+    <linearGradient id="g" x1="6" y1="4" x2="36" y2="38" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F6CBD"/>
+      <stop offset="1" stop-color="#1CA39B"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="36" height="36" rx="10" fill="url(#g)"/>
+  <path d="M15 10H23L29 16V29C29 30.657 27.657 32 26 32H16C14.343 32 13 30.657 13 29V12C13 10.895 13.895 10 15 10Z" fill="#F7FFFD"/>
+  <path d="M23 10V15C23 16.105 23.895 17 25 17H29" fill="#B6E7DE"/>
+  <path d="M17 20H25" stroke="#0F6CBD" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M17 24H25" stroke="#0F6CBD" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+  <path d="M17 28H21" stroke="#1CA39B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M30 25C30 28.314 27.314 31 24 31" stroke="#FFD66B" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M31 21L33 23L30 26" stroke="#FFD66B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
