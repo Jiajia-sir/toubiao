@@ -4,6 +4,43 @@ import { DataNode } from 'antd/es/tree';
 import { downLoadXlsx } from '@/utils/downloadfile';
 import { API_PREFIX } from '@/constants';
 
+function transformUserPayload(params: API.System.User) {
+  return {
+    id: params.userId,
+    deptId: params.deptId,
+    username: params.userName,
+    nickname: params.nickName,
+    email: params.email,
+    mobile: params.phonenumber,
+    sex: params.sex,
+    password: params.password,
+    status: typeof params.status === 'string' ? Number(params.status) : params.status,
+    remark: params.remark,
+    postIds: (params as any).postIds || [],
+    roleIds: (params as any).roleIds || [],
+  };
+}
+
+function transformUserListParams(params?: API.System.UserListParams) {
+  if (!params) {
+    return params;
+  }
+  return {
+    ...params,
+    username: params.userName,
+    nickname: params.nickName,
+    mobile: params.phonenumber,
+  };
+}
+
+async function deleteUserById(id: string, options?: { [key: string]: any }) {
+  return request<API.Result>(`${API_PREFIX}/system/user/delete`, {
+    method: 'DELETE',
+    params: { id },
+    ...(options || {}),
+  });
+}
+
 // 查询用户信息列表
 export async function getUserList(params?: API.System.UserListParams, options?: { [key: string]: any }) {
   return request<API.System.UserPageResult>(`${API_PREFIX}/system/user/page`, {
@@ -11,7 +48,7 @@ export async function getUserList(params?: API.System.UserListParams, options?: 
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    params,
+    params: transformUserListParams(params),
     ...(options || {})
   });
 }
@@ -32,7 +69,7 @@ export async function addUser(params: API.System.User, options?: { [key: string]
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: params,
+    data: transformUserPayload(params),
     ...(options || {})
   });
 }
@@ -44,18 +81,16 @@ export async function updateUser(params: API.System.User, options?: { [key: stri
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: params,
+    data: transformUserPayload(params),
     ...(options || {})
   });
 }
 
 // 删除用户信息
 export async function removeUser(ids: string, options?: { [key: string]: any }) {
-  return request<API.Result>(`${API_PREFIX}/system/user/delete`, {
-    method: 'DELETE',
-    params: { ids },
-    ...(options || {})
-  });
+  const idList = ids.split(',').map((item) => item.trim()).filter(Boolean);
+  const responses = await Promise.all(idList.map((id) => deleteUserById(id, options)));
+  return responses[responses.length - 1];
 }
 
 // 导出用户信息

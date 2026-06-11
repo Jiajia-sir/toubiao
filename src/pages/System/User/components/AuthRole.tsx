@@ -26,7 +26,7 @@ const AuthRoleForm: React.FC<AuthRoleFormProps> = (props) => {
     useEffect(() => {
         form.resetFields();
         form.setFieldValue( 'roleIds', props.roleIds);
-    });
+    }, [form, props.roleIds, props.open]);
 
     const intl = useIntl();
     const handleOk = () => {

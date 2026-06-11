@@ -3,12 +3,48 @@ import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
 import { API_PREFIX } from '@/constants';
 
+function transformRolePayload(params: API.System.Role) {
+  return {
+    id: params.roleId,
+    name: params.roleName,
+    code: params.roleKey,
+    sort: params.roleSort,
+    status: typeof params.status === 'string' ? Number(params.status) : params.status,
+    remark: params.remark,
+  };
+}
+
+function transformRoleListParams(params?: API.System.RoleListParams) {
+  if (!params) {
+    return params;
+  }
+  return {
+    ...params,
+    name: params.roleName,
+    code: params.roleKey,
+  };
+}
+
+async function deleteRoleById(id: string) {
+  return request<API.Result>(`${API_PREFIX}/system/role/delete`, {
+    method: 'DELETE',
+    params: { id }
+  });
+}
+
 // 查询角色信息列表（分页）
 export async function getRoleList(params?: API.System.RoleListParams) {
   return request<API.System.RolePageResult>(`${API_PREFIX}/system/role/page`, {
     method: 'GET',
     headers: { 'Content-Type': ContentType.FORM_URLENCODED },
-    params
+    params: transformRoleListParams(params)
+  });
+}
+
+export async function getRoleSimpleList() {
+  return request(`${API_PREFIX}/system/role/list-all-simple`, {
+    method: 'GET',
+    headers: { 'Content-Type': ContentType.FORM_URLENCODED },
   });
 }
 
@@ -27,7 +63,7 @@ export async function addRole(params: API.System.Role) {
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: params
+    data: transformRolePayload(params)
   });
 }
 
@@ -38,16 +74,15 @@ export async function updateRole(params: API.System.Role) {
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: params
+    data: transformRolePayload(params)
   });
 }
 
 // 删除角色信息
 export async function removeRole(ids: string) {
-  return request<API.Result>(`${API_PREFIX}/system/role/delete`, {
-    method: 'DELETE',
-    params: { ids }
-  });
+  const idList = ids.split(',').map((item) => item.trim()).filter(Boolean);
+  const responses = await Promise.all(idList.map((id) => deleteRoleById(id)));
+  return responses[responses.length - 1];
 }
 
 // 导出角色信息
@@ -126,7 +161,14 @@ export function authUserSelectAll(data: Record<string, any>) {
 
 // 根据角色ID查询部门树结构
 export function getDeptTreeSelect(roleId: number) {
-  return request(`${API_PREFIX}/system/dept/list`, {
+  return request(`${API_PREFIX}/system/dept/list-all-simple`, {
     method: 'get'
   })
+}
+
+export function assignRoleMenu(data: { roleId: number; menuIds: (string | number)[] }) {
+  return request(`${API_PREFIX}/system/permission/assign-role-menu`, {
+    method: 'post',
+    data,
+  });
 }

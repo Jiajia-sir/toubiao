@@ -31,14 +31,14 @@ const DeptForm: React.FC<DeptFormProps> = (props) => {
     form.resetFields();
     form.setFieldsValue({
       deptId: props.values.deptId,
-      parentId: props.values.parentId,
+      parentId: typeof props.values.parentId === 'undefined' ? 0 : props.values.parentId,
       ancestors: props.values.ancestors,
       deptName: props.values.deptName,
-      orderNum: props.values.orderNum,
+      orderNum: typeof props.values.orderNum === 'undefined' ? 0 : props.values.orderNum,
       leader: props.values.leader,
       phone: props.values.phone,
       email: props.values.email,
-      status: props.values.status,
+      status: typeof props.values.status === 'undefined' ? '0' : props.values.status,
       delFlag: props.values.delFlag,
       createBy: props.values.createBy,
       createTime: props.values.createTime,

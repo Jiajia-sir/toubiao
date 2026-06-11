@@ -43,7 +43,7 @@ const DataScopeForm: React.FC<DataScopeFormProps> = (props) => {
             dataScope: props.values.dataScope,
         });
         setDataScopeType(props.values.dataScope);
-    }, [props.values]);
+    }, [deptCheckedKeys, form, props.values]);
 
     const intl = useIntl();
     const handleOk = () => {
@@ -189,8 +189,8 @@ const DataScopeForm: React.FC<DataScopeFormProps> = (props) => {
                         id: 'system.role.auth',
                         defaultMessage: '菜单权限',
                     })}
-                    required={dataScopeType === '1'}
-                    hidden={dataScopeType !== '1'}
+                    required={dataScopeType === '2'}
+                    hidden={dataScopeType !== '2'}
                 >
                     <Row gutter={[16, 16]}>
                         <Col md={24}>

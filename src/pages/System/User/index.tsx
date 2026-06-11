@@ -5,15 +5,15 @@ import { Card, Col, Dropdown, FormInstance, Row, Space, Switch } from 'antd';
 import { Button, message, Modal } from 'antd';
 import { ActionType, FooterToolbar, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, DownOutlined, EditOutlined } from '@ant-design/icons';
-import { getUserList, removeUser, addUser, updateUser, exportUser, getUser, changeUserStatus, updateAuthRole, resetUserPwd } from '@/services/system/user';
+import { getUserList, removeUser, addUser, updateUser, exportUser, getUser, changeUserStatus, updateAuthRole, resetUserPwd, getAuthRole } from '@/services/system/user';
 import UpdateForm from './edit';
 import { getDictValueEnum } from '@/services/system/dict';
 import { DataNode } from 'antd/es/tree';
 import { getDeptTree } from '@/services/system/user';
 import DeptTree from './components/DeptTree';
 import ResetPwd from './components/ResetPwd';
-import { getPostList } from '@/services/system/post';
-import { getRoleList } from '@/services/system/role';
+import { getPostSimpleList } from '@/services/system/post';
+import { getRoleSimpleList } from '@/services/system/role';
 import AuthRoleForm from './components/AuthRole';
 
 const { confirm } = Modal;
@@ -150,8 +150,14 @@ const UserTableList: React.FC = () => {
     getDictValueEnum('sys_user_sex').then((data) => {
       setSexOptions(data);
     });
-    getDictValueEnum('sys_normal_disable').then((data) => {
-      setStatusOptions(data);
+    getDictValueEnum('common_status').then((data) => {
+      if (Object.keys(data || {}).length > 0) {
+        setStatusOptions(data);
+        return;
+      }
+      getDictValueEnum('sys_normal_disable').then((fallbackData) => {
+        setStatusOptions(fallbackData);
+      });
     });
   }, []);
 
@@ -181,18 +187,18 @@ const UserTableList: React.FC = () => {
 
   const fetchUserInfo = async (userId: number) => {
     const res = await getUser(userId);
-    setPostIds(res.postIds);
+    setPostIds(res.postIds || []);
     setPostList(
-      res.posts.map((item: any) => {
+      (res.posts || []).map((item: any) => {
         return {
           value: item.postId,
           label: item.postName,
         };
       }),
     );
-    setRoleIds(res.roleIds);
+    setRoleIds(res.roleIds || []);
     setRoleList(
-      res.roles.map((item: any) => {
+      (res.roles || []).map((item: any) => {
         return {
           value: item.roleId,
           label: item.roleName,
@@ -201,10 +207,31 @@ const UserTableList: React.FC = () => {
     );
   };
 
+  const fetchAuthRoleInfo = async (userId: number) => {
+    const [roleResp, authResp] = await Promise.all([getRoleSimpleList(), getAuthRole(userId)]);
+
+    if (roleResp.code === 200) {
+      setRoleList(
+        (roleResp.data || []).map((item: any) => {
+          return {
+            value: item.roleId,
+            label: item.roleName,
+          };
+        }),
+      );
+    }
+
+    if (authResp.code === 200) {
+      setRoleIds(authResp.data || []);
+    } else {
+      setRoleIds([]);
+    }
+  };
+
   const columns: ProColumns<API.System.User>[] = [
     {
       title: <FormattedMessage id="system.user.user_id" defaultMessage="用户编号" />,
-      dataIndex: 'deptId',
+      dataIndex: 'userId',
       valueType: 'text',
     },
     {
@@ -219,7 +246,7 @@ const UserTableList: React.FC = () => {
     },
     {
       title: <FormattedMessage id="system.user.dept_name" defaultMessage="部门" />,
-      dataIndex: ['dept', 'deptName'],
+      dataIndex: 'deptName',
       valueType: 'text',
       hideInSearch: true
     },
@@ -313,7 +340,7 @@ const UserTableList: React.FC = () => {
                 setCurrentRow(record);
               }
               else if (key === 'authRole') {
-                fetchUserInfo(record.userId);
+                fetchAuthRoleInfo(record.userId);
                 setAuthRoleModalVisible(true);
                 setCurrentRow(record);
               }
@@ -369,10 +396,10 @@ const UserTableList: React.FC = () => {
                   const treeData = await getDeptTree({});
                   setDeptTree(treeData);
 
-                  const postResp = await getPostList()
+                  const postResp = await getPostSimpleList()
                   if (postResp.code === 200) {
                     setPostList(
-                      postResp.rows.map((item: any) => {
+                      (postResp.data || []).map((item: any) => {
                         return {
                           value: item.postId,
                           label: item.postName,
@@ -381,10 +408,10 @@ const UserTableList: React.FC = () => {
                     );
                   }
 
-                  const roleResp = await getRoleList()
+                  const roleResp = await getRoleSimpleList()
                   if (roleResp.code === 200) {
                     setRoleList(
-                      roleResp.rows.map((item: any) => {
+                      (roleResp.data || []).map((item: any) => {
                         return {
                           value: item.roleId,
                           label: item.roleName,
@@ -537,7 +564,10 @@ const UserTableList: React.FC = () => {
       />
       <AuthRoleForm
         onSubmit={async (values: any) => {
-          const success = await updateAuthRole(values);
+          const success = await updateAuthRole({
+            userId: currentRow?.userId,
+            roleIds: values.roleIds,
+          });
           if (success) {
             setAuthRoleModalVisible(false);
             setSelectedRows([]);

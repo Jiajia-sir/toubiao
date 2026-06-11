@@ -30,16 +30,17 @@ const RoleForm: React.FC<RoleFormProps> = (props) => {
   const { statusOptions } = props;
 
   useEffect(() => {
+    setMenuIds(menuCheckedKeys);
     form.resetFields();
     form.setFieldsValue({
       roleId: props.values.roleId,
       roleName: props.values.roleName,
       roleKey: props.values.roleKey,
-      roleSort: props.values.roleSort,
+      roleSort: typeof props.values.roleSort === 'undefined' ? 0 : props.values.roleSort,
       dataScope: props.values.dataScope,
       menuCheckStrictly: props.values.menuCheckStrictly,
       deptCheckStrictly: props.values.deptCheckStrictly,
-      status: props.values.status,
+      status: typeof props.values.status === 'undefined' ? '0' : props.values.status,
       delFlag: props.values.delFlag,
       createBy: props.values.createBy,
       createTime: props.values.createTime,
@@ -47,7 +48,7 @@ const RoleForm: React.FC<RoleFormProps> = (props) => {
       updateTime: props.values.updateTime,
       remark: props.values.remark,
     });
-  }, [form, props]);
+  }, [form, menuCheckedKeys, props]);
 
   const intl = useIntl();
   const handleOk = () => {

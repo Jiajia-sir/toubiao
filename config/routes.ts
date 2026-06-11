@@ -13,7 +13,7 @@
 export default [
   {
     path: '/',
-    redirect: '/account/center',
+    redirect: '/dashboard',
   },
   {
     path: '*',
@@ -28,6 +28,24 @@ export default [
         name: 'login',
         path: '/user/login',
         component: './User/Login',
+      },
+    ],
+  },
+  {
+    name: '工作台',
+    icon: 'dashboard',
+    path: '/dashboard',
+    component: './Dashboard',
+  },
+  {
+    name: '数据接入',
+    icon: 'database',
+    path: '/data',
+    routes: [
+      {
+        name: '数据接入工作台',
+        path: '/data/source',
+        component: './Data/Source',
       },
     ],
   },

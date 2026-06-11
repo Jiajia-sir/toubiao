@@ -37,21 +37,23 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
   const { menuTree, visibleOptions, statusOptions } = props;
 
   useEffect(() => {
+    const nextMenuType = props.values.menuType || 'M';
     form.resetFields();
+    setMenuTypeId(nextMenuType);
     setMenuIconName(props.values.icon);
     form.setFieldsValue({
       menuId: props.values.menuId,
       menuName: props.values.menuName,
-      parentId: props.values.parentId,
-      orderNum: props.values.orderNum,
+      parentId: typeof props.values.parentId === 'undefined' ? 0 : props.values.parentId,
+      orderNum: typeof props.values.orderNum === 'undefined' ? 0 : props.values.orderNum,
       path: props.values.path,
       component: props.values.component,
       query: props.values.query,
-      isFrame: props.values.isFrame,
-      isCache: props.values.isCache,
-      menuType: props.values.menuType,
-      visible: props.values.visible,
-      status: props.values.status,
+      isFrame: typeof props.values.isFrame === 'undefined' ? '1' : `${props.values.isFrame}`,
+      isCache: typeof props.values.isCache === 'undefined' ? 0 : props.values.isCache,
+      menuType: nextMenuType,
+      visible: typeof props.values.visible === 'undefined' ? true : props.values.visible,
+      status: typeof props.values.status === 'undefined' ? '0' : props.values.status,
       perms: props.values.perms,
       icon: props.values.icon,
       createBy: props.values.createBy,
@@ -143,7 +145,7 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
           placeholder="请输入菜单类型"
           rules={[
             {
-              required: false,
+              required: true,
               message: <FormattedMessage id="请输入菜单类型！" defaultMessage="请输入菜单类型！" />,
             },
           ]}
@@ -339,7 +341,7 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
             },
           ]}
           fieldProps = {{
-            defaultValue: '0'
+            defaultValue: true
           }}
         />
         <ProFormRadio.Group

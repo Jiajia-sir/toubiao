@@ -1,3 +1,55 @@
+const ALL_PERMISSION = '*:*:*';
+
+const permissionActionAliases: Record<string, string[]> = {
+  add: ['add', 'create'],
+  create: ['create', 'add'],
+  edit: ['edit', 'update'],
+  update: ['update', 'edit'],
+  remove: ['remove', 'delete', 'del'],
+  delete: ['delete', 'remove', 'del'],
+  del: ['del', 'delete', 'remove'],
+  view: ['view', 'query', 'get'],
+  query: ['query', 'view', 'list', 'page', 'get'],
+  list: ['list', 'query', 'page'],
+  page: ['page', 'list', 'query'],
+};
+
+function buildPermissionCandidates(value: string): string[] {
+  if (!value) {
+    return [];
+  }
+
+  const parts = value.split(':');
+  if (parts.length < 3) {
+    return [value];
+  }
+
+  const action = parts[parts.length - 1];
+  const actionAliases = permissionActionAliases[action] || [action];
+  return actionAliases.map((alias) => [...parts.slice(0, -1), alias].join(':'));
+}
+
+function normalizePermissions(permissions: any[] | undefined): string[] {
+  if (!Array.isArray(permissions)) {
+    return [];
+  }
+
+  return permissions
+    .map((item) => {
+      if (typeof item === 'string') {
+        return item;
+      }
+      if (item && typeof item.permission === 'string') {
+        return item.permission;
+      }
+      if (item && typeof item.code === 'string') {
+        return item.code;
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
 // /**
 //  * 字符权限校验
 //  * @param {Array} value 校验值
@@ -5,10 +57,10 @@
 //  */
 export function matchPerms(permissions: string[], value: string[]) {
   if (value && value instanceof Array && value.length > 0) {
-    const permissionDatas = value;
-    const all_permission = '*:*:*';
-    const hasPermission = permissions.some((permission) => {
-      return all_permission === permission || permissionDatas.includes(permission);
+    const normalizedPermissions = normalizePermissions(permissions);
+    const permissionDatas = value.flatMap((item) => buildPermissionCandidates(item));
+    const hasPermission = normalizedPermissions.some((permission) => {
+      return ALL_PERMISSION === permission || permissionDatas.includes(permission);
     });
     if (!hasPermission) {
       return false;
@@ -21,10 +73,10 @@ export function matchPerms(permissions: string[], value: string[]) {
 
 export function matchPerm(permissions: string[], value: string) {
   if (value && value.length > 0) {
-    const permissionDatas = value;
-    const all_permission = '*:*:*';
-    const hasPermission = permissions.some((permission) => {
-      return all_permission === permission || permissionDatas === permission;
+    const permissionDatas = buildPermissionCandidates(value);
+    const normalizedPermissions = normalizePermissions(permissions);
+    const hasPermission = normalizedPermissions.some((permission) => {
+      return ALL_PERMISSION === permission || permissionDatas.includes(permission);
     });
     if (!hasPermission) {
       return false;

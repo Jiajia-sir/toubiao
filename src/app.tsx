@@ -10,7 +10,6 @@ import { clearSessionToken, getAccessToken, getRefreshToken, getTokenExpireTime 
 import { getRemoteMenu, getRoutersInfo, getUserInfo, patchRouteWithRemoteMenus, setRemoteMenu } from './services/session';
 import { PageEnum } from './enums/pagesEnums';
 
-
 const isDev = process.env.NODE_ENV === 'development';
 
 
@@ -194,10 +193,239 @@ export function render(oldRender: () => void) {
  */
 const checkRegion = 5 * 60 * 1000;
 
+function normalizeRequestParams(options: { params?: Record<string, any> }) {
+  const params = options.params;
+  if (!params) {
+    return options;
+  }
+
+  if (typeof params.pageNo === 'undefined') {
+    if (typeof params.current !== 'undefined') {
+      params.pageNo = params.current;
+    } else if (typeof params.currentPage !== 'undefined') {
+      params.pageNo = params.currentPage;
+    }
+  }
+
+  return options;
+}
+
+function setAlias(target: Record<string, any>, sourceKey: string, targetKey: string, valueTransform?: (value: any) => any) {
+  if (typeof target[targetKey] === 'undefined' && typeof target[sourceKey] !== 'undefined') {
+    target[targetKey] = valueTransform ? valueTransform(target[sourceKey]) : target[sourceKey];
+  }
+}
+
+function mapYudaoMenuTypeToLegacy(value: any) {
+  if (value === 1 || value === '1') {
+    return 'M';
+  }
+  if (value === 2 || value === '2') {
+    return 'C';
+  }
+  if (value === 3 || value === '3') {
+    return 'F';
+  }
+  return value;
+}
+
+function normalizeYudaoEntity(target: any, visited: WeakSet<object>) {
+  if (!target || typeof target !== 'object') {
+    return target;
+  }
+
+  if (visited.has(target)) {
+    return target;
+  }
+  visited.add(target);
+
+  if (Array.isArray(target)) {
+    target.forEach((item) => normalizeYudaoEntity(item, visited));
+    return target;
+  }
+
+  Object.values(target).forEach((value) => {
+    if (value && typeof value === 'object') {
+      normalizeYudaoEntity(value, visited);
+    }
+  });
+
+  const isUser =
+    typeof target.username !== 'undefined' ||
+    typeof target.nickname !== 'undefined' ||
+    typeof target.mobile !== 'undefined' ||
+    typeof target.deptName !== 'undefined';
+  const isRole =
+    typeof target.dataScope !== 'undefined' ||
+    (typeof target.code !== 'undefined' &&
+      typeof target.menuType === 'undefined' &&
+      typeof target.value === 'undefined' &&
+      typeof target.username === 'undefined' &&
+      typeof target.leaderUserId === 'undefined');
+  const isDept =
+    typeof target.leaderUserId !== 'undefined' ||
+    (typeof target.parentId !== 'undefined' &&
+      typeof target.menuType === 'undefined' &&
+      typeof target.component === 'undefined' &&
+      typeof target.dictType === 'undefined');
+  const isMenu =
+    typeof target.menuType !== 'undefined' ||
+    typeof target.permission !== 'undefined' ||
+    typeof target.componentName !== 'undefined' ||
+    typeof target.alwaysShow !== 'undefined';
+  const isDictData = typeof target.label !== 'undefined' && typeof target.value !== 'undefined';
+  const isDictType =
+    typeof target.type !== 'undefined' &&
+    typeof target.label === 'undefined' &&
+    typeof target.value === 'undefined' &&
+    typeof target.menuType === 'undefined' &&
+    typeof target.username === 'undefined';
+  const isPost =
+    !isRole &&
+    !isDictType &&
+    !isDictData &&
+    typeof target.id !== 'undefined' &&
+    typeof target.name !== 'undefined' &&
+    typeof target.code === 'undefined' &&
+    typeof target.username === 'undefined' &&
+    typeof target.menuType === 'undefined' &&
+    typeof target.parentId === 'undefined';
+
+  if (isUser) {
+    setAlias(target, 'id', 'userId');
+    setAlias(target, 'username', 'userName');
+    setAlias(target, 'nickname', 'nickName');
+    setAlias(target, 'mobile', 'phonenumber');
+  }
+
+  if (isRole) {
+    setAlias(target, 'id', 'roleId');
+    setAlias(target, 'name', 'roleName');
+    setAlias(target, 'code', 'roleKey');
+    setAlias(target, 'sort', 'roleSort');
+  }
+
+  if (isDept) {
+    setAlias(target, 'id', 'deptId');
+    setAlias(target, 'name', 'deptName');
+    setAlias(target, 'sort', 'orderNum');
+    setAlias(target, 'leaderUserId', 'leader');
+  }
+
+  if (isMenu) {
+    setAlias(target, 'id', 'menuId');
+    setAlias(target, 'name', 'menuName');
+    setAlias(target, 'sort', 'orderNum');
+    setAlias(target, 'permission', 'perms');
+    setAlias(target, 'type', 'menuType', mapYudaoMenuTypeToLegacy);
+    setAlias(target, 'keepAlive', 'isCache', (value) => (value ? 0 : 1));
+  }
+
+  if (isDictType) {
+    setAlias(target, 'id', 'dictId');
+    setAlias(target, 'name', 'dictName');
+    setAlias(target, 'type', 'dictType');
+  }
+
+  if (isDictData) {
+    setAlias(target, 'id', 'dictCode');
+    setAlias(target, 'label', 'dictLabel');
+    setAlias(target, 'value', 'dictValue');
+    setAlias(target, 'sort', 'dictSort');
+  }
+
+  if (isPost) {
+    setAlias(target, 'id', 'postId');
+    setAlias(target, 'name', 'postName');
+    setAlias(target, 'sort', 'postSort');
+  }
+
+  if (typeof target.label === 'undefined') {
+    if (typeof target.name !== 'undefined') {
+      target.label = target.name;
+    } else if (typeof target.menuName !== 'undefined') {
+      target.label = target.menuName;
+    } else if (typeof target.deptName !== 'undefined') {
+      target.label = target.deptName;
+    }
+  }
+
+  return target;
+}
+
+function normalizeYudaoResult(result: any) {
+  if (!result || typeof result !== 'object') {
+    return result;
+  }
+
+  if (result.code === 0) {
+    result.code = 200;
+  }
+
+  if (typeof result.msg === 'undefined' && typeof result.message === 'string') {
+    result.msg = result.message;
+  }
+
+  const payload = result.data;
+  if (typeof payload === 'undefined' || payload === null) {
+    return result;
+  }
+
+  normalizeYudaoEntity(payload, new WeakSet<object>());
+
+  if (Array.isArray(payload)) {
+    if (typeof result.rows === 'undefined') {
+      result.rows = payload;
+    }
+    if (typeof result.total === 'undefined') {
+      result.total = payload.length;
+    }
+    return result;
+  }
+
+  if (typeof payload === 'object') {
+    Object.keys(payload).forEach((key) => {
+      if (typeof result[key] === 'undefined') {
+        result[key] = payload[key];
+      }
+    });
+
+    if (Array.isArray(payload.list) && typeof result.rows === 'undefined') {
+      result.rows = payload.list;
+    }
+    if (Array.isArray(payload.records) && typeof result.rows === 'undefined') {
+      result.rows = payload.records;
+    }
+    if (typeof payload.total !== 'undefined' && typeof result.total === 'undefined') {
+      result.total = payload.total;
+    }
+    if (typeof payload.pageSize !== 'undefined' && typeof result.pageSize === 'undefined') {
+      result.pageSize = payload.pageSize;
+    }
+    if (typeof payload.pageNo !== 'undefined' && typeof result.current === 'undefined') {
+      result.current = payload.pageNo;
+    }
+    if (Array.isArray(payload.menuIds) && typeof result.checkedKeys === 'undefined') {
+      result.checkedKeys = payload.menuIds;
+    }
+    if (Array.isArray(payload.deptIds) && typeof result.checkedKeys === 'undefined') {
+      result.checkedKeys = payload.deptIds;
+    }
+    if (Array.isArray(payload.menus) && typeof result.menus === 'undefined') {
+      result.menus = payload.menus;
+    }
+    if (Array.isArray(payload.depts) && typeof result.depts === 'undefined') {
+      result.depts = payload.depts;
+    }
+  }
+
+  return result;
+}
+
 export const request = {
   ...errorConfig,
   requestInterceptors: [
-    (url: any, options: { headers: any }) => {
+    (url: any, options: { headers: any; params?: Record<string, any> }) => {
       const headers = options.headers ? options.headers : [];
       console.log('request ====>:', url);
       const authHeader = headers['Authorization'];
@@ -221,6 +449,7 @@ export const request = {
           clearSessionToken();
         }
       }
+      normalizeRequestParams(options);
       return { url, options };
     },
   ],
@@ -228,12 +457,7 @@ export const request = {
     (response: any) => {
       // 适配 yudao 框架的 CommonResult 响应格式
       // 后端成功响应 code 为 0，统一转换为 200 以兼容前端现有判断逻辑
-      const { data } = response;
-      if (data && typeof data.code !== 'undefined') {
-        if (data.code === 0) {
-          data.code = 200;
-        }
-      }
+      normalizeYudaoResult(response?.data);
       return response;
     },
   ],

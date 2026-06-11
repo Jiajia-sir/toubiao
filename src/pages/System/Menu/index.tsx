@@ -11,6 +11,19 @@ import { buildTreeData } from '@/utils/tree';
 import { DataNode } from 'antd/es/tree';
 import DictTag from '@/components/DictTag';
 
+const menuVisibleOptions = {
+  true: {
+    text: '显示',
+    label: '显示',
+    value: true,
+  },
+  false: {
+    text: '隐藏',
+    label: '隐藏',
+    value: false,
+  },
+};
+
 /**
  * 添加节点
  *
@@ -104,11 +117,15 @@ const MenuTableList: React.FC = () => {
   const intl = useIntl();
 
   useEffect(() => {
-    getDictValueEnum('sys_show_hide').then((data) => {
-      setVisibleOptions(data);
-    });
-    getDictValueEnum('sys_normal_disable').then((data) => {
-      setStatusOptions(data);
+    setVisibleOptions(menuVisibleOptions);
+    getDictValueEnum('common_status').then((data) => {
+      if (Object.keys(data || {}).length > 0) {
+        setStatusOptions(data);
+        return;
+      }
+      getDictValueEnum('sys_normal_disable').then((fallbackData) => {
+        setStatusOptions(fallbackData);
+      });
     });
   }, []);
 

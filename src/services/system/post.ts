@@ -13,6 +13,15 @@ export async function getPostList(params?: API.System.PostListParams) {
   });
 }
 
+export async function getPostSimpleList() {
+  return request(`${API_PREFIX}/system/post/list-all-simple`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json;charset=UTF-8',
+    },
+  });
+}
+
 // 查询岗位信息详细
 export function getPost(postId: number) {
   return request<API.System.PostInfoResult>(`${API_PREFIX}/system/post/get`, {

@@ -120,8 +120,14 @@ const DeptTableList: React.FC = () => {
   const intl = useIntl();
 
   useEffect(() => {
-    getDictValueEnum('sys_normal_disable').then((data) => {
-      setStatusOptions(data);
+    getDictValueEnum('common_status').then((data) => {
+      if (Object.keys(data || {}).length > 0) {
+        setStatusOptions(data);
+        return;
+      }
+      getDictValueEnum('sys_normal_disable').then((fallbackData) => {
+        setStatusOptions(fallbackData);
+      });
     });
   }, []);
 

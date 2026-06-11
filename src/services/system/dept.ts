@@ -2,6 +2,45 @@ import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
 import { API_PREFIX } from '@/constants';
 
+function transformDeptPayload(params: API.System.Dept) {
+  const leaderUserId =
+    typeof (params as any).leaderUserId !== 'undefined'
+      ? (params as any).leaderUserId
+      : typeof params.leader === 'number'
+        ? params.leader
+        : typeof params.leader === 'string' && /^\d+$/.test(params.leader)
+          ? Number(params.leader)
+          : undefined;
+
+  return {
+    id: params.deptId,
+    parentId: params.parentId,
+    name: params.deptName,
+    sort: params.orderNum,
+    leaderUserId,
+    phone: params.phone,
+    email: params.email,
+    status: typeof params.status === 'string' ? Number(params.status) : params.status,
+  };
+}
+
+function transformDeptListParams(params?: API.System.DeptListParams) {
+  if (!params) {
+    return params;
+  }
+  return {
+    ...params,
+    name: params.deptName,
+  };
+}
+
+async function deleteDeptById(id: string) {
+  return request<API.Result>(`${API_PREFIX}/system/dept/delete`, {
+    method: 'DELETE',
+    params: { id }
+  });
+}
+
 // 查询部门列表
 export async function getDeptList(params?: API.System.DeptListParams) {
   return request<API.System.DeptPageResult>(`${API_PREFIX}/system/dept/list`, {
@@ -9,7 +48,7 @@ export async function getDeptList(params?: API.System.DeptListParams) {
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    params
+    params: transformDeptListParams(params)
   });
 }
 
@@ -35,7 +74,7 @@ export async function addDept(params: API.System.Dept) {
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: params
+    data: transformDeptPayload(params)
   });
 }
 
@@ -46,14 +85,13 @@ export async function updateDept(params: API.System.Dept) {
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: params
+    data: transformDeptPayload(params)
   });
 }
 
 // 删除部门
 export async function removeDept(ids: string) {
-  return request<API.Result>(`${API_PREFIX}/system/dept/delete`, {
-    method: 'DELETE',
-    params: { ids }
-  });
+  const idList = ids.split(',').map((item) => item.trim()).filter(Boolean);
+  const responses = await Promise.all(idList.map((id) => deleteDeptById(id)));
+  return responses[responses.length - 1];
 }
