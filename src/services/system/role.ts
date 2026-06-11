@@ -1,10 +1,11 @@
 import { ContentType } from '@/enums/httpEnum';
 import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
+import { API_PREFIX } from '@/constants';
 
-// 查询角色信息列表
+// 查询角色信息列表（分页）
 export async function getRoleList(params?: API.System.RoleListParams) {
-  return request<API.System.RolePageResult>('/api/system/role/list', {
+  return request<API.System.RolePageResult>(`${API_PREFIX}/system/role/page`, {
     method: 'GET',
     headers: { 'Content-Type': ContentType.FORM_URLENCODED },
     params
@@ -13,14 +14,15 @@ export async function getRoleList(params?: API.System.RoleListParams) {
 
 // 查询角色信息详细
 export function getRole(roleId: number) {
-  return request<API.System.RoleInfoResult>(`/api/system/role/${roleId}`, {
-    method: 'GET'
+  return request<API.System.RoleInfoResult>(`${API_PREFIX}/system/role/get`, {
+    method: 'GET',
+    params: { id: roleId }
   });
 }
 
 // 新增角色信息
 export async function addRole(params: API.System.Role) {
-  return request<API.Result>('/api/system/role', {
+  return request<API.Result>(`${API_PREFIX}/system/role/create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -31,7 +33,7 @@ export async function addRole(params: API.System.Role) {
 
 // 修改角色信息
 export async function updateRole(params: API.System.Role) {
-  return request<API.Result>('/api/system/role', {
+  return request<API.Result>(`${API_PREFIX}/system/role/update`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -42,27 +44,29 @@ export async function updateRole(params: API.System.Role) {
 
 // 删除角色信息
 export async function removeRole(ids: string) {
-  return request<API.Result>(`/api/system/role/${ids}`, {
-    method: 'DELETE'
+  return request<API.Result>(`${API_PREFIX}/system/role/delete`, {
+    method: 'DELETE',
+    params: { ids }
   });
 }
 
 // 导出角色信息
 export function exportRole(params?: API.System.RoleListParams) {
-  return downLoadXlsx(`/api/system/role/export`, { params }, `role_${new Date().getTime()}.xlsx`);
+  return downLoadXlsx(`${API_PREFIX}/system/role/export-excel`, { params }, `role_${new Date().getTime()}.xlsx`);
 }
 
 // 获取角色菜单列表
-export function getRoleMenuList(id: number) {
-  return request<API.System.RoleMenuResult>(`/api/system/menu/roleMenuTreeselect/${id}`, {
+export function getRoleMenuList(roleId: number) {
+  return request<API.System.RoleMenuResult>(`${API_PREFIX}/system/permission/list-role-menus`, {
     method: 'get',
+    params: { roleId }
   });
 }
 
 // 角色数据权限
 export function updateRoleDataScope(data: Record<string, any>) {
-  return request('/api/system/role/dataScope', {
-    method: 'put',
+  return request(`${API_PREFIX}/system/permission/assign-role-data-scope`, {
+    method: 'post',
     data
   })
 }
@@ -70,10 +74,10 @@ export function updateRoleDataScope(data: Record<string, any>) {
 // 角色状态修改
 export function changeRoleStatus(roleId: number, status: string) {
   const data = {
-    roleId,
+    id: roleId,
     status
   }
-  return request<API.Result>('/api/system/role/changeStatus', {
+  return request<API.Result>(`${API_PREFIX}/system/role/update-status`, {
     method: 'put',
     data: data
   })
@@ -81,7 +85,7 @@ export function changeRoleStatus(roleId: number, status: string) {
 
 // 查询角色已授权用户列表
 export function allocatedUserList(params?: API.System.RoleListParams) {
-  return request('/api/system/role/authUser/allocatedList', {
+  return request(`${API_PREFIX}/system/permission/list-user-roles`, {
     method: 'get',
     params
   })
@@ -89,7 +93,7 @@ export function allocatedUserList(params?: API.System.RoleListParams) {
 
 // 查询角色未授权用户列表
 export function unallocatedUserList(params?: API.System.RoleListParams) {
-  return request('/api/system/role/authUser/unallocatedList', {
+  return request(`${API_PREFIX}/system/user/page`, {
     method: 'get',
     params
   })
@@ -97,24 +101,24 @@ export function unallocatedUserList(params?: API.System.RoleListParams) {
 
 // 取消用户授权角色
 export function authUserCancel(data: any) {
-  return request<API.Result>('/api/system/role/authUser/cancel', {
-    method: 'put',
+  return request<API.Result>(`${API_PREFIX}/system/permission/assign-user-role`, {
+    method: 'post',
     data: data
   })
 }
 
 // 批量取消用户授权角色
 export function authUserCancelAll(data: any) {
-  return request<API.Result>('/api/system/role/authUser/cancelAll', {
-    method: 'put',
+  return request<API.Result>(`${API_PREFIX}/system/permission/assign-user-role`, {
+    method: 'post',
     params: data
   })
 }
 
 // 授权用户选择
 export function authUserSelectAll(data: Record<string, any>) {
-  return request<API.Result>('/api/system/role/authUser/selectAll', {
-    method: 'put',
+  return request<API.Result>(`${API_PREFIX}/system/permission/assign-user-role`, {
+    method: 'post',
     params: data,
     headers: { 'Content-Type': ContentType.FORM_URLENCODED },
   })
@@ -122,7 +126,7 @@ export function authUserSelectAll(data: Record<string, any>) {
 
 // 根据角色ID查询部门树结构
 export function getDeptTreeSelect(roleId: number) {
-  return request('/api/system/role/deptTree/' + roleId, {
+  return request(`${API_PREFIX}/system/dept/list`, {
     method: 'get'
   })
 }

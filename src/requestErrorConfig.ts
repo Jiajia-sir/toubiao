@@ -85,25 +85,9 @@ export const errorConfig: RequestConfig = {
     },
   },
 
-  // 请求拦截器
-  requestInterceptors: [
-    (config: RequestOptions) => {
-      // 拦截请求配置，进行个性化处理。
-      const url = config?.url?.concat('?token = 123');
-      return { ...config, url };
-    },
-  ],
+  // 请求拦截器（已在 app.tsx 中统一处理）
+  requestInterceptors: [],
 
-  // 响应拦截器
-  responseInterceptors: [
-    (response) => {
-      // 拦截响应数据，进行个性化处理
-      const { data } = response as unknown as ResponseStructure;
-
-      if (data?.success === false) {
-        message.error('请求失败！');
-      }
-      return response;
-    },
-  ],
+  // 响应拦截器（已在 app.tsx 中统一处理 yudao CommonResult 格式转换）
+  responseInterceptors: [],
 };

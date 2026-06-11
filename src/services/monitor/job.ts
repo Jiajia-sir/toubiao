@@ -1,16 +1,10 @@
 import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
-
-/**
- * 定时任务调度 API
- *
- * @author whiteshader@163.com
- * @date 2023-02-07
- */
+import { API_PREFIX } from '@/constants';
 
 // 查询定时任务调度列表
 export async function getJobList(params?: API.Monitor.JobListParams) {
-  return request<API.Monitor.JobPageResult>('/api/monitor/job/list', {
+  return request<API.Monitor.JobPageResult>(`${API_PREFIX}/infra/job/page`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -21,14 +15,15 @@ export async function getJobList(params?: API.Monitor.JobListParams) {
 
 // 查询定时任务调度详细
 export function getJob(jobId: number) {
-  return request<API.Monitor.JobInfoResult>(`/api/monitor/job/${jobId}`, {
-    method: 'GET'
+  return request<API.Monitor.JobInfoResult>(`${API_PREFIX}/infra/job/get`, {
+    method: 'GET',
+    params: { id: jobId }
   });
 }
 
 // 新增定时任务调度
 export async function addJob(params: API.Monitor.Job) {
-  return request<API.Result>('/api/monitor/job', {
+  return request<API.Result>(`${API_PREFIX}/infra/job/create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -39,7 +34,7 @@ export async function addJob(params: API.Monitor.Job) {
 
 // 修改定时任务调度
 export async function updateJob(params: API.Monitor.Job) {
-  return request<API.Result>('/api/monitor/job', {
+  return request<API.Result>(`${API_PREFIX}/infra/job/update`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -50,23 +45,24 @@ export async function updateJob(params: API.Monitor.Job) {
 
 // 删除定时任务调度
 export async function removeJob(ids: string) {
-  return request<API.Result>(`/api/monitor/job/${ids}`, {
-    method: 'DELETE'
+  return request<API.Result>(`${API_PREFIX}/infra/job/delete`, {
+    method: 'DELETE',
+    params: { ids }
   });
 }
 
 // 导出定时任务调度
 export function exportJob(params?: API.Monitor.JobListParams) {
-  return downLoadXlsx(`/api/monitor/job/export`, { params }, `job_${new Date().getTime()}.xlsx`);
+  return downLoadXlsx(`${API_PREFIX}/infra/job/export-excel`, { params }, `job_${new Date().getTime()}.xlsx`);
 }
 
 // 定时任务立即执行一次
 export async function runJob(jobId: number, jobGroup: string) {
   const job = {
-    jobId,
+    id: jobId,
     jobGroup,
   };
-  return request('/api/monitor/job/run', {
+  return request(`${API_PREFIX}/infra/job/trigger`, {
     method: 'PUT',
     data: job,
   });

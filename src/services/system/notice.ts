@@ -1,9 +1,10 @@
 import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
+import { API_PREFIX } from '@/constants';
 
 // 查询通知公告列表
 export async function getNoticeList(params?: API.System.NoticeListParams) {
-  return request<API.System.NoticePageResult>('/api/system/notice/list', {
+  return request<API.System.NoticePageResult>(`${API_PREFIX}/system/notice/page`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -14,14 +15,15 @@ export async function getNoticeList(params?: API.System.NoticeListParams) {
 
 // 查询通知公告详细
 export function getNotice(noticeId: number) {
-  return request<API.System.NoticeInfoResult>(`/api/system/notice/${noticeId}`, {
-    method: 'GET'
+  return request<API.System.NoticeInfoResult>(`${API_PREFIX}/system/notice/get`, {
+    method: 'GET',
+    params: { id: noticeId }
   });
 }
 
 // 新增通知公告
 export async function addNotice(params: API.System.Notice) {
-  return request<API.Result>('/api/system/notice', {
+  return request<API.Result>(`${API_PREFIX}/system/notice/create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -32,7 +34,7 @@ export async function addNotice(params: API.System.Notice) {
 
 // 修改通知公告
 export async function updateNotice(params: API.System.Notice) {
-  return request<API.Result>('/api/system/notice', {
+  return request<API.Result>(`${API_PREFIX}/system/notice/update`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -43,7 +45,8 @@ export async function updateNotice(params: API.System.Notice) {
 
 // 删除通知公告
 export async function removeNotice(ids: string) {
-  return request<API.Result>(`/api/system/notice/${ids}`, {
-    method: 'DELETE'
+  return request<API.Result>(`${API_PREFIX}/system/notice/delete`, {
+    method: 'DELETE',
+    params: { ids }
   });
 }

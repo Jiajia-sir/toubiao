@@ -1,17 +1,9 @@
-import { request } from '@umijs/max'; 
+import { request } from '@umijs/max';
+import { API_PREFIX } from '@/constants';
 
-
-/* *
- *
- * @author whiteshader@163.com
- * @datetime  2021/09/16
- * 
- * */
-
-
-// 获取服务器信息
+// 获取缓存监控信息
 export async function getCacheInfo() {
-  return request<API.Monitor.CacheInfoResult>('/api/monitor/cache', {
+  return request<API.Monitor.CacheInfoResult>(`${API_PREFIX}/infra/redis/get-monitor-info`, {
     method: 'GET',
   });
 }

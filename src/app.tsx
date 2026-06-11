@@ -29,15 +29,20 @@ export async function getInitialState(): Promise<{
       const response = await getUserInfo({
         skipErrorHandler: true,
       });
-      if (response.user.avatar === '') {
-        response.user.avatar =
-          'https://gw.alipayobjects.com/zos/rmsportal/BiazfanxmamNRoxxVxka.png';
+      if (response.code === 200 && response.data) {
+        const { user, permissions, roles } = response.data;
+        if (user.avatar === '') {
+          user.avatar =
+            'https://gw.alipayobjects.com/zos/rmsportal/BiazfanxmamNRoxxVxka.png';
+        }
+        return {
+          ...user,
+          userId: user.id,
+          nickName: user.nickname,
+          permissions,
+          roles,
+        } as API.CurrentUser;
       }
-      return {
-        ...response.user,
-        permissions: response.permissions,
-        roles: response.roles,
-      } as API.CurrentUser;
     } catch (error) {
       console.log(error);
       history.push(PageEnum.LOGIN);
@@ -220,14 +225,16 @@ export const request = {
     },
   ],
   responseInterceptors: [
-    // (response) =>
-    // {
-    //   // // 不再需要异步处理读取返回体内容，可直接在data中读出，部分字段可在 config 中找到
-    //   // const { data = {} as any, config } = response;
-    //   // // do something
-    //   // console.log('data: ', data)
-    //   // console.log('config: ', config)
-    //   return response
-    // },
+    (response: any) => {
+      // 适配 yudao 框架的 CommonResult 响应格式
+      // 后端成功响应 code 为 0，统一转换为 200 以兼容前端现有判断逻辑
+      const { data } = response;
+      if (data && typeof data.code !== 'undefined') {
+        if (data.code === 0) {
+          data.code = 200;
+        }
+      }
+      return response;
+    },
   ],
 };

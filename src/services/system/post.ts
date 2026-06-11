@@ -1,9 +1,10 @@
 import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
+import { API_PREFIX } from '@/constants';
 
 // 查询岗位信息列表
 export async function getPostList(params?: API.System.PostListParams) {
-  return request<API.System.PostPageResult>('/api/system/post/list', {
+  return request<API.System.PostPageResult>(`${API_PREFIX}/system/post/page`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -14,14 +15,15 @@ export async function getPostList(params?: API.System.PostListParams) {
 
 // 查询岗位信息详细
 export function getPost(postId: number) {
-  return request<API.System.PostInfoResult>(`/api/system/post/${postId}`, {
-    method: 'GET'
+  return request<API.System.PostInfoResult>(`${API_PREFIX}/system/post/get`, {
+    method: 'GET',
+    params: { id: postId }
   });
 }
 
 // 新增岗位信息
 export async function addPost(params: API.System.Post) {
-  return request<API.Result>('/api/system/post', {
+  return request<API.Result>(`${API_PREFIX}/system/post/create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -32,7 +34,7 @@ export async function addPost(params: API.System.Post) {
 
 // 修改岗位信息
 export async function updatePost(params: API.System.Post) {
-  return request<API.Result>('/api/system/post', {
+  return request<API.Result>(`${API_PREFIX}/system/post/update`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -43,12 +45,13 @@ export async function updatePost(params: API.System.Post) {
 
 // 删除岗位信息
 export async function removePost(ids: string) {
-  return request<API.Result>(`/api/system/post/${ids}`, {
-    method: 'DELETE'
+  return request<API.Result>(`${API_PREFIX}/system/post/delete`, {
+    method: 'DELETE',
+    params: { ids }
   });
 }
 
 // 导出岗位信息
 export function exportPost(params?: API.System.PostListParams) {
-  return downLoadXlsx(`/api/system/post/export`, { params }, `post_${new Date().getTime()}.xlsx`);
+  return downLoadXlsx(`${API_PREFIX}/system/post/export-excel`, { params }, `post_${new Date().getTime()}.xlsx`);
 }

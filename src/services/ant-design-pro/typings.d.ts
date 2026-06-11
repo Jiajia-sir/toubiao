@@ -48,6 +48,12 @@ declare namespace API {
     msg?: string;
     type?: string;
     token?: string;
+    data?: {
+      userId?: number;
+      accessToken?: string;
+      refreshToken?: string;
+      expiresTime?: number;
+    };
   };
 
   type NoticeIconItem = {

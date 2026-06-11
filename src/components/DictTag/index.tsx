@@ -55,12 +55,14 @@ const DictTag: React.FC<DictTagProps> = (props) => {
     }
 
     function getDictLabelByValue(value: string | number | undefined): string {
-        if (value === undefined) {
+        if (value === undefined || value === null) {
             return '';
         }
         if (props.enums) {
             const item = props.enums[value];
-            return item.label;
+            if (item) {
+                return item.label || String(value);
+            }
         }
         if (props.options) {
             if (!Array.isArray(props.options)) {
@@ -77,12 +79,14 @@ const DictTag: React.FC<DictTagProps> = (props) => {
     }
 
     function getDictListClassByValue(value: string | number | undefined): string {
-        if (value === undefined) {
+        if (value === undefined || value === null) {
             return 'default';
         }
         if (props.enums) {
             const item = props.enums[value];
-            return item.listClass || 'default';
+            if (item) {
+                return item.listClass || 'default';
+            }
         }
         if (props.options) {
             if (!Array.isArray(props.options)) {
@@ -95,7 +99,7 @@ const DictTag: React.FC<DictTagProps> = (props) => {
                 }
             }
         }
-        return String(props.value);
+        return 'default';
     }
 
     const getTagColor = () => {

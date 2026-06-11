@@ -2,6 +2,7 @@ import { createIcon } from '@/utils/IconUtil';
 import { MenuDataItem } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
 import React, { lazy } from 'react';
+import { API_PREFIX } from '@/constants';
 
 
 let remoteMenu: any = null;
@@ -17,7 +18,8 @@ export function setRemoteMenu(data: any) {
 
 function patchRouteItems(route: any, menu: any, parentPath: string) {
   for (const menuItem of menu) {
-    if (menuItem.component === 'Layout' || menuItem.component === 'ParentView') {
+    // component 为空或为 Layout/ParentView 时，视为目录类型
+    if (!menuItem.component || menuItem.component === 'Layout' || menuItem.component === 'ParentView') {
       if (menuItem.routes) {
         let hasItem = false;
         let newItem = null;
@@ -81,23 +83,20 @@ export function patchRouteWithRemoteMenus(routes: any) {
   patchRouteItems(proLayout, remoteMenu, '');
 }
 
-/** 获取当前的用户 GET /api/getUserInfo */
+/** 获取当前用户的权限信息 GET /admin-api/system/auth/get-permission-info */
 export async function getUserInfo(options?: Record<string, any>) {
-  return request<API.UserInfoResult>('/api/getInfo', {
+  return request<API.UserInfoResult>(`${API_PREFIX}/system/auth/get-permission-info`, {
     method: 'GET',
     ...(options || {}),
   });
 }
 
-// 刷新方法
-export async function refreshToken() {
-  return request('/api/auth/refresh', {
-    method: 'post'
+// 刷新令牌
+export async function refreshToken(refreshTokenStr: string) {
+  return request(`${API_PREFIX}/system/auth/refresh-token`, {
+    method: 'POST',
+    params: { refreshToken: refreshTokenStr },
   })
-}
-
-export async function getRouters(): Promise<any> {
-  return request('/api/getRouters');
 }
 
 export function convertCompatRouters(childrens: API.RoutersMenuItem[]): any[] {
@@ -116,14 +115,46 @@ export function convertCompatRouters(childrens: API.RoutersMenuItem[]): any[] {
   });
 }
 
-export async function getRoutersInfo(): Promise<MenuDataItem[]> {
-  return getRouters().then((res) => {
-    if (res.code === 200) {
-      return convertCompatRouters(res.data);
-    } else {
-      return [];
-    }
+/**
+ * 将后端 MenuVO 转换为前端路由格式
+ * 后端返回: {id, parentId, name, path, component, componentName, icon, visible, keepAlive, alwaysShow, children}
+ * 前端需要: {path, name, icon, component, routes, children, hideInMenu, hideChildrenInMenu}
+ */
+function transformMenus(menus: any[]): any[] {
+  return menus.map((item: any) => {
+    const children = item.children ? transformMenus(item.children) : undefined;
+    return {
+      path: item.path,
+      name: item.name,
+      icon: item.icon ? createIcon(item.icon) : undefined,
+      component: item.component,
+      routes: children,
+      children: children,
+      hideInMenu: item.visible === false,
+      hideChildrenInMenu: item.visible === false,
+      meta: {
+        title: item.name,
+        icon: item.icon,
+      },
+    };
   });
+}
+
+/**
+ * 获取路由菜单信息
+ * 从 get-permission-info 接口返回的 menus 字段中提取路由
+ */
+export async function getRoutersInfo(): Promise<MenuDataItem[]> {
+  try {
+    const res = await getUserInfo();
+    if (res.code === 200 && res.data?.menus) {
+      return transformMenus(res.data.menus);
+    }
+    return [];
+  } catch (error) {
+    console.error('获取路由菜单失败:', error);
+    return [];
+  }
 }
 
 export function getMatchMenuItem(

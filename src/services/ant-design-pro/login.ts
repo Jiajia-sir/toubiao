@@ -1,10 +1,11 @@
 // @ts-ignore
 /* eslint-disable */
 import { request } from '@umijs/max';
+import { API_PREFIX } from '@/constants';
 
 /** 登录接口 POST /api/login/account */
 export async function login(body: API.LoginParams, options?: { [key: string]: any }) {
-  return request<API.LoginResult>('/api/login/account', {
+  return request<API.LoginResult>(`${API_PREFIX}/system/auth/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -20,7 +21,7 @@ export async function getFakeCaptcha(
   params: API.getFakeCaptchaParams,
   options?: { [key: string]: any },
 ) {
-  return request<API.FakeCaptcha>('/api/login/captcha', {
+  return request<API.FakeCaptcha>(`${API_PREFIX}/system/auth/send-sms-code`, {
     method: 'POST',
     params: {
       ...params,
@@ -31,7 +32,7 @@ export async function getFakeCaptcha(
 
 /** 登录接口 POST /api/login/outLogin */
 export async function outLogin(options?: { [key: string]: any }) {
-  return request<Record<string, any>>('/api/login/outLogin', {
+  return request<Record<string, any>>(`${API_PREFIX}/system/auth/logout`, {
     method: 'POST',
     ...(options || {}),
   });

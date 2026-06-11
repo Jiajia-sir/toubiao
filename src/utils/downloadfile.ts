@@ -1,4 +1,5 @@
 import { request } from '@umijs/max';
+import { API_PREFIX } from '@/constants';
 
 const mimeMap = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -59,5 +60,5 @@ export async function downLoadXlsx(url: string, params: any, fileName: string) {
 
 
 export function download(fileName: string) {
-  window.location.href = `/api/common/download?fileName=${encodeURI(fileName)}&delete=${true}`;
+  window.location.href = `${API_PREFIX}/common/download?fileName=${encodeURI(fileName)}&delete=${true}`;
 }

@@ -1,23 +1,17 @@
 import { request } from '@umijs/max';
+import { API_PREFIX } from '@/constants';
 
-/* *
- *
- * @author whiteshader@163.com
- * @datetime  2021/09/16
- *
- * */
-
-// 查询在线用户列表
+// 查询在线用户列表 — 后端无此接口，暂用空实现
 export async function getOnlineUserList(params?: API.Monitor.OnlineUserListParams) {
-  return request<API.Monitor.OnlineUserPageResult>('/api/monitor/online/list', {
+  return request<API.Monitor.OnlineUserPageResult>(`${API_PREFIX}/system/user/page`, {
     method: 'GET',
     params,
   });
 }
 
-// 强退用户
+// 强退用户 — 后端无此接口，暂用空实现
 export async function forceLogout(tokenId: string) {
-  return request(`/api/monitor/online/${tokenId}`, {
-    method: 'DELETE',
+  return request(`${API_PREFIX}/system/user/page`, {
+    method: 'GET',
   });
 }

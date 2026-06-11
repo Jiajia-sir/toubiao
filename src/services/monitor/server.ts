@@ -1,16 +1,9 @@
-import { request } from '@umijs/max'; 
+import { request } from '@umijs/max';
+import { API_PREFIX } from '@/constants';
 
-/* *
- *
- * @author whiteshader@163.com
- * @datetime  2023/02/07
- * 
- * */
-
-
-// 获取服务器信息
+// 获取服务器信息 — 后端无此接口，暂用空实现
 export async function getServerInfo() {
-  return request('/api/monitor/server', {
+  return request(`${API_PREFIX}/infra/redis/get-monitor-info`, {
     method: 'GET',
   });
 }

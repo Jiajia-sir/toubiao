@@ -30,9 +30,12 @@ declare namespace API {
   interface UserInfoResult {
     code?: number;
     msg?: string;
-    user: UserInfo;
-    permissions: any;
-    roles: any;
+    data?: {
+      user: UserInfo;
+      permissions: string[];
+      roles: string[];
+      menus: any[];
+    };
   }
 
   interface Result_string_ {

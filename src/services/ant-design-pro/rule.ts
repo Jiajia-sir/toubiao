@@ -1,6 +1,7 @@
 // @ts-ignore
 /* eslint-disable */
 import { request } from '@umijs/max';
+import { API_PREFIX } from '@/constants';
 
 /** 获取规则列表 GET /api/rule */
 export async function rule(
@@ -8,7 +9,7 @@ export async function rule(
   params: API.ruleParams,
   options?: { [key: string]: any },
 ) {
-  return request<API.RuleList>('/api/rule', {
+  return request<API.RuleList>(`${API_PREFIX}/rule`, {
     method: 'GET',
     params: {
       ...params,
@@ -19,7 +20,7 @@ export async function rule(
 
 /** 新建规则 PUT /api/rule */
 export async function updateRule(options?: { [key: string]: any }) {
-  return request<API.RuleListItem>('/api/rule', {
+  return request<API.RuleListItem>(`${API_PREFIX}/rule`, {
     method: 'PUT',
     ...(options || {}),
   });
@@ -27,7 +28,7 @@ export async function updateRule(options?: { [key: string]: any }) {
 
 /** 新建规则 POST /api/rule */
 export async function addRule(options?: { [key: string]: any }) {
-  return request<API.RuleListItem>('/api/rule', {
+  return request<API.RuleListItem>(`${API_PREFIX}/rule`, {
     method: 'POST',
     ...(options || {}),
   });
@@ -35,7 +36,7 @@ export async function addRule(options?: { [key: string]: any }) {
 
 /** 删除规则 DELETE /api/rule */
 export async function removeRule(options?: { [key: string]: any }) {
-  return request<Record<string, any>>('/api/rule', {
+  return request<Record<string, any>>(`${API_PREFIX}/rule`, {
     method: 'DELETE',
     ...(options || {}),
   });

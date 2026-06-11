@@ -2,10 +2,11 @@ import { formatTreeData } from '@/utils/tree';
 import { request } from '@umijs/max';
 import { DataNode } from 'antd/es/tree';
 import { downLoadXlsx } from '@/utils/downloadfile';
+import { API_PREFIX } from '@/constants';
 
 // 查询用户信息列表
 export async function getUserList(params?: API.System.UserListParams, options?: { [key: string]: any }) {
-  return request<API.System.UserPageResult>('/api/system/user/list', {
+  return request<API.System.UserPageResult>(`${API_PREFIX}/system/user/page`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -17,15 +18,16 @@ export async function getUserList(params?: API.System.UserListParams, options?: 
 
 // 查询用户信息详细
 export function getUser(userId: number, options?: { [key: string]: any }) {
-  return request<API.System.UserInfoResult>(`/api/system/user/${userId}`, {
+  return request<API.System.UserInfoResult>(`${API_PREFIX}/system/user/get`, {
     method: 'GET',
+    params: { id: userId },
     ...(options || {})
   });
 }
 
 // 新增用户信息
 export async function addUser(params: API.System.User, options?: { [key: string]: any }) {
-  return request<API.Result>('/api/system/user', {
+  return request<API.Result>(`${API_PREFIX}/system/user/create`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -37,7 +39,7 @@ export async function addUser(params: API.System.User, options?: { [key: string]
 
 // 修改用户信息
 export async function updateUser(params: API.System.User, options?: { [key: string]: any }) {
-  return request<API.Result>('/api/system/user', {
+  return request<API.Result>(`${API_PREFIX}/system/user/update`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -49,24 +51,25 @@ export async function updateUser(params: API.System.User, options?: { [key: stri
 
 // 删除用户信息
 export async function removeUser(ids: string, options?: { [key: string]: any }) {
-  return request<API.Result>(`/api/system/user/${ids}`, {
+  return request<API.Result>(`${API_PREFIX}/system/user/delete`, {
     method: 'DELETE',
+    params: { ids },
     ...(options || {})
   });
 }
 
 // 导出用户信息
 export function exportUser(params?: API.System.UserListParams, options?: { [key: string]: any }) {
-  return downLoadXlsx(`/api/system/user/export`, { params }, `user_${new Date().getTime()}.xlsx`);
+  return downLoadXlsx(`${API_PREFIX}/system/user/export`, { params }, `user_${new Date().getTime()}.xlsx`);
 }
 
 // 用户状态修改
 export function changeUserStatus(userId: number, status: string) {
   const data = {
-    userId,
+    id: userId,
     status
   }
-  return request<API.Result>('/api/system/user/changeStatus', {
+  return request<API.Result>(`${API_PREFIX}/system/user/update-status`, {
     method: 'put',
     data: data
   })
@@ -74,70 +77,70 @@ export function changeUserStatus(userId: number, status: string) {
 
 // 查询用户个人信息
 export function getUserProfile() {
-  return request('/api/system/user/profile', {
+  return request(`${API_PREFIX}/system/user/profile/get`, {
     method: 'get'
   })
 }
 
 export function updateUserProfile(data: API.CurrentUser) {
-  return request<API.Result>('/api/system/user/profile', {
+  return request<API.Result>(`${API_PREFIX}/system/user/profile/update`, {
     method: 'put',
     data: data
   })
 }
 
-// 用户密码重置
+// 用户密码重置（管理员重置指定用户密码）
 export function resetUserPwd(userId: number, password: string) {
   const data = {
-    userId,
+    id: userId,
     password
   }
-  return request<API.Result>('/api/system/user/resetPwd', {
+  return request<API.Result>(`${API_PREFIX}/system/user/update-password`, {
     method: 'put',
     data: data
   })
 }
 
-// 用户t个人密码重置
+// 用户个人密码重置
 export function updateUserPwd(oldPassword: string, newPassword: string) {
   const data = {
     oldPassword,
     newPassword
   }
-  return request<API.Result>('/api/system/user/profile/updatePwd', {
+  return request<API.Result>(`${API_PREFIX}/system/user/profile/update-password`, {
     method: 'put',
-    params: data
+    data: data
   })
 }
 
 // 用户头像上传
 export function uploadAvatar(data: any) {
-  return request('/api/system/user/profile/avatar', {
+  return request(`${API_PREFIX}/system/user/profile/update-avatar`, {
     method: 'post',
     data: data
   })
 }
 
-
 // 查询授权角色
 export function getAuthRole(userId: number) {
-  return request('/system/user/authRole/' + userId, {
-    method: 'get'
+  return request(`${API_PREFIX}/system/permission/list-user-roles`, {
+    method: 'get',
+    params: { userId }
   })
 }
 
 // 保存授权角色
 export function updateAuthRole(data: Record<string, any>) {
-  return request('/system/user/authRole', {
-    method: 'put',
-    params: data
+  return request(`${API_PREFIX}/system/permission/assign-user-role`, {
+    method: 'post',
+    data: data
   })
 }
 
-// 获取数据列表
+// 获取部门树
 export function getDeptTree(params: any): Promise<DataNode[]> {
   return new Promise((resolve) => {
-    request(`/api/system/user/deptTree`, {
+    request(`${API_PREFIX}/system/dept/list`, {
       method: 'get',
       params,
     }).then((res: any) => {
