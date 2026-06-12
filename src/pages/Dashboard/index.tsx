@@ -12,6 +12,7 @@ import {
   Button,
   Space,
   Select,
+  theme,
 } from "antd";
 import {
   ApiOutlined,
@@ -299,6 +300,10 @@ const getPieChartOption = () => {
 export default function DashboardPage() {
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<string>("30");
+  const { token } = theme.useToken();
+  const isDark =
+    token.colorBgBase === "#000" ||
+    token.colorBgContainer.toLowerCase() !== "#ffffff";
 
   const timeRangeOptions = [
     { label: "近7天", value: "7" },
@@ -428,7 +433,19 @@ export default function DashboardPage() {
 
   return (
     <>
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div
+        className={`dashboard-page ${isDark ? "theme-dark" : "theme-light"}`}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 20,
+          padding: 4,
+          background: isDark
+            ? "radial-gradient(circle at top, rgba(37,99,235,0.16) 0%, rgba(15,23,42,0.98) 42%, #020617 100%)"
+            : undefined,
+          borderRadius: 20,
+        }}
+      >
         {/* 统计卡片区域 */}
         <Row gutter={[20, 20]}>
           {statCards.map((card, index) => (
@@ -860,6 +877,88 @@ export default function DashboardPage() {
 
 // 全局样式
 const globalStyles = `
+  .dashboard-page.theme-dark {
+    color: #e2e8f0;
+  }
+
+  .dashboard-page.theme-dark .ant-card {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(2, 6, 23, 0.98) 100%) !important;
+    border: 1px solid rgba(96, 165, 250, 0.14) !important;
+    box-shadow: 0 18px 48px rgba(2, 6, 23, 0.42) !important;
+  }
+
+  .dashboard-page.theme-dark .ant-card-head {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12) !important;
+  }
+
+  .dashboard-page.theme-dark .ant-card-head-title,
+  .dashboard-page.theme-dark .ant-card-extra,
+  .dashboard-page.theme-dark .ant-table,
+  .dashboard-page.theme-dark .ant-table-cell,
+  .dashboard-page.theme-dark .ant-select-selection-item,
+  .dashboard-page.theme-dark .ant-select-arrow,
+  .dashboard-page.theme-dark .ant-tag,
+  .dashboard-page.theme-dark .ant-btn {
+    color: #e2e8f0 !important;
+  }
+
+  .dashboard-page.theme-dark .ant-table {
+    background: transparent !important;
+  }
+
+  .dashboard-page.theme-dark .ant-table-thead > tr > th {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.92) 100%) !important;
+    color: #cbd5e1 !important;
+    border-bottom: 1px solid rgba(96, 165, 250, 0.14) !important;
+  }
+
+  .dashboard-page.theme-dark .ant-table-tbody > tr > td {
+    background: rgba(2, 6, 23, 0.55) !important;
+    color: #e2e8f0 !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08) !important;
+  }
+
+  .dashboard-page.theme-dark .ant-table-tbody > tr:hover > td {
+    background: linear-gradient(90deg, rgba(37, 99, 235, 0.16) 0%, rgba(14, 165, 233, 0.10) 100%) !important;
+  }
+
+  .dashboard-page.theme-dark .ant-select-selector {
+    background: rgba(15, 23, 42, 0.88) !important;
+    border-color: rgba(96, 165, 250, 0.22) !important;
+    color: #e2e8f0 !important;
+  }
+
+  .dashboard-page.theme-dark .ant-btn-default,
+  .dashboard-page.theme-dark .ant-btn-text {
+    background: rgba(15, 23, 42, 0.82) !important;
+    border-color: rgba(96, 165, 250, 0.18) !important;
+    color: #cbd5e1 !important;
+  }
+
+  .dashboard-page.theme-dark .ant-btn-default:hover,
+  .dashboard-page.theme-dark .ant-btn-text:hover {
+    background: rgba(30, 41, 59, 0.92) !important;
+    border-color: rgba(96, 165, 250, 0.32) !important;
+    color: #f8fafc !important;
+  }
+
+  .dashboard-page.theme-dark [style*="background: rgb(255, 255, 255)"],
+  .dashboard-page.theme-dark [style*="background-color: rgb(255, 255, 255)"],
+  .dashboard-page.theme-dark [style*="background: rgb(248, 250, 252)"],
+  .dashboard-page.theme-dark [style*="background-color: rgb(248, 250, 252)"],
+  .dashboard-page.theme-dark [style*="background: rgb(241, 245, 249)"],
+  .dashboard-page.theme-dark [style*="background: rgb(239, 246, 255)"],
+  .dashboard-page.theme-dark [style*="background: rgb(219, 234, 254)"] {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(2, 6, 23, 0.98) 100%) !important;
+  }
+
+  .dashboard-page.theme-dark [style*="color: rgb(31, 41, 55)"],
+  .dashboard-page.theme-dark [style*="color: rgb(75, 85, 99)"],
+  .dashboard-page.theme-dark [style*="color: rgb(107, 114, 128)"],
+  .dashboard-page.theme-dark [style*="color: rgb(156, 163, 175)"] {
+    color: #cbd5e1 !important;
+  }
+
   .ant-card {
     border-radius: 20px !important;
   }

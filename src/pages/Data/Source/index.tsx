@@ -31,6 +31,7 @@ import {
   Collapse,
   Popover,
   Slider,
+  theme,
 } from "antd";
 import type { TabsProps } from "antd";
 import {
@@ -1699,6 +1700,10 @@ const objectKindLabelMap: Record<"all" | DatabaseObjectDetail["kind"], string> =
 };
 
 export default function DataSourcePage() {
+  const { token } = theme.useToken();
+  const isDark =
+    token.colorBgBase === "#000" ||
+    token.colorBgContainer.toLowerCase() !== "#ffffff";
   const [activeTab, setActiveTab] = useState<string>("database");
   const [activeAlertKey, setActiveAlertKey] = useState<string[]>(
     initialImportJobs.length > 0 ? [initialImportJobs[0].id] : [],
@@ -4241,7 +4246,17 @@ export default function DataSourcePage() {
   };
 
   return (
-    <>
+    <div
+      className={`data-source-page ${isDark ? "theme-dark" : "theme-light"}`}
+      style={{
+        padding: 4,
+        borderRadius: 20,
+        background: isDark
+          ? "radial-gradient(circle at top, rgba(14,165,233,0.14) 0%, rgba(15,23,42,0.98) 36%, #020617 100%)"
+          : undefined,
+        color: isDark ? "#e2e8f0" : undefined,
+      }}
+    >
       {pendingErrorCount > 0 && (
         <Alert
           message={
@@ -4665,6 +4680,7 @@ export default function DataSourcePage() {
         onCancel={() => setModalVisible(false)}
         onOk={handleDataSourceSubmit}
         width={600}
+        rootClassName={isDark ? "data-source-dark-popup" : undefined}
       >
         <Form form={form} layout="vertical">
           <Form.Item
@@ -4771,6 +4787,7 @@ export default function DataSourcePage() {
         onOk={handleCreateDocImportTask}
         width={600}
         confirmLoading={loading}
+        rootClassName={isDark ? "data-source-dark-popup doc-task-dark-popup" : undefined}
       >
         <Form form={docTaskForm} layout="vertical">
           <Form.Item
@@ -4944,6 +4961,7 @@ export default function DataSourcePage() {
         }}
         footer={null}
         width={480}
+        rootClassName={isDark ? "data-source-dark-popup" : undefined}
       >
         {currentProcessAlert && (
           <div>
@@ -5034,6 +5052,7 @@ export default function DataSourcePage() {
         }}
         footer={null}
         width={600}
+        rootClassName={isDark ? "data-source-dark-popup" : undefined}
       >
         <div>
           <div>
@@ -5152,6 +5171,7 @@ export default function DataSourcePage() {
         width={1080}
         open={detailDrawerVisible}
         onClose={() => setDetailDrawerVisible(false)}
+        rootClassName={isDark ? "data-source-dark-popup" : undefined}
       >
         {selectedSource && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -5213,6 +5233,7 @@ export default function DataSourcePage() {
         width={520}
         open={syncDrawerVisible}
         onClose={() => setSyncDrawerVisible(false)}
+        rootClassName={isDark ? "data-source-dark-popup" : undefined}
       >
         {selectedSource && (
           <Form form={syncForm} layout="vertical">
@@ -5887,6 +5908,246 @@ export default function DataSourcePage() {
       </Drawer>
 
       <style>{`
+        .data-source-dark-popup .ant-modal-content,
+        .data-source-dark-popup .ant-drawer-content,
+        .data-source-dark-popup .ant-drawer-header,
+        .data-source-dark-popup .ant-drawer-body,
+        .data-source-dark-popup .ant-modal-header,
+        .data-source-dark-popup .ant-modal-body,
+        .data-source-dark-popup .ant-modal-footer {
+          background: #0f172a !important;
+          color: #e2e8f0 !important;
+          border-color: rgba(148, 163, 184, 0.12) !important;
+        }
+        .data-source-dark-popup .ant-modal-title,
+        .data-source-dark-popup .ant-drawer-title,
+        .data-source-dark-popup .ant-form-item-label > label,
+        .data-source-dark-popup .ant-alert-message,
+        .data-source-dark-popup .ant-alert-description,
+        .data-source-dark-popup .ant-card,
+        .data-source-dark-popup .ant-card-head-title,
+        .data-source-dark-popup .ant-statistic,
+        .data-source-dark-popup .ant-statistic-title,
+        .data-source-dark-popup .ant-statistic-content,
+        .data-source-dark-popup .ant-descriptions-item-label,
+        .data-source-dark-popup .ant-descriptions-item-content {
+          color: #e2e8f0 !important;
+        }
+        .data-source-dark-popup .ant-card,
+        .data-source-dark-popup .ant-alert,
+        .data-source-dark-popup .ant-collapse,
+        .data-source-dark-popup .ant-collapse-content,
+        .data-source-dark-popup .ant-collapse-header {
+          background: rgba(15, 23, 42, 0.92) !important;
+          border-color: rgba(148, 163, 184, 0.12) !important;
+        }
+        .data-source-dark-popup .ant-input,
+        .data-source-dark-popup .ant-input-affix-wrapper,
+        .data-source-dark-popup .ant-select-selector,
+        .data-source-dark-popup .ant-input-number,
+        .data-source-dark-popup .ant-input-group-addon,
+        .data-source-dark-popup .ant-picker {
+          background: rgba(2, 6, 23, 0.76) !important;
+          color: #e2e8f0 !important;
+          border-color: rgba(96, 165, 250, 0.18) !important;
+        }
+        .data-source-dark-popup .ant-btn-default,
+        .data-source-dark-popup .ant-btn-text,
+        .data-source-dark-popup .ant-btn-link {
+          background: rgba(15, 23, 42, 0.82) !important;
+          color: #cbd5e1 !important;
+          border-color: rgba(96, 165, 250, 0.18) !important;
+        }
+        .data-source-dark-popup .ant-btn-primary {
+          background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%) !important;
+          border-color: transparent !important;
+        }
+        .data-source-dark-popup [style*="background: rgb(250, 250, 250)"],
+        .data-source-dark-popup [style*="background-color: rgb(250, 250, 250)"],
+        .data-source-dark-popup [style*="background: rgb(255, 241, 240)"],
+        .data-source-dark-popup [style*="background: rgb(230, 247, 255)"],
+        .data-source-dark-popup [style*="background: rgb(255, 251, 230)"],
+        .data-source-dark-popup [style*="background: rgb(230, 247, 255)"],
+        .data-source-dark-popup [style*="background: rgb(255, 255, 255)"] {
+          background: rgba(15, 23, 42, 0.82) !important;
+        }
+        .data-source-dark-popup [style*="color: rgb(38, 38, 38)"],
+        .data-source-dark-popup [style*="color: rgb(51, 51, 51)"],
+        .data-source-dark-popup [style*="color: rgb(102, 102, 102)"],
+        .data-source-dark-popup [style*="color: rgb(136, 136, 136)"],
+        .data-source-dark-popup [style*="color: rgb(153, 153, 153)"],
+        .data-source-dark-popup [style*="color: rgb(140, 140, 140)"] {
+          color: #cbd5e1 !important;
+        }
+        .data-source-page.theme-dark {
+          color: #e2e8f0;
+        }
+        .data-source-page.theme-dark .ant-card,
+        .data-source-page.theme-dark .ant-modal-content,
+        .data-source-page.theme-dark .ant-drawer-content,
+        .data-source-page.theme-dark .ant-collapse,
+        .data-source-page.theme-dark .ant-popover-inner {
+          background: linear-gradient(180deg, rgba(15, 23, 42, 0.96) 0%, rgba(2, 6, 23, 0.98) 100%) !important;
+          border: 1px solid rgba(96, 165, 250, 0.14) !important;
+          box-shadow: 0 18px 48px rgba(2, 6, 23, 0.42) !important;
+        }
+        .data-source-page.theme-dark .ant-card-head,
+        .data-source-page.theme-dark .ant-collapse > .ant-collapse-item > .ant-collapse-header,
+        .data-source-page.theme-dark .ant-modal-header,
+        .data-source-page.theme-dark .ant-drawer-header {
+          background: rgba(15, 23, 42, 0.92) !important;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.12) !important;
+        }
+        .data-source-page.theme-dark .ant-card-head-title,
+        .data-source-page.theme-dark .ant-card-extra,
+        .data-source-page.theme-dark .ant-modal-title,
+        .data-source-page.theme-dark .ant-drawer-title,
+        .data-source-page.theme-dark .ant-tabs-tab-btn,
+        .data-source-page.theme-dark .ant-form-item-label > label,
+        .data-source-page.theme-dark .ant-statistic,
+        .data-source-page.theme-dark .ant-statistic-content,
+        .data-source-page.theme-dark .ant-statistic-title,
+        .data-source-page.theme-dark .ant-empty-description,
+        .data-source-page.theme-dark .ant-alert-message,
+        .data-source-page.theme-dark .ant-alert-description {
+          color: #e2e8f0 !important;
+        }
+        .data-source-page.theme-dark .ant-tabs-nav::before,
+        .data-source-page.theme-dark .ant-collapse,
+        .data-source-page.theme-dark .ant-collapse-item,
+        .data-source-page.theme-dark .ant-modal-header,
+        .data-source-page.theme-dark .ant-drawer-header,
+        .data-source-page.theme-dark .ant-drawer-footer {
+          border-color: rgba(148, 163, 184, 0.12) !important;
+        }
+        .data-source-page.theme-dark .ant-tabs-tab-active .ant-tabs-tab-btn {
+          color: #93c5fd !important;
+        }
+        .data-source-page.theme-dark .ant-tabs-ink-bar {
+          background: linear-gradient(90deg, #38bdf8 0%, #60a5fa 100%) !important;
+        }
+        .data-source-page.theme-dark .ant-table,
+        .data-source-page.theme-dark .ant-table-container,
+        .data-source-page.theme-dark .ant-table-content,
+        .data-source-page.theme-dark .ant-table-body,
+        .data-source-page.theme-dark .ant-table-cell {
+          background: transparent !important;
+          color: #e2e8f0 !important;
+        }
+        .data-source-page.theme-dark .ant-table-thead > tr > th {
+          background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.92) 100%) !important;
+          color: #cbd5e1 !important;
+          border-bottom: 1px solid rgba(96, 165, 250, 0.14) !important;
+        }
+        .data-source-page.theme-dark .ant-table-tbody > tr > td {
+          background: rgba(2, 6, 23, 0.55) !important;
+          color: #e2e8f0 !important;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.08) !important;
+        }
+        .data-source-page.theme-dark .ant-table-tbody > tr:hover > td,
+        .data-source-page.theme-dark .source-asset-row:hover > td {
+          background: rgba(37, 99, 235, 0.12) !important;
+        }
+        .data-source-page.theme-dark .source-asset-row-selected > td {
+          background: rgba(37, 99, 235, 0.18) !important;
+          box-shadow: inset 3px 0 0 #60a5fa;
+        }
+        .data-source-page.theme-dark .ant-input,
+        .data-source-page.theme-dark .ant-input-affix-wrapper,
+        .data-source-page.theme-dark .ant-input-number,
+        .data-source-page.theme-dark .ant-select-selector,
+        .data-source-page.theme-dark .ant-picker,
+        .data-source-page.theme-dark .ant-slider-rail {
+          background: rgba(15, 23, 42, 0.86) !important;
+          border-color: rgba(96, 165, 250, 0.18) !important;
+          color: #e2e8f0 !important;
+        }
+        .data-source-page.theme-dark .ant-input::placeholder,
+        .data-source-page.theme-dark .ant-select-selection-placeholder {
+          color: #64748b !important;
+        }
+        .data-source-page.theme-dark .ant-select-arrow,
+        .data-source-page.theme-dark .ant-input-suffix,
+        .data-source-page.theme-dark .ant-input-prefix {
+          color: #94a3b8 !important;
+        }
+        .data-source-page.theme-dark .ant-btn-default,
+        .data-source-page.theme-dark .ant-btn-text,
+        .data-source-page.theme-dark .ant-btn-link {
+          background: rgba(15, 23, 42, 0.82) !important;
+          border-color: rgba(96, 165, 250, 0.18) !important;
+          color: #cbd5e1 !important;
+        }
+        .data-source-page.theme-dark .ant-btn-default:hover,
+        .data-source-page.theme-dark .ant-btn-text:hover {
+          background: rgba(30, 41, 59, 0.92) !important;
+          border-color: rgba(96, 165, 250, 0.32) !important;
+          color: #f8fafc !important;
+        }
+        .data-source-page.theme-dark .ant-btn-primary {
+          background: linear-gradient(135deg, #2563eb 0%, #0ea5e9 100%) !important;
+          border-color: transparent !important;
+        }
+        .data-source-page.theme-dark .ant-alert {
+          background: rgba(127, 29, 29, 0.18) !important;
+          border-color: rgba(248, 113, 113, 0.28) !important;
+        }
+        .data-source-page.theme-dark .slide-in-right,
+        .data-source-page.theme-dark .slide-in-right > div,
+        .data-source-page.theme-dark .slide-in-right .ant-card,
+        .data-source-page.theme-dark .slide-in-right .ant-card-body,
+        .data-source-page.theme-dark .slide-in-right .ant-collapse,
+        .data-source-page.theme-dark .slide-in-right .ant-collapse-content,
+        .data-source-page.theme-dark .slide-in-right .ant-collapse-content-box,
+        .data-source-page.theme-dark .slide-in-right .ant-empty,
+        .data-source-page.theme-dark .slide-in-right .ant-table-wrapper,
+        .data-source-page.theme-dark .slide-in-right .ant-spin-container {
+          background: #0f172a !important;
+          color: #e2e8f0 !important;
+        }
+        .data-source-page.theme-dark .slide-in-right .ant-card,
+        .data-source-page.theme-dark .slide-in-right .ant-collapse,
+        .data-source-page.theme-dark .slide-in-right .ant-empty,
+        .data-source-page.theme-dark .slide-in-right .ant-table-wrapper {
+          border-color: rgba(148, 163, 184, 0.12) !important;
+        }
+        .data-source-page.theme-dark .slide-in-right .ant-empty-description,
+        .data-source-page.theme-dark .slide-in-right .ant-collapse-header-text,
+        .data-source-page.theme-dark .slide-in-right .ant-card-head-title {
+          color: #e2e8f0 !important;
+        }
+        .data-source-page.theme-dark [style*="background: rgb(255, 255, 255)"],
+        .data-source-page.theme-dark [style*="background-color: rgb(255, 255, 255)"],
+        .data-source-page.theme-dark [style*="background: rgb(250, 250, 250)"],
+        .data-source-page.theme-dark [style*="background-color: rgb(250, 250, 250)"],
+        .data-source-page.theme-dark [style*="background: rgb(248, 250, 252)"],
+        .data-source-page.theme-dark [style*="background-color: rgb(248, 250, 252)"],
+        .data-source-page.theme-dark [style*="background: rgb(240, 245, 255)"],
+        .data-source-page.theme-dark [style*="background: rgb(239, 246, 255)"],
+        .data-source-page.theme-dark [style*="background: rgb(243, 243, 243)"],
+        .data-source-page.theme-dark [style*="background: rgb(255, 242, 240)"],
+        .data-source-page.theme-dark [style*="background: rgb(240, 253, 244)"],
+        .data-source-page.theme-dark [style*="background: rgb(254, 242, 242)"],
+        .data-source-page.theme-dark [style*="background: rgb(219, 234, 254)"],
+        .data-source-page.theme-dark [style*="background: rgb(254, 226, 226)"] {
+          background: rgba(15, 23, 42, 0.82) !important;
+        }
+        .data-source-page.theme-dark [style*="background: linear-gradient(135deg, rgb(239, 246, 255)"],
+        .data-source-page.theme-dark [style*="background: linear-gradient(180deg, rgb(248, 250, 252)"],
+        .data-source-page.theme-dark [style*="background: linear-gradient(135deg, rgb(230, 247, 255)"],
+        .data-source-page.theme-dark [style*="background: linear-gradient(135deg, rgb(245, 247, 250)"] {
+          background: linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(2, 6, 23, 0.98) 100%) !important;
+        }
+        .data-source-page.theme-dark [style*="color: rgb(15, 23, 42)"],
+        .data-source-page.theme-dark [style*="color: rgb(30, 41, 59)"],
+        .data-source-page.theme-dark [style*="color: rgb(38, 38, 38)"],
+        .data-source-page.theme-dark [style*="color: rgb(51, 51, 51)"],
+        .data-source-page.theme-dark [style*="color: rgb(102, 102, 102)"],
+        .data-source-page.theme-dark [style*="color: rgb(100, 116, 139)"],
+        .data-source-page.theme-dark [style*="color: rgb(153, 153, 153)"],
+        .data-source-page.theme-dark [style*="color: rgb(140, 140, 140)"] {
+          color: #cbd5e1 !important;
+        }
         @keyframes slideInFromRight {
           from {
             opacity: 0;
@@ -5965,6 +6226,6 @@ export default function DataSourcePage() {
           box-shadow: inset 3px 0 0 #2563eb;
         }
       `}</style>
-    </>
+    </div>
   );
 }
