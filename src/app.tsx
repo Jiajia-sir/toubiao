@@ -44,13 +44,14 @@ export async function getInitialState(): Promise<{
       }
     } catch (error) {
       console.log(error);
+      clearSessionToken();
       history.push(PageEnum.LOGIN);
     }
     return undefined;
   };
   // 如果不是登录页面，执行
   const { location } = history;
-  if (location.pathname !== PageEnum.LOGIN) {
+  if (location.pathname !== PageEnum.LOGIN && getAccessToken()) {
     const currentUser = await fetchUserInfo();
     return {
       fetchUserInfo,
@@ -155,12 +156,8 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
 };
 
 export async function onRouteChange({ clientRoutes, location }) {
-  const menus = getRemoteMenu();
- // console.log('onRouteChange', clientRoutes, location, menus);
-  if(menus === null && location.pathname !== PageEnum.LOGIN) {
-    console.log('refresh')
-    history.go(0);
-  }
+  void clientRoutes;
+  void location;
 }
 
 // export function patchRoutes({ routes, routeComponents }) {
