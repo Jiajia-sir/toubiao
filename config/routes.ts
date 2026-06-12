@@ -38,6 +38,28 @@ export default [
     component: './Dashboard',
   },
   {
+    name: '知识库',
+    icon: 'book',
+    path: '/knowledge',
+    component: './Knowledge',
+  },
+  {
+    path: '/knowledge/detail/:id',
+    component: './KnowledgeDetail',
+  },
+  {
+    name: '图谱检索',
+    icon: 'cluster',
+    path: '/graph',
+    component: './Graph',
+  },
+  {
+    name: '数据检索',
+    icon: 'search',
+    path: '/data-search',
+    component: './DataSearch',
+  },
+  {
     name: '数据接入',
     icon: 'database',
     path: '/data',
@@ -47,7 +69,65 @@ export default [
         path: '/data/source',
         component: './Data/Source',
       },
+      {
+        name: '文档导入',
+        path: '/data/document-import',
+        component: './Data/DocumentImport',
+      },
+      {
+        name: '实时监控',
+        path: '/data/realtime-monitor',
+        component: './Data/Monitor',
+      },
+      {
+        name: '文档详情',
+        path: '/data/document/:id',
+        component: './Data/DocumentDetail',
+      },
     ],
+  },
+  {
+    name: '配置中心',
+    icon: 'setting',
+    path: '/config-center',
+    routes: [
+      {
+        name: '编目管理',
+        path: '/config-center/catalog',
+        component: './ConfigCenter/Catalog',
+      },
+      {
+        name: '标签管理',
+        path: '/config-center/tag',
+        component: './ConfigCenter/Tag',
+      },
+      {
+        name: '实体类型配置',
+        path: '/config-center/entity-type',
+        component: './ConfigCenter/EntityType',
+      },
+      {
+        name: '知识抽取配置',
+        path: '/config-center/knowledge-extract',
+        component: './ConfigCenter/KnowledgeExtractConfig',
+      },
+    ],
+  },
+  {
+    path: '/configCenter/catalog/index',
+    component: './ConfigCenter/Catalog',
+  },
+  {
+    path: '/configCenter/tag/index',
+    component: './ConfigCenter/Tag',
+  },
+  {
+    path: '/configCenter/entityType/index',
+    component: './ConfigCenter/EntityType',
+  },
+  {
+    path: '/configCenter/knowledgeExtract/config/index',
+    component: './ConfigCenter/KnowledgeExtractConfig',
   },
   {
     path: '/account',
