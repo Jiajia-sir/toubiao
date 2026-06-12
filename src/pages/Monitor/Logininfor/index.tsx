@@ -1,5 +1,4 @@
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useIntl, FormattedMessage, useAccess } from '@umijs/max';
 import type { FormInstance } from 'antd';
 import { Button, message, Modal } from 'antd';
@@ -8,11 +7,6 @@ import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, UnlockOutlined
 import { getLogininforList, removeLogininfor, exportLogininfor, unlockLogininfor, cleanLogininfor } from '@/services/monitor/logininfor';
 import DictTag from '@/components/DictTag';
 
-/**
- * 删除节点
- *
- * @param selectedRows
- */
 const handleRemove = async (selectedRows: API.Monitor.Logininfor[]) => {
   const hide = message.loading('正在删除');
   if (!selectedRows) return true;
@@ -68,11 +62,6 @@ const handleUnlock = async (userName: string) => {
   }
 };
 
-/**
- * 导出数据
- *
- * @param id
- */
 const handleExport = async () => {
   const hide = message.loading('正在导出');
   try {
@@ -87,14 +76,12 @@ const handleExport = async () => {
   }
 };
 
-
 const LogininforTableList: React.FC = () => {
   const formTableRef = useRef<FormInstance>();
-
   const actionRef = useRef<ActionType>();
   const [selectedRows, setSelectedRows] = useState<API.Monitor.Logininfor[]>([]);
-
   const access = useAccess();
+  const intl = useIntl();
 
   const statusOptions = {
     0: {
@@ -103,7 +90,7 @@ const LogininforTableList: React.FC = () => {
       value: '0',
       text: '成功',
       status: 'success',
-      listClass: 'success'
+      listClass: 'success',
     },
     1: {
       label: '失败',
@@ -111,16 +98,9 @@ const LogininforTableList: React.FC = () => {
       value: '1',
       text: '失败',
       status: 'error',
-      listClass: 'danger'
+      listClass: 'danger',
     },
   };
-
-  /** 国际化配置 */
-  const intl = useIntl();
-
-  useEffect(() => {
-
-  }, []);
 
   const columns: ProColumns<API.Monitor.Logininfor>[] = [
     {
@@ -133,11 +113,38 @@ const LogininforTableList: React.FC = () => {
       title: <FormattedMessage id="monitor.logininfor.user_name" defaultMessage="用户账号" />,
       dataIndex: 'userName',
       valueType: 'text',
+      render: (_, record) => record.userName || record.username,
+    },
+    {
+      title: '日志类型',
+      dataIndex: 'logType',
+      valueType: 'text',
+      hideInSearch: true,
+    },
+    {
+      title: '用户ID',
+      dataIndex: 'userId',
+      valueType: 'text',
+      hideInSearch: true,
+    },
+    {
+      title: '用户类型',
+      dataIndex: 'userType',
+      valueType: 'text',
+      hideInSearch: true,
+    },
+    {
+      title: '链路追踪',
+      dataIndex: 'traceId',
+      valueType: 'text',
+      hideInSearch: true,
+      ellipsis: true,
     },
     {
       title: <FormattedMessage id="monitor.logininfor.ipaddr" defaultMessage="登录IP地址" />,
       dataIndex: 'ipaddr',
       valueType: 'text',
+      render: (_, record) => record.ipaddr || record.userIp,
     },
     {
       title: <FormattedMessage id="monitor.logininfor.login_location" defaultMessage="登录地点" />,
@@ -161,9 +168,13 @@ const LogininforTableList: React.FC = () => {
       title: <FormattedMessage id="monitor.logininfor.status" defaultMessage="登录状态" />,
       dataIndex: 'status',
       valueType: 'select',
-      render: (_, record) => {
-        return (<DictTag enums={statusOptions} value={record.status} />);
-      },
+      render: (_, record) => <DictTag enums={statusOptions} value={record.status} />,
+    },
+    {
+      title: '请求结果',
+      dataIndex: 'result',
+      valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="monitor.logininfor.msg" defaultMessage="提示消息" />,
@@ -172,9 +183,17 @@ const LogininforTableList: React.FC = () => {
       hideInSearch: true,
     },
     {
+      title: 'User Agent',
+      dataIndex: 'userAgent',
+      valueType: 'text',
+      hideInSearch: true,
+      ellipsis: true,
+    },
+    {
       title: <FormattedMessage id="monitor.logininfor.login_time" defaultMessage="访问时间" />,
-      dataIndex: 'loginTime',
+      dataIndex: 'createTime',
       valueType: 'dateTime',
+      render: (_, record) => record.createTime || record.loginTime,
     },
   ];
 
@@ -210,7 +229,7 @@ const LogininforTableList: React.FC = () => {
                       actionRef.current?.reloadAndRest?.();
                     }
                   },
-                  onCancel() { },
+                  onCancel() {},
                 });
               }}
             >
@@ -234,7 +253,7 @@ const LogininforTableList: React.FC = () => {
                       actionRef.current?.reloadAndRest?.();
                     }
                   },
-                  onCancel() { },
+                  onCancel() {},
                 });
               }}
             >
@@ -257,7 +276,7 @@ const LogininforTableList: React.FC = () => {
                       actionRef.current?.reloadAndRest?.();
                     }
                   },
-                  onCancel() { },
+                  onCancel() {},
                 });
               }}
             >
@@ -278,18 +297,17 @@ const LogininforTableList: React.FC = () => {
           ]}
           request={(params) =>
             getLogininforList({ ...params } as API.Monitor.LogininforListParams).then((res) => {
-              const result = {
+              return {
                 data: res.rows,
                 total: res.total,
                 success: true,
               };
-              return result;
             })
           }
           columns={columns}
           rowSelection={{
-            onChange: (_, selectedRows) => {
-              setSelectedRows(selectedRows);
+            onChange: (_, rows) => {
+              setSelectedRows(rows);
             },
           }}
         />

@@ -11,6 +11,16 @@ declare namespace API.Monitor {
     status: string;
     msg: string;
     loginTime: Date;
+    id?: number;
+    logType?: number;
+    userId?: number;
+    userType?: number;
+    traceId?: string;
+    username?: string;
+    result?: number;
+    userIp?: string;
+    userAgent?: string;
+    createTime?: number | string | Date;
   }
 
   export interface LogininforListParams {

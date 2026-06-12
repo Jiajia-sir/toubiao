@@ -5,11 +5,11 @@ import { API_PREFIX } from '@/constants';
 // 查询操作日志记录列表
 export async function getOperlogList(params?: API.Monitor.OperlogListParams) {
   return request<API.Monitor.OperlogPageResult>(`${API_PREFIX}/system/operate-log/page`, {
-    method: 'GET',
+    method: 'post',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    params
+    data: params
   });
 }
 

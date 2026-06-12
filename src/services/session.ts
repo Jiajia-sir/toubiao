@@ -7,12 +7,24 @@ import { API_PREFIX } from '@/constants';
 
 let remoteMenu: any = null;
 
+const componentSegmentAliasMap: Record<string, string> = {
+  Loginlog: 'Logininfor',
+  Operatelog: 'Operlog',
+};
+
 export function getRemoteMenu() {
   return remoteMenu;
 }
 
 export function setRemoteMenu(data: any) {
   remoteMenu = data;
+}
+
+function normalizeComponentPath(componentPath: string) {
+  return componentPath
+    .split('/')
+    .map((segment) => componentSegmentAliasMap[segment] || segment)
+    .join('/');
 }
 
 
@@ -40,7 +52,8 @@ function patchRouteItems(route: any, menu: any, parentPath: string) {
         patchRouteItems(newItem, menuItem.routes, parentPath + menuItem.path + '/');
       }
     } else {
-      const names: string[] = menuItem.component.split('/');
+      const normalizedComponent = normalizeComponentPath(menuItem.component);
+      const names: string[] = normalizedComponent.split('/');
       let path = '';
       names.forEach(name => {
         if (path.length > 0) {
