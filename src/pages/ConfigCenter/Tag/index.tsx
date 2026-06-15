@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import dayjs from "dayjs";
 import {
   Card,
   Button,
@@ -25,82 +26,8 @@ import {
   ReloadOutlined,
   TagOutlined,
 } from "@ant-design/icons";
-
-interface TagItem {
-  id: string;
-  name: string;
-  color: string;
-  usageCount: number;
-  createTime: string;
-  creator: string;
-}
-
-const initialData: TagItem[] = [
-  {
-    id: "1",
-    name: "产品需求",
-    color: "#1890ff",
-    usageCount: 156,
-    createTime: "2024-01-15 10:00:00",
-    creator: "张三",
-  },
-  {
-    id: "2",
-    name: "技术文档",
-    color: "#52c41a",
-    usageCount: 89,
-    createTime: "2024-01-16 14:30:00",
-    creator: "李四",
-  },
-  {
-    id: "3",
-    name: "财务报告",
-    color: "#faad14",
-    usageCount: 67,
-    createTime: "2024-01-17 09:15:00",
-    creator: "王五",
-  },
-  {
-    id: "4",
-    name: "市场分析",
-    color: "#eb2f96",
-    usageCount: 45,
-    createTime: "2024-01-18 11:20:00",
-    creator: "赵六",
-  },
-  {
-    id: "5",
-    name: "项目管理",
-    color: "#13c2c2",
-    usageCount: 38,
-    createTime: "2024-01-19 16:45:00",
-    creator: "孙七",
-  },
-  {
-    id: "6",
-    name: "用户研究",
-    color: "#722ed1",
-    usageCount: 29,
-    createTime: "2024-01-20 10:30:00",
-    creator: "张三",
-  },
-  {
-    id: "7",
-    name: "合同协议",
-    color: "#fa541c",
-    usageCount: 23,
-    createTime: "2024-01-21 15:00:00",
-    creator: "李四",
-  },
-  {
-    id: "8",
-    name: "HR文档",
-    color: "#2f54eb",
-    usageCount: 18,
-    createTime: "2024-01-22 09:45:00",
-    creator: "王五",
-  },
-];
+import { getTagPage, addTag, updateTag, removeTag } from '@/services/biz/tag';
+import type { TagItem } from '@/services/biz/tag';
 
 const colorOptions = [
   { label: "蓝色", value: "#1890ff" },
@@ -114,38 +41,50 @@ const colorOptions = [
 ];
 
 export default function TagPage() {
-  const [tags, setTags] = useState<TagItem[]>(initialData);
+  const [tags, setTags] = useState<TagItem[]>([]);
   const [searchName, setSearchName] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [currentTag, setCurrentTag] = useState<TagItem | null>(null);
   const [form] = Form.useForm();
 
-  const filteredTags = tags.filter((item) => {
-    if (
-      searchName &&
-      !item.name.toLowerCase().includes(searchName.toLowerCase())
-    ) {
-      return false;
+  const fetchTags = async (currentPage = page, search = searchName) => {
+    setLoading(true);
+    try {
+      const res: any = await getTagPage({
+        pageNo: currentPage,
+        pageSize,
+        tag: search || undefined,
+      });
+      if (res && res.code === 200) {
+        setTags(res.data?.list || res.rows || []);
+        setTotal(res.data?.total || res.total || 0);
+      } else {
+        message.error(res?.msg || "获取列表失败");
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
-    return true;
-  });
+  };
 
-  const paginatedTags = filteredTags.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  );
+  useEffect(() => {
+    fetchTags(page, searchName);
+  }, [page]);
 
   const columns = [
     {
       title: "标签名称",
-      dataIndex: "name",
-      key: "name",
+      dataIndex: "tag",
+      key: "tag",
       width: 200,
-      render: (name: string, record: TagItem) => (
+      render: (tag: string, record: TagItem) => (
         <Tag
           style={{
             color: record.color,
@@ -153,7 +92,7 @@ export default function TagPage() {
             border: `1px solid ${record.color}30`,
           }}
         >
-          {name}
+          {tag}
         </Tag>
       ),
     },
@@ -174,24 +113,16 @@ export default function TagPage() {
       ),
     },
     {
-      title: "使用次数",
-      dataIndex: "usageCount",
-      key: "usageCount",
-      width: 100,
-      render: (count: number) => (
-        <span style={{ color: "#1890ff", fontWeight: 500 }}>{count}</span>
-      ),
-    },
-    {
       title: "创建时间",
       dataIndex: "createTime",
       key: "createTime",
       width: 180,
+      render: (time: number | string) => time ? dayjs(time).format("YYYY-MM-DD HH:mm:ss") : "-",
     },
     {
       title: "创建人",
-      dataIndex: "creator",
-      key: "creator",
+      dataIndex: "creatorNickname",
+      key: "creatorNickname",
       width: 100,
     },
     {
@@ -224,19 +155,24 @@ export default function TagPage() {
   ];
 
   const handleAdd = () => {
-    form.validateFields().then((values) => {
-      const newTag: TagItem = {
-        id: Date.now().toString(),
-        name: values.name,
-        color: values.color,
-        usageCount: 0,
-        createTime: new Date().toLocaleString(),
-        creator: "管理员",
-      };
-      setTags([newTag, ...tags]);
-      setModalVisible(false);
-      form.resetFields();
-      message.success("新增成功");
+    form.validateFields().then(async (values) => {
+      try {
+        const res: any = await addTag({
+          tag: values.tag,
+          color: values.color,
+        });
+        if (res && res.code === 200) {
+          message.success("新增成功");
+          setModalVisible(false);
+          form.resetFields();
+          fetchTags(1); // 重新加载第一页
+          setPage(1);
+        } else {
+          message.error(res?.msg || "新增失败");
+        }
+      } catch (error) {
+        console.error(error);
+      }
     });
   };
 
@@ -244,7 +180,7 @@ export default function TagPage() {
     setCurrentTag(record);
     setEditMode(true);
     form.setFieldsValue({
-      name: record.name,
+      tag: record.tag,
       color: record.color,
     });
     setModalVisible(true);
@@ -252,30 +188,47 @@ export default function TagPage() {
 
   const handleUpdate = () => {
     if (!currentTag) return;
-    form.validateFields().then((values) => {
-      const updatedTags = tags.map((item) =>
-        item.id === currentTag.id
-          ? { ...item, name: values.name, color: values.color }
-          : item,
-      );
-      setTags(updatedTags);
-      setModalVisible(false);
-      setCurrentTag(null);
-      setEditMode(false);
-      form.resetFields();
-      message.success("更新成功");
+    form.validateFields().then(async (values) => {
+      try {
+        const res: any = await updateTag({
+          id: currentTag.id,
+          tag: values.tag,
+          color: values.color,
+        });
+        if (res && res.code === 200) {
+          message.success("更新成功");
+          setModalVisible(false);
+          setCurrentTag(null);
+          setEditMode(false);
+          form.resetFields();
+          fetchTags(page); // 刷新当前页
+        } else {
+          message.error(res?.msg || "更新失败");
+        }
+      } catch (error) {
+        console.error(error);
+      }
     });
   };
 
-  const handleDelete = (id: string) => {
-    setTags(tags.filter((item) => item.id !== id));
-    message.success("删除成功");
+  const handleDelete = async (id: number) => {
+    try {
+      const res: any = await removeTag(id);
+      if (res && res.code === 200) {
+        message.success("删除成功");
+        fetchTags(page);
+      } else {
+        message.error(res?.msg || "删除失败");
+      }
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const handleReset = () => {
     setSearchName("");
     setPage(1);
-    setTags(initialData);
+    fetchTags(1, "");
     message.success("已刷新");
   };
 
@@ -302,7 +255,7 @@ export default function TagPage() {
               <Col>
                 <Space>
                   <span style={{ color: "#8c8c8c", marginRight: 8 }}>
-                    共{filteredTags.length}条数据
+                    共{total}条数据
                   </span>
                   <Button icon={<ReloadOutlined />} onClick={handleReset}>
                     刷新
@@ -341,10 +294,12 @@ export default function TagPage() {
                 />
               </Col>
               <Col>
-                <Button type="primary">搜索</Button>
+                <Button type="primary" onClick={() => fetchTags(1)}>搜索</Button>
                 <Button
                   onClick={() => {
                     setSearchName("");
+                    setPage(1);
+                    fetchTags(1, "");
                   }}
                   style={{ marginLeft: 8 }}
                 >
@@ -356,10 +311,11 @@ export default function TagPage() {
 
           <div style={{ padding: "0 24px" }}>
             <Table
-              dataSource={paginatedTags}
+              dataSource={tags}
               columns={columns}
               rowKey="id"
               pagination={false}
+              loading={loading}
             />
           </div>
 
@@ -374,7 +330,7 @@ export default function TagPage() {
             <Pagination
               current={page}
               pageSize={pageSize}
-              total={filteredTags.length}
+              total={total}
               onChange={setPage}
               showTotal={(total) => `共 ${total} 条记录`}
             />
@@ -402,7 +358,7 @@ export default function TagPage() {
       >
         <Form form={form} layout="vertical">
           <Form.Item
-            name="name"
+            name="tag"
             label="标签名称"
             rules={[{ required: true, message: "请输入标签名称" }]}
           >

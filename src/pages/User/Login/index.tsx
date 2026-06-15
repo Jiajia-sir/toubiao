@@ -1,5 +1,6 @@
 import Footer from '@/components/Footer';
 import { login } from '@/services/system/auth';
+import { ensureRemoteMenu, setRemoteMenu } from '@/services/session';
 import {
   AlipayCircleOutlined,
   LockOutlined,
@@ -126,8 +127,10 @@ const Login: React.FC = () => {
         const expireTime = current.setTime(current.getTime() + 1000 * 12 * 60 * 60);
         console.log('login response: ', response);
         setSessionToken(response?.data?.accessToken, response?.data?.refreshToken, expireTime);
+        setRemoteMenu(null);
         message.success(defaultLoginSuccessMessage);
         await fetchUserInfo();
+        await ensureRemoteMenu();
         console.log('login ok');
         const urlParams = new URL(window.location.href).searchParams;
         history.push(urlParams.get('redirect') || '/');

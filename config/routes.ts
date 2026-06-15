@@ -111,6 +111,26 @@ export default [
         path: '/config-center/knowledge-extract',
         component: './ConfigCenter/KnowledgeExtractConfig',
       },
+      {
+        name: '消融配置',
+        path: '/config-center/ablation',
+        component: './ConfigCenter/Ablation',
+      },
+      {
+        name: '实体消融',
+        path: '/config-center/ablation/entity',
+        component: './ConfigCenter/Ablation/Entity',
+      },
+      {
+        name: '关系消融',
+        path: '/config-center/ablation/relation',
+        component: './ConfigCenter/Ablation/Relation',
+      },
+      {
+        name: '属性消融',
+        path: '/config-center/ablation/attribute',
+        component: './ConfigCenter/Ablation/Attribute',
+      },
     ],
   },
   {
@@ -128,6 +148,22 @@ export default [
   {
     path: '/configCenter/knowledgeExtract/config/index',
     component: './ConfigCenter/KnowledgeExtractConfig',
+  },
+  {
+    path: '/configCenter/ablation/index',
+    component: './ConfigCenter/Ablation',
+  },
+  {
+    path: '/configCenter/ablation/entity/index',
+    component: './ConfigCenter/Ablation/Entity',
+  },
+  {
+    path: '/configCenter/ablation/relation/index',
+    component: './ConfigCenter/Ablation/Relation',
+  },
+  {
+    path: '/configCenter/ablation/attribute/index',
+    component: './ConfigCenter/Ablation/Attribute',
   },
   {
     path: '/account',

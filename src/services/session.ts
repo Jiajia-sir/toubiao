@@ -20,6 +20,15 @@ export function setRemoteMenu(data: any) {
   remoteMenu = data;
 }
 
+export async function ensureRemoteMenu() {
+  if (remoteMenu && Array.isArray(remoteMenu)) {
+    return remoteMenu;
+  }
+  const menus = await getRoutersInfo();
+  setRemoteMenu(menus);
+  return menus;
+}
+
 function normalizeComponentPath(componentPath: string) {
   return componentPath
     .split('/')
