@@ -1,28 +1,3 @@
-<<<<<<< HEAD
-import Footer from '@/components/Footer';
-import { login } from '@/services/system/auth';
-import { ensureRemoteMenu, setRemoteMenu } from '@/services/session';
-import {
-  AlipayCircleOutlined,
-  LockOutlined,
-  MobileOutlined,
-  TaobaoCircleOutlined,
-  UserOutlined,
-  WeiboCircleOutlined,
-} from '@ant-design/icons';
-import {
-  LoginForm,
-  ProFormCheckbox,
-  ProFormText,
-} from '@ant-design/pro-components';
-import { useEmotionCss } from '@ant-design/use-emotion-css';
-import { FormattedMessage, history, SelectLang, useIntl, useModel, Helmet } from '@umijs/max';
-import { Alert, message, Tabs } from 'antd';
-import Settings from '../../../../config/defaultSettings';
-import React, { useState } from 'react';
-import { flushSync } from 'react-dom';
-=======
->>>>>>> 2366a979228c6af00cc166eec0be0999f53dd355
 import { clearSessionToken, setSessionToken } from '@/access';
 import { login } from '@/services/system/auth';
 import { history, Helmet, useIntl, useModel } from '@umijs/max';
@@ -297,18 +272,10 @@ const Login: React.FC = () => {
         const current = new Date();
         const expireTime = current.setTime(current.getTime() + 1000 * 12 * 60 * 60);
         setSessionToken(response?.data?.accessToken, response?.data?.refreshToken, expireTime);
-<<<<<<< HEAD
-        setRemoteMenu(null);
-        message.success(defaultLoginSuccessMessage);
-        await fetchUserInfo();
-        await ensureRemoteMenu();
-        console.log('login ok');
-=======
         message.success(
           intl.formatMessage({ id: 'pages.login.success', defaultMessage: '登录成功' }),
         );
         await fetchUserInfo();
->>>>>>> 2366a979228c6af00cc166eec0be0999f53dd355
         const urlParams = new URL(window.location.href).searchParams;
         history.push(urlParams.get('redirect') || '/');
         return;
