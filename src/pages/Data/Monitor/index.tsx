@@ -1,6 +1,7 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from 'react';
+import styles from './index.less';
 import {
   Card,
   Table,
@@ -31,8 +32,8 @@ import {
   Collapse,
   Popover,
   Slider,
-} from "antd";
-import type { TabsProps } from "antd";
+} from 'antd';
+import type { TabsProps } from 'antd';
 import {
   DeleteOutlined,
   EditOutlined,
@@ -66,7 +67,6 @@ import {
   ForkOutlined,
   DashboardOutlined,
   SettingOutlined,
-  StepForwardOutlined,
   InfoCircleOutlined,
   CloudServerOutlined,
   AimOutlined,
@@ -74,18 +74,18 @@ import {
   AppstoreOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
-} from "@ant-design/icons";
+} from '@ant-design/icons';
 import EntityRelationGraph, {
   type EntityRelationGraphRef,
-} from "@/components/Graph/EntityRelationGraph";
-import type { KnowledgeGraphData } from "@/data/documentGraph";
-import type { EntityGraphData, EntityGraphNodeType } from "@/data/entityGraphMock";
+} from '@/components/Graph/EntityRelationGraph';
+import type { KnowledgeGraphData } from '@/data/documentGraph';
+import type { EntityGraphData, EntityGraphNodeType } from '@/data/entityGraphMock';
 
 const { Search } = Input;
 const { Dragger } = Upload;
 
 const compactMetricCardStyle = {
-  padding: "10px 12px",
+  padding: '10px 12px',
   borderRadius: 14,
 } as const;
 
@@ -106,49 +106,53 @@ function CompactGraphPreviewToolbar({
   onLinkWidthChange,
 }: GraphToolbarProps) {
   const settingsContent = (
-    <div style={{ width: 260, padding: "8px 4px" }}>
+    <div style={{ width: 260, padding: '8px 4px' }}>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: 13, color: "#475569" }}>节点大小</span>
-          <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{Math.round(nodeScale * 100)}%</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontSize: 13, color: '#475569' }}>节点大小</span>
+          <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>
+            {Math.round(nodeScale * 100)}%
+          </span>
         </div>
-        <Slider 
-          min={0.3} max={2.0} step={0.1} 
-          value={nodeScale} 
-          onChange={onNodeScaleChange} 
+        <Slider
+          min={0.3}
+          max={2.0}
+          step={0.1}
+          value={nodeScale}
+          onChange={onNodeScaleChange}
           tooltip={{ formatter: (val) => `${Math.round((val || 0) * 100)}%` }}
         />
       </div>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: 13, color: "#475569" }}>连线粗细</span>
-          <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{linkWidth.toFixed(2)}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontSize: 13, color: '#475569' }}>连线粗细</span>
+          <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>
+            {linkWidth.toFixed(2)}
+          </span>
         </div>
-        <Slider 
-          min={0.5} max={5.0} step={0.1} 
-          value={linkWidth} 
-          onChange={onLinkWidthChange} 
-        />
+        <Slider min={0.5} max={5.0} step={0.1} value={linkWidth} onChange={onLinkWidthChange} />
       </div>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-          <span style={{ fontSize: 13, color: "#475569" }}>节点文字截断长度</span>
-          <span style={{ fontSize: 13, color: "#0f172a", fontWeight: 500 }}>{labelMaxLength}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontSize: 13, color: '#475569' }}>节点文字截断长度</span>
+          <span style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>{labelMaxLength}</span>
         </div>
-        <Slider 
-          min={1} max={20} step={1} 
-          value={labelMaxLength} 
-          onChange={onLabelMaxLengthChange} 
+        <Slider
+          min={1}
+          max={20}
+          step={1}
+          value={labelMaxLength}
+          onChange={onLabelMaxLengthChange}
         />
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 13, color: "#475569" }}>强制显示所有节点文字</span>
-        <Button 
-          size="small" 
-          type={showLabels ? "primary" : "default"} 
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 13, color: '#475569' }}>强制显示所有节点文字</span>
+        <Button
+          size="small"
+          type={showLabels ? 'primary' : 'default'}
           onClick={() => onShowLabelsChange?.(!showLabels)}
         >
-          {showLabels ? "隐藏节点文字" : "显示节点文字"}
+          {showLabels ? '隐藏节点文字' : '显示节点文字'}
         </Button>
       </div>
     </div>
@@ -156,19 +160,24 @@ function CompactGraphPreviewToolbar({
   return (
     <div
       style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         gap: 12,
         marginBottom: 8,
-        flexWrap: "wrap",
+        flexWrap: 'wrap',
       }}
     >
-      <div style={{ minWidth: 0, fontSize: 15, fontWeight: 600, color: "#0f172a" }}>
-        {graphName || "图谱预览"}
+      <div style={{ minWidth: 0, fontSize: 15, fontWeight: 600, color: '#0f172a' }}>
+        {graphName || '图谱预览'}
       </div>
       <Space size={8} wrap>
-        <Popover content={settingsContent} title="图谱外观设置" trigger="click" placement="bottomRight">
+        <Popover
+          content={settingsContent}
+          title="图谱外观设置"
+          trigger="click"
+          placement="bottomRight"
+        >
           <Button size="small" icon={<SettingOutlined />}>
             设置
           </Button>
@@ -183,8 +192,12 @@ function CompactGraphPreviewToolbar({
           重置
         </Button>
         {onFullscreenToggle && (
-          <Button size="small" icon={isFullscreen ? <ZoomOutOutlined /> : <ZoomInOutlined />} onClick={onFullscreenToggle}>
-            {isFullscreen ? "退出全屏" : "全屏"}
+          <Button
+            size="small"
+            icon={isFullscreen ? <ZoomOutOutlined /> : <ZoomInOutlined />}
+            onClick={onFullscreenToggle}
+          >
+            {isFullscreen ? '退出全屏' : '全屏'}
           </Button>
         )}
       </Space>
@@ -198,19 +211,23 @@ function expandGraphPreview(graph: KnowledgeGraphData): KnowledgeGraphData {
   const existingIds = new Set(nextNodes.map((node) => node.id));
 
   const additions = graph.nodes.flatMap((node, index) => {
-    const expansionCount = node.type === "organization" || node.type === "product" ? 2 : 1;
+    const expansionCount = node.type === 'organization' || node.type === 'product' ? 2 : 1;
     return Array.from({ length: expansionCount }, (_, offset) => {
       const id = `${node.id}-ext-${offset + 1}`;
       if (existingIds.has(id)) return null;
 
       const type =
-        node.type === "organization"
-          ? (offset === 0 ? "person" : "project")
-          : node.type === "product"
-            ? (offset === 0 ? "term" : "organization")
-            : node.type === "project"
-              ? "term"
-              : "time";
+        node.type === 'organization'
+          ? offset === 0
+            ? 'person'
+            : 'project'
+          : node.type === 'product'
+            ? offset === 0
+              ? 'term'
+              : 'organization'
+            : node.type === 'project'
+              ? 'term'
+              : 'time';
 
       return {
         node: {
@@ -221,17 +238,12 @@ function expandGraphPreview(graph: KnowledgeGraphData): KnowledgeGraphData {
         link: {
           source: node.id,
           target: id,
-          relation:
-            offset === 0
-              ? "关联"
-              : node.type === "organization"
-                ? "协同"
-                : "扩展",
+          relation: offset === 0 ? '关联' : node.type === 'organization' ? '协同' : '扩展',
         },
       };
     }).filter(Boolean) as Array<{
-      node: KnowledgeGraphData["nodes"][number];
-      link: KnowledgeGraphData["links"][number];
+      node: KnowledgeGraphData['nodes'][number];
+      link: KnowledgeGraphData['links'][number];
     }>;
   });
 
@@ -250,7 +262,7 @@ function expandGraphPreview(graph: KnowledgeGraphData): KnowledgeGraphData {
 }
 
 function toEntityPreviewGraph(graph: KnowledgeGraphData): EntityGraphData {
-  const centerId = graph.nodes[0]?.id || "preview-center";
+  const centerId = graph.nodes[0]?.id || 'preview-center';
   const incomingCount = new Map<string, number>();
   const outgoingCount = new Map<string, number>();
   const firstParent = new Map<string, { parentId: string; relation: string }>();
@@ -264,8 +276,8 @@ function toEntityPreviewGraph(graph: KnowledgeGraphData): EntityGraphData {
   });
 
   const resolveType = (nodeId: string): EntityGraphNodeType => {
-    if (nodeId === centerId) return "center";
-    return (outgoingCount.get(nodeId) || 0) > 0 ? "entity" : "value";
+    if (nodeId === centerId) return 'center';
+    return (outgoingCount.get(nodeId) || 0) > 0 ? 'entity' : 'value';
   };
 
   return {
@@ -296,38 +308,32 @@ function toEntityPreviewGraph(graph: KnowledgeGraphData): EntityGraphData {
 interface DataSource {
   id: string;
   name: string;
-  type:
-    | "mysql"
-    | "postgresql"
-    | "sqlite"
-    | "neo4j"
-    | "nebula"
-    | "mongodb";
+  type: 'mysql' | 'postgresql' | 'sqlite' | 'neo4j' | 'nebula' | 'mongodb';
   host: string;
   port: number;
   database: string;
   username?: string;
   password?: string;
-  status: "connected" | "disconnected" | "error";
+  status: 'connected' | 'disconnected' | 'error';
   lastSync: string;
   recordCount: number;
   isGraph: boolean;
-  category: "relational" | "document" | "graph";
-  env: "生产" | "分析" | "测试" | "知识";
+  category: 'relational' | 'document' | 'graph';
+  env: '生产' | '分析' | '测试' | '知识';
   latency: number;
   owner: string;
-  syncMode: "full" | "incremental";
+  syncMode: 'full' | 'incremental';
   syncFrequency: string;
-  exceptionPolicy: "retry" | "skip" | "pause";
+  exceptionPolicy: 'retry' | 'skip' | 'pause';
   description: string;
 }
 
 interface SyncPolicy {
-  mode: "full" | "incremental";
-  frequency: "manual" | "hourly" | "daily";
+  mode: 'full' | 'incremental';
+  frequency: 'manual' | 'hourly' | 'daily';
   incrementalField?: string;
   batchSize: number;
-  exceptionPolicy: "retry" | "skip" | "pause";
+  exceptionPolicy: 'retry' | 'skip' | 'pause';
   maxRetries: number;
   notify: boolean;
 }
@@ -336,7 +342,7 @@ interface StructuredPreviewColumn {
   title: string;
   dataIndex: string;
   width?: number;
-  renderType?: "tag" | "json" | "trend";
+  renderType?: 'tag' | 'json' | 'trend';
 }
 
 interface StructuredPreviewTable {
@@ -355,7 +361,7 @@ interface DatabaseObjectField {
   name: string;
   type: string;
   nullable?: boolean;
-  keyRole?: "PK" | "FK" | "UK" | "EDGE" | "VERTEX";
+  keyRole?: 'PK' | 'FK' | 'UK' | 'EDGE' | 'VERTEX';
   indexName?: string;
   description: string;
   sample: string;
@@ -370,7 +376,7 @@ interface DatabaseObjectIndex {
 interface DatabaseObjectDetail {
   id: string;
   name: string;
-  kind: "table" | "view" | "collection" | "vertex" | "edge";
+  kind: 'table' | 'view' | 'collection' | 'vertex' | 'edge';
   rowCount: string;
   storage: string;
   updatedAt: string;
@@ -413,7 +419,7 @@ interface DocFileInTask {
   path: string;
   type: string;
   size: number;
-  status: "pending" | "importing" | "completed" | "error";
+  status: 'pending' | 'importing' | 'completed' | 'error';
   importTime?: string;
   recordCount?: number;
   error?: string;
@@ -428,7 +434,7 @@ interface DocImportTask {
   backupPath: string;
   targetKnowledgeBase?: string;
   targetCatalog?: string;
-  status: "pending" | "running" | "paused" | "completed" | "error";
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'error';
   progress: number;
   totalFiles: number;
   importedFiles: number;
@@ -448,7 +454,7 @@ interface DocumentFile {
   path: string;
   type: string;
   size: number;
-  status: "pending" | "importing" | "completed" | "error";
+  status: 'pending' | 'importing' | 'completed' | 'error';
   importTime?: string;
   recordCount?: number;
   error?: string;
@@ -458,8 +464,8 @@ interface ImportJob {
   id: string;
   name: string;
   source: string;
-  type: "document" | "database";
-  status: "running" | "paused" | "completed" | "error" | "waiting";
+  type: 'document' | 'database';
+  status: 'running' | 'paused' | 'completed' | 'error' | 'waiting';
   progress: number;
   startTime: string;
   endTime?: string;
@@ -476,10 +482,8 @@ interface ImportJob {
 interface ImportAlert {
   id: string;
   time: string;
-  level: "info" | "warning" | "error";
+  level: 'info' | 'warning' | 'error';
   content: string;
-  processed?: boolean;
-  processType?: "skipped" | "edited";
 }
 
 const typeConfig: Record<
@@ -488,918 +492,1583 @@ const typeConfig: Record<
     color: string;
     icon: React.ReactNode;
     label: string;
-    category: "relational" | "document" | "graph";
+    category: 'relational' | 'document' | 'graph';
     port: number;
     accent: string;
     description: string;
   }
 > = {
   mysql: {
-    color: "blue",
+    color: 'blue',
     icon: <DatabaseOutlined />,
-    label: "MySQL",
-    category: "relational",
+    label: 'MySQL',
+    category: 'relational',
     port: 3306,
-    accent: "#2563eb",
-    description: "核心业务库，适合事务明细、订单与主数据接入。",
+    accent: '#2563eb',
+    description: '核心业务库，适合事务明细、订单与主数据接入。',
   },
   postgresql: {
-    color: "cyan",
+    color: 'cyan',
     icon: <DatabaseOutlined />,
-    label: "PostgreSQL",
-    category: "relational",
+    label: 'PostgreSQL',
+    category: 'relational',
     port: 5432,
-    accent: "#0891b2",
-    description: "分析仓与主题域数据，适合高一致性结构化场景。",
+    accent: '#0891b2',
+    description: '分析仓与主题域数据，适合高一致性结构化场景。',
   },
   sqlite: {
-    color: "geekblue",
+    color: 'geekblue',
     icon: <DatabaseOutlined />,
-    label: "SQLite",
-    category: "relational",
+    label: 'SQLite',
+    category: 'relational',
     port: 0,
-    accent: "#4f46e5",
-    description: "轻量本地库，适合边缘采集样本和离线分析。",
+    accent: '#4f46e5',
+    description: '轻量本地库，适合边缘采集样本和离线分析。',
   },
   neo4j: {
-    color: "purple",
+    color: 'purple',
     icon: <ForkOutlined />,
-    label: "Neo4j",
-    category: "graph",
+    label: 'Neo4j',
+    category: 'graph',
     port: 7687,
-    accent: "#7c3aed",
-    description: "实体关系网络、路径推理和知识图谱首选。",
+    accent: '#7c3aed',
+    description: '实体关系网络、路径推理和知识图谱首选。',
   },
   nebula: {
-    color: "magenta",
+    color: 'magenta',
     icon: <ForkOutlined />,
-    label: "Nebula",
-    category: "graph",
+    label: 'Nebula',
+    category: 'graph',
     port: 9669,
-    accent: "#db2777",
-    description: "超大规模图数据接入与图计算分析场景。",
+    accent: '#db2777',
+    description: '超大规模图数据接入与图计算分析场景。',
   },
   mongodb: {
-    color: "green",
+    color: 'green',
     icon: <DatabaseOutlined />,
-    label: "MongoDB",
-    category: "document",
+    label: 'MongoDB',
+    category: 'document',
     port: 27017,
-    accent: "#16a34a",
-    description: "文档型与半结构化数据接入，适合画像和日志。",
+    accent: '#16a34a',
+    description: '文档型与半结构化数据接入，适合画像和日志。',
   },
 };
 
 const syncModeConfig = {
-  full: { label: "全量同步", color: "processing" },
-  incremental: { label: "增量同步", color: "success" },
+  full: { label: '全量同步', color: 'processing' },
+  incremental: { label: '增量同步', color: 'success' },
 };
 
 const exceptionPolicyConfig = {
-  retry: { label: "自动重试", color: "warning" },
-  skip: { label: "跳过异常", color: "default" },
-  pause: { label: "暂停并告警", color: "error" },
+  retry: { label: '自动重试', color: 'warning' },
+  skip: { label: '跳过异常', color: 'default' },
+  pause: { label: '记录告警', color: 'warning' },
 };
 
 const frequencyOptions = [
-  { label: "手动触发", value: "manual" },
-  { label: "每小时", value: "hourly" },
-  { label: "每天 02:00", value: "daily" },
+  { label: '手动触发', value: 'manual' },
+  { label: '每小时', value: 'hourly' },
+  { label: '每天 02:00', value: 'daily' },
 ];
 
 const databaseTypeOptions = [
-  { label: "MySQL", value: "mysql" },
-  { label: "PostgreSQL", value: "postgresql" },
-  { label: "SQLite", value: "sqlite" },
-  { label: "Neo4j", value: "neo4j" },
-  { label: "Nebula", value: "nebula" },
-  { label: "MongoDB", value: "mongodb" },
+  { label: 'MySQL', value: 'mysql' },
+  { label: 'PostgreSQL', value: 'postgresql' },
+  { label: 'SQLite', value: 'sqlite' },
+  { label: 'Neo4j', value: 'neo4j' },
+  { label: 'Nebula', value: 'nebula' },
+  { label: 'MongoDB', value: 'mongodb' },
 ];
 
-const docTypeConfig: Record<
-  string,
-  { color: string; icon: React.ReactNode; label: string }
-> = {
-  docx: { color: "blue", icon: <FileWordOutlined />, label: "Word文档" },
-  xlsx: { color: "green", icon: <FileExcelOutlined />, label: "Excel表格" },
-  pptx: { color: "orange", icon: <FilePptOutlined />, label: "PPT演示" },
-  md: { color: "purple", icon: <FileTextOutlined />, label: "Markdown" },
-  txt: { color: "default", icon: <FileTextOutlined />, label: "文本文件" },
-  pdf: { color: "red", icon: <FilePdfOutlined />, label: "PDF文档" },
-  html: { color: "cyan", icon: <GlobalOutlined />, label: "HTML网页" },
-  eml: { color: "gold", icon: <MailOutlined />, label: "邮件" },
+const docTypeConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
+  docx: { color: 'blue', icon: <FileWordOutlined />, label: 'Word文档' },
+  xlsx: { color: 'green', icon: <FileExcelOutlined />, label: 'Excel表格' },
+  pptx: { color: 'orange', icon: <FilePptOutlined />, label: 'PPT演示' },
+  md: { color: 'purple', icon: <FileTextOutlined />, label: 'Markdown' },
+  txt: { color: 'default', icon: <FileTextOutlined />, label: '文本文件' },
+  pdf: { color: 'red', icon: <FilePdfOutlined />, label: 'PDF文档' },
+  html: { color: 'cyan', icon: <GlobalOutlined />, label: 'HTML网页' },
+  eml: { color: 'gold', icon: <MailOutlined />, label: '邮件' },
 };
 
-const statusConfig: Record<
-  string,
-  { color: string; text: string; icon: React.ReactNode }
-> = {
+const statusConfig: Record<string, { color: string; text: string; icon: React.ReactNode }> = {
   connected: {
-    color: "success",
-    text: "已连接",
+    color: 'success',
+    text: '已连接',
     icon: <CheckCircleOutlined />,
   },
   disconnected: {
-    color: "default",
-    text: "未连接",
+    color: 'default',
+    text: '未连接',
     icon: <CloseCircleOutlined />,
   },
-  error: { color: "error", text: "连接错误", icon: <CloseCircleOutlined /> },
+  error: { color: 'error', text: '连接错误', icon: <CloseCircleOutlined /> },
   running: {
-    color: "processing",
-    text: "运行中",
+    color: 'processing',
+    text: '运行中',
     icon: <LoadingOutlined spin />,
   },
   paused: {
-    color: "warning",
-    text: "已暂停",
+    color: 'warning',
+    text: '已暂停',
     icon: <PauseCircleOutlined />,
   },
   completed: {
-    color: "success",
-    text: "已完成",
+    color: 'success',
+    text: '已完成',
     icon: <CheckCircleOutlined />,
   },
   waiting: {
-    color: "default",
-    text: "等待中",
+    color: 'default',
+    text: '等待中',
     icon: <ClockCircleOutlined />,
   },
   pending: {
-    color: "default",
-    text: "待处理",
+    color: 'default',
+    text: '待导入',
     icon: <ClockCircleOutlined />,
   },
   importing: {
-    color: "processing",
-    text: "导入中",
+    color: 'processing',
+    text: '导入中',
     icon: <LoadingOutlined spin />,
   },
 };
 
 const initialDataSources: DataSource[] = [
   {
-    id: "1",
-    name: "订单中心 MySQL",
-    type: "mysql",
-    host: "10.10.20.31",
+    id: '1',
+    name: '订单中心 MySQL',
+    type: 'mysql',
+    host: '10.10.20.31',
     port: 3306,
-    database: "order_center",
-    username: "sync_rw",
-    status: "connected",
-    lastSync: "2026-06-08 14:30:00",
+    database: 'order_center',
+    username: 'sync_rw',
+    status: 'connected',
+    lastSync: '2026-06-08 14:30:00',
     recordCount: 12854280,
     isGraph: false,
-    category: "relational",
-    env: "生产",
+    category: 'relational',
+    env: '生产',
     latency: 18,
-    owner: "交易数据组",
-    syncMode: "incremental",
-    syncFrequency: "每小时",
-    exceptionPolicy: "retry",
-    description: "承载订单、客户、支付流水等核心业务事实表。",
+    owner: '交易数据组',
+    syncMode: 'incremental',
+    syncFrequency: '每小时',
+    exceptionPolicy: 'retry',
+    description: '承载订单、客户、支付流水等核心业务事实表。',
   },
   {
-    id: "2",
-    name: "经营分析 PostgreSQL",
-    type: "postgresql",
-    host: "10.10.30.18",
+    id: '2',
+    name: '经营分析 PostgreSQL',
+    type: 'postgresql',
+    host: '10.10.30.18',
     port: 5432,
-    database: "analytics_dw",
-    username: "dw_reader",
-    status: "connected",
-    lastSync: "2026-06-08 13:50:00",
+    database: 'analytics_dw',
+    username: 'dw_reader',
+    status: 'connected',
+    lastSync: '2026-06-08 13:50:00',
     recordCount: 45820412,
     isGraph: false,
-    category: "relational",
-    env: "分析",
+    category: 'relational',
+    env: '分析',
     latency: 24,
-    owner: "经营分析组",
-    syncMode: "full",
-    syncFrequency: "每天 02:00",
-    exceptionPolicy: "pause",
-    description: "汇总经营指标、分区宽表与多主题域分析数据。",
+    owner: '经营分析组',
+    syncMode: 'full',
+    syncFrequency: '每天 02:00',
+    exceptionPolicy: 'pause',
+    description: '汇总经营指标、分区宽表与多主题域分析数据。',
   },
   {
-    id: "3",
-    name: "边缘样本 SQLite",
-    type: "sqlite",
-    host: "F:\\samples",
+    id: '3',
+    name: '边缘样本 SQLite',
+    type: 'sqlite',
+    host: 'F:\\samples',
     port: 0,
-    database: "edge_capture.db",
-    username: "local",
-    status: "connected",
-    lastSync: "2026-06-08 11:18:00",
+    database: 'edge_capture.db',
+    username: 'local',
+    status: 'connected',
+    lastSync: '2026-06-08 11:18:00',
     recordCount: 118664,
     isGraph: false,
-    category: "relational",
-    env: "测试",
+    category: 'relational',
+    env: '测试',
     latency: 6,
-    owner: "边缘采集组",
-    syncMode: "incremental",
-    syncFrequency: "手动触发",
-    exceptionPolicy: "skip",
-    description: "本地缓存与轻量分析样本库，适合快速验证接入链路。",
+    owner: '边缘采集组',
+    syncMode: 'incremental',
+    syncFrequency: '手动触发',
+    exceptionPolicy: 'skip',
+    description: '本地缓存与轻量分析样本库，适合快速验证接入链路。',
   },
   {
-    id: "4",
-    name: "画像中心 MongoDB",
-    type: "mongodb",
-    host: "10.10.40.26",
+    id: '4',
+    name: '画像中心 MongoDB',
+    type: 'mongodb',
+    host: '10.10.40.26',
     port: 27017,
-    database: "profile_hub",
-    username: "profile_sync",
-    status: "connected",
-    lastSync: "2026-06-08 14:12:00",
+    database: 'profile_hub',
+    username: 'profile_sync',
+    status: 'connected',
+    lastSync: '2026-06-08 14:12:00',
     recordCount: 9204882,
     isGraph: false,
-    category: "document",
-    env: "生产",
+    category: 'document',
+    env: '生产',
     latency: 32,
-    owner: "用户运营组",
-    syncMode: "incremental",
-    syncFrequency: "每小时",
-    exceptionPolicy: "retry",
-    description: "用户画像、行为事件和标签文档的主接入源。",
+    owner: '用户运营组',
+    syncMode: 'incremental',
+    syncFrequency: '每小时',
+    exceptionPolicy: 'retry',
+    description: '用户画像、行为事件和标签文档的主接入源。',
   },
   {
-    id: "5",
-    name: "知识关系 Neo4j",
-    type: "neo4j",
-    host: "10.10.50.12",
+    id: '5',
+    name: '知识关系 Neo4j',
+    type: 'neo4j',
+    host: '10.10.50.12',
     port: 7687,
-    database: "knowledge_graph",
-    username: "neo4j",
-    status: "connected",
-    lastSync: "2026-06-08 14:26:00",
+    database: 'knowledge_graph',
+    username: 'neo4j',
+    status: 'connected',
+    lastSync: '2026-06-08 14:26:00',
     recordCount: 1260044,
     isGraph: true,
-    category: "graph",
-    env: "知识",
+    category: 'graph',
+    env: '知识',
     latency: 20,
-    owner: "知识工程组",
-    syncMode: "full",
-    syncFrequency: "每天 02:00",
-    exceptionPolicy: "pause",
-    description: "面向知识图谱实体关系抽取、路径分析和关联检索。",
+    owner: '知识工程组',
+    syncMode: 'full',
+    syncFrequency: '每天 02:00',
+    exceptionPolicy: 'pause',
+    description: '面向知识图谱实体关系抽取、路径分析和关联检索。',
   },
   {
-    id: "6",
-    name: "运维网络 Nebula",
-    type: "nebula",
-    host: "10.10.60.7",
+    id: '6',
+    name: '运维网络 Nebula',
+    type: 'nebula',
+    host: '10.10.60.7',
     port: 9669,
-    database: "ops_topology",
-    username: "graph_reader",
-    status: "connected",
-    lastSync: "2026-06-08 12:40:00",
+    database: 'ops_topology',
+    username: 'graph_reader',
+    status: 'connected',
+    lastSync: '2026-06-08 12:40:00',
     recordCount: 8422216,
     isGraph: true,
-    category: "graph",
-    env: "生产",
+    category: 'graph',
+    env: '生产',
     latency: 46,
-    owner: "基础设施组",
-    syncMode: "incremental",
-    syncFrequency: "手动触发",
-    exceptionPolicy: "pause",
-    description: "主机、服务、依赖链路与故障关系的图数据库接入。",
+    owner: '基础设施组',
+    syncMode: 'incremental',
+    syncFrequency: '手动触发',
+    exceptionPolicy: 'pause',
+    description: '主机、服务、依赖链路与故障关系的图数据库接入。',
   },
 ];
 
 const initialSyncPolicies: Record<string, SyncPolicy> = {
-  "1": {
-    mode: "incremental",
-    frequency: "hourly",
-    incrementalField: "updated_at",
+  '1': {
+    mode: 'incremental',
+    frequency: 'hourly',
+    incrementalField: 'updated_at',
     batchSize: 5000,
-    exceptionPolicy: "retry",
+    exceptionPolicy: 'retry',
     maxRetries: 3,
     notify: true,
   },
-  "2": {
-    mode: "full",
-    frequency: "daily",
+  '2': {
+    mode: 'full',
+    frequency: 'daily',
     batchSize: 10000,
-    exceptionPolicy: "pause",
+    exceptionPolicy: 'pause',
     maxRetries: 1,
     notify: true,
   },
-  "3": {
-    mode: "incremental",
-    frequency: "manual",
-    incrementalField: "mtime",
+  '3': {
+    mode: 'incremental',
+    frequency: 'manual',
+    incrementalField: 'mtime',
     batchSize: 1000,
-    exceptionPolicy: "skip",
+    exceptionPolicy: 'skip',
     maxRetries: 1,
     notify: false,
   },
-  "4": {
-    mode: "incremental",
-    frequency: "hourly",
-    incrementalField: "_id",
+  '4': {
+    mode: 'incremental',
+    frequency: 'hourly',
+    incrementalField: '_id',
     batchSize: 8000,
-    exceptionPolicy: "retry",
+    exceptionPolicy: 'retry',
     maxRetries: 4,
     notify: true,
   },
-  "5": {
-    mode: "full",
-    frequency: "daily",
+  '5': {
+    mode: 'full',
+    frequency: 'daily',
     batchSize: 12000,
-    exceptionPolicy: "pause",
+    exceptionPolicy: 'pause',
     maxRetries: 1,
     notify: true,
   },
-  "6": {
-    mode: "incremental",
-    frequency: "manual",
-    incrementalField: "event_time",
+  '6': {
+    mode: 'incremental',
+    frequency: 'manual',
+    incrementalField: 'event_time',
     batchSize: 3000,
-    exceptionPolicy: "pause",
+    exceptionPolicy: 'pause',
     maxRetries: 2,
     notify: true,
   },
 };
 
 const structuredPreviewMap: Record<string, StructuredPreview> = {
-  "1": {
+  '1': {
     table: {
-      title: "订单事实表预览",
-      subtitle: "事务型结构适合以表格呈现业务主键、维度字段与同步状态。",
+      title: '订单事实表预览',
+      subtitle: '事务型结构适合以表格呈现业务主键、维度字段与同步状态。',
       columns: [
-        { title: "订单ID", dataIndex: "orderId", width: 140 },
-        { title: "客户名称", dataIndex: "customer", width: 140 },
-        { title: "业务线", dataIndex: "segment", renderType: "tag", width: 100 },
-        { title: "金额", dataIndex: "amount", width: 110 },
-        { title: "更新时间", dataIndex: "updatedAt", width: 160 },
-        { title: "同步状态", dataIndex: "syncStatus", renderType: "tag", width: 110 },
+        { title: '订单ID', dataIndex: 'orderId', width: 140 },
+        { title: '客户名称', dataIndex: 'customer', width: 140 },
+        { title: '业务线', dataIndex: 'segment', renderType: 'tag', width: 100 },
+        { title: '金额', dataIndex: 'amount', width: 110 },
+        { title: '更新时间', dataIndex: 'updatedAt', width: 160 },
+        { title: '同步状态', dataIndex: 'syncStatus', renderType: 'tag', width: 110 },
       ],
       rows: [
-        { orderId: "SO-240608-0192", customer: "华东城运集团", segment: "政企", amount: "¥182,400", updatedAt: "2026-06-08 14:22", syncStatus: "已同步" },
-        { orderId: "SO-240608-0208", customer: "星云物流", segment: "供应链", amount: "¥64,920", updatedAt: "2026-06-08 14:30", syncStatus: "校验中" },
-        { orderId: "SO-240608-0216", customer: "智算研究院", segment: "科研", amount: "¥298,000", updatedAt: "2026-06-08 14:33", syncStatus: "待回写" },
+        {
+          orderId: 'SO-240608-0192',
+          customer: '华东城运集团',
+          segment: '政企',
+          amount: '¥182,400',
+          updatedAt: '2026-06-08 14:22',
+          syncStatus: '已同步',
+        },
+        {
+          orderId: 'SO-240608-0208',
+          customer: '星云物流',
+          segment: '供应链',
+          amount: '¥64,920',
+          updatedAt: '2026-06-08 14:30',
+          syncStatus: '校验中',
+        },
+        {
+          orderId: 'SO-240608-0216',
+          customer: '智算研究院',
+          segment: '科研',
+          amount: '¥298,000',
+          updatedAt: '2026-06-08 14:33',
+          syncStatus: '待回写',
+        },
       ],
     },
   },
-  "2": {
+  '2': {
     table: {
-      title: "经营分析宽表",
-      subtitle: "仓库型数据强调指标列、区域维度和批次刷新信息。",
+      title: '经营分析宽表',
+      subtitle: '仓库型数据强调指标列、区域维度和批次刷新信息。',
       columns: [
-        { title: "统计日", dataIndex: "dt", width: 110 },
-        { title: "区域", dataIndex: "region", renderType: "tag", width: 100 },
-        { title: "营收", dataIndex: "revenue", width: 110 },
-        { title: "订单量", dataIndex: "orders", width: 100 },
-        { title: "毛利率", dataIndex: "margin", width: 100 },
-        { title: "刷新批次", dataIndex: "batchNo", width: 120 },
+        { title: '统计日', dataIndex: 'dt', width: 110 },
+        { title: '区域', dataIndex: 'region', renderType: 'tag', width: 100 },
+        { title: '营收', dataIndex: 'revenue', width: 110 },
+        { title: '订单量', dataIndex: 'orders', width: 100 },
+        { title: '毛利率', dataIndex: 'margin', width: 100 },
+        { title: '刷新批次', dataIndex: 'batchNo', width: 120 },
       ],
       rows: [
-        { dt: "2026-06-08", region: "华东", revenue: "¥860万", orders: "12,403", margin: "32.8%", batchNo: "DW-2981" },
-        { dt: "2026-06-08", region: "华北", revenue: "¥645万", orders: "9,801", margin: "28.4%", batchNo: "DW-2981" },
-        { dt: "2026-06-08", region: "华南", revenue: "¥712万", orders: "10,992", margin: "30.1%", batchNo: "DW-2981" },
+        {
+          dt: '2026-06-08',
+          region: '华东',
+          revenue: '¥860万',
+          orders: '12,403',
+          margin: '32.8%',
+          batchNo: 'DW-2981',
+        },
+        {
+          dt: '2026-06-08',
+          region: '华北',
+          revenue: '¥645万',
+          orders: '9,801',
+          margin: '28.4%',
+          batchNo: 'DW-2981',
+        },
+        {
+          dt: '2026-06-08',
+          region: '华南',
+          revenue: '¥712万',
+          orders: '10,992',
+          margin: '30.1%',
+          batchNo: 'DW-2981',
+        },
       ],
     },
   },
-  "3": {
+  '3': {
     table: {
-      title: "本地样本库预览",
-      subtitle: "本地文件型库适合突出路径来源、样本量和校验结果。",
+      title: '本地样本库预览',
+      subtitle: '本地文件型库适合突出路径来源、样本量和校验结果。',
       columns: [
-        { title: "文件名", dataIndex: "file", width: 180 },
-        { title: "表名", dataIndex: "table", width: 140 },
-        { title: "样本量", dataIndex: "records", width: 100 },
-        { title: "来源路径", dataIndex: "path", width: 220 },
-        { title: "校验结果", dataIndex: "check", renderType: "tag", width: 100 },
+        { title: '文件名', dataIndex: 'file', width: 180 },
+        { title: '表名', dataIndex: 'table', width: 140 },
+        { title: '样本量', dataIndex: 'records', width: 100 },
+        { title: '来源路径', dataIndex: 'path', width: 220 },
+        { title: '校验结果', dataIndex: 'check', renderType: 'tag', width: 100 },
       ],
       rows: [
-        { file: "market_snapshot.db", table: "leads_sample", records: "18,240", path: "F:/samples/market_snapshot.db", check: "通过" },
-        { file: "market_snapshot.db", table: "intent_events", records: "92,004", path: "F:/samples/market_snapshot.db", check: "通过" },
-        { file: "edge_capture.db", table: "device_packets", records: "8,420", path: "F:/samples/edge_capture.db", check: "待补齐" },
+        {
+          file: 'market_snapshot.db',
+          table: 'leads_sample',
+          records: '18,240',
+          path: 'F:/samples/market_snapshot.db',
+          check: '通过',
+        },
+        {
+          file: 'market_snapshot.db',
+          table: 'intent_events',
+          records: '92,004',
+          path: 'F:/samples/market_snapshot.db',
+          check: '通过',
+        },
+        {
+          file: 'edge_capture.db',
+          table: 'device_packets',
+          records: '8,420',
+          path: 'F:/samples/edge_capture.db',
+          check: '待补齐',
+        },
       ],
     },
   },
-  "4": {
+  '4': {
     table: {
-      title: "用户画像文档预览",
-      subtitle: "文档型库突出 JSON 标签、行为事件与最近更新时间。",
+      title: '用户画像文档预览',
+      subtitle: '文档型库突出 JSON 标签、行为事件与最近更新时间。',
       columns: [
-        { title: "用户ID", dataIndex: "userId", width: 120 },
-        { title: "最近行为", dataIndex: "event", width: 160 },
-        { title: "画像标签", dataIndex: "tags", renderType: "json", width: 220 },
-        { title: "偏好分层", dataIndex: "tier", renderType: "tag", width: 100 },
-        { title: "最近更新", dataIndex: "updatedAt", width: 160 },
+        { title: '用户ID', dataIndex: 'userId', width: 120 },
+        { title: '最近行为', dataIndex: 'event', width: 160 },
+        { title: '画像标签', dataIndex: 'tags', renderType: 'json', width: 220 },
+        { title: '偏好分层', dataIndex: 'tier', renderType: 'tag', width: 100 },
+        { title: '最近更新', dataIndex: 'updatedAt', width: 160 },
       ],
       rows: [
-        { userId: "U-110238", event: "浏览知识图谱专题", tags: '["高价值","制造业","需求挖掘"]', tier: "A1", updatedAt: "2026-06-08 14:32" },
-        { userId: "U-219984", event: "下载项目方案", tags: '["教育","招投标","二次触达"]', tier: "B2", updatedAt: "2026-06-08 14:11" },
-        { userId: "U-882145", event: "提交接口申请", tags: '["金融","API","深度意向"]', tier: "S", updatedAt: "2026-06-08 13:49" },
+        {
+          userId: 'U-110238',
+          event: '浏览知识图谱专题',
+          tags: '["高价值","制造业","需求挖掘"]',
+          tier: 'A1',
+          updatedAt: '2026-06-08 14:32',
+        },
+        {
+          userId: 'U-219984',
+          event: '下载项目方案',
+          tags: '["教育","招投标","二次触达"]',
+          tier: 'B2',
+          updatedAt: '2026-06-08 14:11',
+        },
+        {
+          userId: 'U-882145',
+          event: '提交接口申请',
+          tags: '["金融","API","深度意向"]',
+          tier: 'S',
+          updatedAt: '2026-06-08 13:49',
+        },
       ],
     },
   },
-  "5": {
+  '5': {
     graph: {
       nodes: [
-        { id: "n1", name: "企业客户", type: "organization" },
-        { id: "n2", name: "项目群", type: "project" },
-        { id: "n3", name: "专家团队", type: "organization" },
-        { id: "n4", name: "交付经理", type: "person" },
-        { id: "n5", name: "行业知识库", type: "product" },
-        { id: "n6", name: "知识图谱", type: "term" },
-        { id: "n7", name: "2026-06-08", type: "time" },
+        { id: 'n1', name: '企业客户', type: 'organization' },
+        { id: 'n2', name: '项目群', type: 'project' },
+        { id: 'n3', name: '专家团队', type: 'organization' },
+        { id: 'n4', name: '交付经理', type: 'person' },
+        { id: 'n5', name: '行业知识库', type: 'product' },
+        { id: 'n6', name: '知识图谱', type: 'term' },
+        { id: 'n7', name: '2026-06-08', type: 'time' },
       ],
       links: [
-        { source: "n1", target: "n2", relation: "签约项目" },
-        { source: "n2", target: "n3", relation: "由...执行" },
-        { source: "n3", target: "n4", relation: "负责人" },
-        { source: "n2", target: "n5", relation: "沉淀到" },
-        { source: "n5", target: "n6", relation: "核心能力" },
-        { source: "n2", target: "n7", relation: "最近同步" },
+        { source: 'n1', target: 'n2', relation: '签约项目' },
+        { source: 'n2', target: 'n3', relation: '由...执行' },
+        { source: 'n3', target: 'n4', relation: '负责人' },
+        { source: 'n2', target: 'n5', relation: '沉淀到' },
+        { source: 'n5', target: 'n6', relation: '核心能力' },
+        { source: 'n2', target: 'n7', relation: '最近同步' },
       ],
     },
   },
-  "6": {
+  '6': {
     graph: {
       nodes: [
-        { id: "g1", name: "设备主机", type: "product" },
-        { id: "g2", name: "应用服务", type: "organization" },
-        { id: "g3", name: "访问链路", type: "term" },
-        { id: "g4", name: "运维团队", type: "organization" },
-        { id: "g5", name: "故障工单", type: "project" },
-        { id: "g6", name: "值班工程师", type: "person" },
+        { id: 'g1', name: '设备主机', type: 'product' },
+        { id: 'g2', name: '应用服务', type: 'organization' },
+        { id: 'g3', name: '访问链路', type: 'term' },
+        { id: 'g4', name: '运维团队', type: 'organization' },
+        { id: 'g5', name: '故障工单', type: 'project' },
+        { id: 'g6', name: '值班工程师', type: 'person' },
       ],
       links: [
-        { source: "g1", target: "g2", relation: "承载" },
-        { source: "g2", target: "g3", relation: "依赖" },
-        { source: "g3", target: "g5", relation: "关联工单" },
-        { source: "g5", target: "g6", relation: "处理人" },
-        { source: "g6", target: "g4", relation: "所属团队" },
+        { source: 'g1', target: 'g2', relation: '承载' },
+        { source: 'g2', target: 'g3', relation: '依赖' },
+        { source: 'g3', target: 'g5', relation: '关联工单' },
+        { source: 'g5', target: 'g6', relation: '处理人' },
+        { source: 'g6', target: 'g4', relation: '所属团队' },
       ],
     },
   },
 };
 
 const databaseCatalogMap: Record<string, DatabaseCatalog[]> = {
-  "1": [
+  '1': [
     {
-      id: "db1-order-center",
-      name: "order_center",
-      engine: "MySQL 8.0",
-      description: "订单主业务库，承载订单、客户和支付主链路。",
-      owner: "交易数据组",
+      id: 'db1-order-center',
+      name: 'order_center',
+      engine: 'MySQL 8.0',
+      description: '订单主业务库，承载订单、客户和支付主链路。',
+      owner: '交易数据组',
       tables: [
         {
-          id: "tbl-sales-order",
-          name: "sales_order",
-          kind: "table",
-          rowCount: "1,285 万",
-          storage: "12.4 GB",
-          updatedAt: "2026-06-10 09:12",
-          description: "订单主表，记录订单状态、客户和金额信息。",
+          id: 'tbl-sales-order',
+          name: 'sales_order',
+          kind: 'table',
+          rowCount: '1,285 万',
+          storage: '12.4 GB',
+          updatedAt: '2026-06-10 09:12',
+          description: '订单主表，记录订单状态、客户和金额信息。',
           fields: [
-            { name: "order_id", type: "varchar(32)", keyRole: "PK", indexName: "PRIMARY", nullable: false, description: "订单唯一编号", sample: "SO-240608-0192" },
-            { name: "customer_id", type: "varchar(24)", keyRole: "FK", indexName: "idx_customer_status", nullable: false, description: "客户编号", sample: "CU-10239" },
-            { name: "order_status", type: "varchar(16)", indexName: "idx_customer_status", nullable: false, description: "订单状态", sample: "PAID" },
-            { name: "amount", type: "decimal(18,2)", nullable: false, description: "订单金额", sample: "182400.00" },
-            { name: "updated_at", type: "datetime", indexName: "idx_updated_at", nullable: false, description: "最近更新时间", sample: "2026-06-08 14:22:19" },
+            {
+              name: 'order_id',
+              type: 'varchar(32)',
+              keyRole: 'PK',
+              indexName: 'PRIMARY',
+              nullable: false,
+              description: '订单唯一编号',
+              sample: 'SO-240608-0192',
+            },
+            {
+              name: 'customer_id',
+              type: 'varchar(24)',
+              keyRole: 'FK',
+              indexName: 'idx_customer_status',
+              nullable: false,
+              description: '客户编号',
+              sample: 'CU-10239',
+            },
+            {
+              name: 'order_status',
+              type: 'varchar(16)',
+              indexName: 'idx_customer_status',
+              nullable: false,
+              description: '订单状态',
+              sample: 'PAID',
+            },
+            {
+              name: 'amount',
+              type: 'decimal(18,2)',
+              nullable: false,
+              description: '订单金额',
+              sample: '182400.00',
+            },
+            {
+              name: 'updated_at',
+              type: 'datetime',
+              indexName: 'idx_updated_at',
+              nullable: false,
+              description: '最近更新时间',
+              sample: '2026-06-08 14:22:19',
+            },
           ],
           indexes: [
-            { name: "PRIMARY", type: "BTREE", fields: ["order_id"] },
-            { name: "idx_customer_status", type: "BTREE", fields: ["customer_id", "order_status"] },
-            { name: "idx_updated_at", type: "BTREE", fields: ["updated_at"] },
+            { name: 'PRIMARY', type: 'BTREE', fields: ['order_id'] },
+            { name: 'idx_customer_status', type: 'BTREE', fields: ['customer_id', 'order_status'] },
+            { name: 'idx_updated_at', type: 'BTREE', fields: ['updated_at'] },
           ],
           sampleRows: [
-            { order_id: "SO-240608-0192", customer_id: "CU-10239", order_status: "PAID", amount: "182400.00", updated_at: "2026-06-08 14:22:19" },
-            { order_id: "SO-240608-0208", customer_id: "CU-18420", order_status: "SYNCING", amount: "64920.00", updated_at: "2026-06-08 14:30:42" },
-            { order_id: "SO-240608-0216", customer_id: "CU-22011", order_status: "PENDING", amount: "298000.00", updated_at: "2026-06-08 14:33:15" },
+            {
+              order_id: 'SO-240608-0192',
+              customer_id: 'CU-10239',
+              order_status: 'PAID',
+              amount: '182400.00',
+              updated_at: '2026-06-08 14:22:19',
+            },
+            {
+              order_id: 'SO-240608-0208',
+              customer_id: 'CU-18420',
+              order_status: 'SYNCING',
+              amount: '64920.00',
+              updated_at: '2026-06-08 14:30:42',
+            },
+            {
+              order_id: 'SO-240608-0216',
+              customer_id: 'CU-22011',
+              order_status: 'PENDING',
+              amount: '298000.00',
+              updated_at: '2026-06-08 14:33:15',
+            },
           ],
         },
         {
-          id: "tbl-payment-ledger",
-          name: "payment_ledger",
-          kind: "table",
-          rowCount: "2,904 万",
-          storage: "18.7 GB",
-          updatedAt: "2026-06-10 09:08",
-          description: "支付流水表，记录交易回执、渠道和回写状态。",
+          id: 'tbl-payment-ledger',
+          name: 'payment_ledger',
+          kind: 'table',
+          rowCount: '2,904 万',
+          storage: '18.7 GB',
+          updatedAt: '2026-06-10 09:08',
+          description: '支付流水表，记录交易回执、渠道和回写状态。',
           fields: [
-            { name: "payment_id", type: "varchar(32)", keyRole: "PK", indexName: "PRIMARY", nullable: false, description: "支付流水ID", sample: "PM-883012" },
-            { name: "order_id", type: "varchar(32)", keyRole: "FK", indexName: "idx_order_channel", nullable: false, description: "关联订单ID", sample: "SO-240608-0192" },
-            { name: "channel", type: "varchar(24)", indexName: "idx_order_channel", nullable: false, description: "支付渠道", sample: "BANK_TRANSFER" },
-            { name: "receipt_status", type: "varchar(16)", nullable: false, description: "回执状态", sample: "SUCCESS" },
-            { name: "settled_at", type: "datetime", nullable: true, description: "清算时间", sample: "2026-06-08 14:31:02" },
+            {
+              name: 'payment_id',
+              type: 'varchar(32)',
+              keyRole: 'PK',
+              indexName: 'PRIMARY',
+              nullable: false,
+              description: '支付流水ID',
+              sample: 'PM-883012',
+            },
+            {
+              name: 'order_id',
+              type: 'varchar(32)',
+              keyRole: 'FK',
+              indexName: 'idx_order_channel',
+              nullable: false,
+              description: '关联订单ID',
+              sample: 'SO-240608-0192',
+            },
+            {
+              name: 'channel',
+              type: 'varchar(24)',
+              indexName: 'idx_order_channel',
+              nullable: false,
+              description: '支付渠道',
+              sample: 'BANK_TRANSFER',
+            },
+            {
+              name: 'receipt_status',
+              type: 'varchar(16)',
+              nullable: false,
+              description: '回执状态',
+              sample: 'SUCCESS',
+            },
+            {
+              name: 'settled_at',
+              type: 'datetime',
+              nullable: true,
+              description: '清算时间',
+              sample: '2026-06-08 14:31:02',
+            },
           ],
           indexes: [
-            { name: "PRIMARY", type: "BTREE", fields: ["payment_id"] },
-            { name: "idx_order_channel", type: "BTREE", fields: ["order_id", "channel"] },
+            { name: 'PRIMARY', type: 'BTREE', fields: ['payment_id'] },
+            { name: 'idx_order_channel', type: 'BTREE', fields: ['order_id', 'channel'] },
           ],
           sampleRows: [
-            { payment_id: "PM-883012", order_id: "SO-240608-0192", channel: "BANK_TRANSFER", receipt_status: "SUCCESS", settled_at: "2026-06-08 14:31:02" },
-            { payment_id: "PM-883418", order_id: "SO-240608-0208", channel: "ALIPAY", receipt_status: "VERIFYING", settled_at: "" },
+            {
+              payment_id: 'PM-883012',
+              order_id: 'SO-240608-0192',
+              channel: 'BANK_TRANSFER',
+              receipt_status: 'SUCCESS',
+              settled_at: '2026-06-08 14:31:02',
+            },
+            {
+              payment_id: 'PM-883418',
+              order_id: 'SO-240608-0208',
+              channel: 'ALIPAY',
+              receipt_status: 'VERIFYING',
+              settled_at: '',
+            },
           ],
         },
       ],
     },
     {
-      id: "db1-customer-360",
-      name: "customer_360",
-      engine: "MySQL 8.0",
-      description: "客户主数据及客户标签库。",
-      owner: "客户运营组",
+      id: 'db1-customer-360',
+      name: 'customer_360',
+      engine: 'MySQL 8.0',
+      description: '客户主数据及客户标签库。',
+      owner: '客户运营组',
       tables: [
         {
-          id: "tbl-customer-profile",
-          name: "customer_profile",
-          kind: "table",
-          rowCount: "423 万",
-          storage: "6.2 GB",
-          updatedAt: "2026-06-10 08:54",
-          description: "客户主档，包含行业、等级和负责人信息。",
+          id: 'tbl-customer-profile',
+          name: 'customer_profile',
+          kind: 'table',
+          rowCount: '423 万',
+          storage: '6.2 GB',
+          updatedAt: '2026-06-10 08:54',
+          description: '客户主档，包含行业、等级和负责人信息。',
           fields: [
-            { name: "customer_id", type: "varchar(24)", keyRole: "PK", indexName: "PRIMARY", nullable: false, description: "客户编号", sample: "CU-10239" },
-            { name: "customer_name", type: "varchar(128)", nullable: false, description: "客户名称", sample: "华东城运集团" },
-            { name: "industry", type: "varchar(32)", indexName: "idx_industry_level", nullable: false, description: "所属行业", sample: "政企服务" },
-            { name: "customer_level", type: "varchar(8)", indexName: "idx_industry_level", nullable: false, description: "客户等级", sample: "A" },
-            { name: "owner_name", type: "varchar(32)", nullable: false, description: "客户负责人", sample: "李彬" },
+            {
+              name: 'customer_id',
+              type: 'varchar(24)',
+              keyRole: 'PK',
+              indexName: 'PRIMARY',
+              nullable: false,
+              description: '客户编号',
+              sample: 'CU-10239',
+            },
+            {
+              name: 'customer_name',
+              type: 'varchar(128)',
+              nullable: false,
+              description: '客户名称',
+              sample: '华东城运集团',
+            },
+            {
+              name: 'industry',
+              type: 'varchar(32)',
+              indexName: 'idx_industry_level',
+              nullable: false,
+              description: '所属行业',
+              sample: '政企服务',
+            },
+            {
+              name: 'customer_level',
+              type: 'varchar(8)',
+              indexName: 'idx_industry_level',
+              nullable: false,
+              description: '客户等级',
+              sample: 'A',
+            },
+            {
+              name: 'owner_name',
+              type: 'varchar(32)',
+              nullable: false,
+              description: '客户负责人',
+              sample: '李彬',
+            },
           ],
           indexes: [
-            { name: "PRIMARY", type: "BTREE", fields: ["customer_id"] },
-            { name: "idx_industry_level", type: "BTREE", fields: ["industry", "customer_level"] },
+            { name: 'PRIMARY', type: 'BTREE', fields: ['customer_id'] },
+            { name: 'idx_industry_level', type: 'BTREE', fields: ['industry', 'customer_level'] },
           ],
           sampleRows: [
-            { customer_id: "CU-10239", customer_name: "华东城运集团", industry: "政企服务", customer_level: "A", owner_name: "李彬" },
-            { customer_id: "CU-18420", customer_name: "星云物流", industry: "供应链", customer_level: "B", owner_name: "张尧" },
+            {
+              customer_id: 'CU-10239',
+              customer_name: '华东城运集团',
+              industry: '政企服务',
+              customer_level: 'A',
+              owner_name: '李彬',
+            },
+            {
+              customer_id: 'CU-18420',
+              customer_name: '星云物流',
+              industry: '供应链',
+              customer_level: 'B',
+              owner_name: '张尧',
+            },
           ],
         },
       ],
     },
   ],
-  "2": [
+  '2': [
     {
-      id: "db2-analytics-dw",
-      name: "analytics_dw",
-      engine: "PostgreSQL 15",
-      description: "经营分析主仓库。",
-      owner: "经营分析组",
+      id: 'db2-analytics-dw',
+      name: 'analytics_dw',
+      engine: 'PostgreSQL 15',
+      description: '经营分析主仓库。',
+      owner: '经营分析组',
       tables: [
         {
-          id: "tbl-revenue-wide",
-          name: "ads_revenue_wide",
-          kind: "table",
-          rowCount: "8.1 亿",
-          storage: "1.8 TB",
-          updatedAt: "2026-06-10 02:08",
-          description: "营收分析宽表，按日和区域聚合。",
+          id: 'tbl-revenue-wide',
+          name: 'ads_revenue_wide',
+          kind: 'table',
+          rowCount: '8.1 亿',
+          storage: '1.8 TB',
+          updatedAt: '2026-06-10 02:08',
+          description: '营收分析宽表，按日和区域聚合。',
           fields: [
-            { name: "dt", type: "date", keyRole: "PK", nullable: false, description: "统计日期", sample: "2026-06-08" },
-            { name: "region", type: "varchar(16)", keyRole: "PK", nullable: false, description: "区域维度", sample: "华东" },
-            { name: "revenue", type: "numeric(18,2)", nullable: false, description: "营收", sample: "8600000.00" },
-            { name: "orders", type: "integer", nullable: false, description: "订单量", sample: "12403" },
-            { name: "margin", type: "numeric(5,2)", nullable: false, description: "毛利率", sample: "32.80" },
+            {
+              name: 'dt',
+              type: 'date',
+              keyRole: 'PK',
+              nullable: false,
+              description: '统计日期',
+              sample: '2026-06-08',
+            },
+            {
+              name: 'region',
+              type: 'varchar(16)',
+              keyRole: 'PK',
+              nullable: false,
+              description: '区域维度',
+              sample: '华东',
+            },
+            {
+              name: 'revenue',
+              type: 'numeric(18,2)',
+              nullable: false,
+              description: '营收',
+              sample: '8600000.00',
+            },
+            {
+              name: 'orders',
+              type: 'integer',
+              nullable: false,
+              description: '订单量',
+              sample: '12403',
+            },
+            {
+              name: 'margin',
+              type: 'numeric(5,2)',
+              nullable: false,
+              description: '毛利率',
+              sample: '32.80',
+            },
           ],
-          indexes: [
-            { name: "pk_ads_revenue_wide", type: "BTREE", fields: ["dt", "region"] },
-          ],
+          indexes: [{ name: 'pk_ads_revenue_wide', type: 'BTREE', fields: ['dt', 'region'] }],
           sampleRows: [
-            { dt: "2026-06-08", region: "华东", revenue: "8600000.00", orders: 12403, margin: "32.80" },
-            { dt: "2026-06-08", region: "华北", revenue: "6450000.00", orders: 9801, margin: "28.40" },
+            {
+              dt: '2026-06-08',
+              region: '华东',
+              revenue: '8600000.00',
+              orders: 12403,
+              margin: '32.80',
+            },
+            {
+              dt: '2026-06-08',
+              region: '华北',
+              revenue: '6450000.00',
+              orders: 9801,
+              margin: '28.40',
+            },
           ],
         },
         {
-          id: "tbl-order-funnel",
-          name: "dws_order_funnel",
-          kind: "view",
-          rowCount: "4,812",
-          storage: "View",
-          updatedAt: "2026-06-10 02:10",
-          description: "订单转化漏斗视图。",
+          id: 'tbl-order-funnel',
+          name: 'dws_order_funnel',
+          kind: 'view',
+          rowCount: '4,812',
+          storage: 'View',
+          updatedAt: '2026-06-10 02:10',
+          description: '订单转化漏斗视图。',
           fields: [
-            { name: "channel", type: "varchar(32)", nullable: false, description: "来源渠道", sample: "官网直销" },
-            { name: "visit_uv", type: "integer", nullable: false, description: "访问人数", sample: "120332" },
-            { name: "lead_count", type: "integer", nullable: false, description: "线索数", sample: "8421" },
-            { name: "deal_count", type: "integer", nullable: false, description: "成交数", sample: "894" },
+            {
+              name: 'channel',
+              type: 'varchar(32)',
+              nullable: false,
+              description: '来源渠道',
+              sample: '官网直销',
+            },
+            {
+              name: 'visit_uv',
+              type: 'integer',
+              nullable: false,
+              description: '访问人数',
+              sample: '120332',
+            },
+            {
+              name: 'lead_count',
+              type: 'integer',
+              nullable: false,
+              description: '线索数',
+              sample: '8421',
+            },
+            {
+              name: 'deal_count',
+              type: 'integer',
+              nullable: false,
+              description: '成交数',
+              sample: '894',
+            },
           ],
           indexes: [],
           sampleRows: [
-            { channel: "官网直销", visit_uv: 120332, lead_count: 8421, deal_count: 894 },
-            { channel: "合作伙伴", visit_uv: 48211, lead_count: 3602, deal_count: 512 },
+            { channel: '官网直销', visit_uv: 120332, lead_count: 8421, deal_count: 894 },
+            { channel: '合作伙伴', visit_uv: 48211, lead_count: 3602, deal_count: 512 },
           ],
         },
       ],
     },
     {
-      id: "db2-finance-mart",
-      name: "finance_mart",
-      engine: "PostgreSQL 15",
-      description: "财务专题数据集市。",
-      owner: "财务数仓组",
+      id: 'db2-finance-mart',
+      name: 'finance_mart',
+      engine: 'PostgreSQL 15',
+      description: '财务专题数据集市。',
+      owner: '财务数仓组',
       tables: [
         {
-          id: "tbl-ar-aging",
-          name: "dm_ar_aging",
-          kind: "table",
-          rowCount: "32.4 万",
-          storage: "42 GB",
-          updatedAt: "2026-06-10 02:06",
-          description: "应收账龄专题表。",
+          id: 'tbl-ar-aging',
+          name: 'dm_ar_aging',
+          kind: 'table',
+          rowCount: '32.4 万',
+          storage: '42 GB',
+          updatedAt: '2026-06-10 02:06',
+          description: '应收账龄专题表。',
           fields: [
-            { name: "customer_name", type: "varchar(128)", nullable: false, description: "客户名称", sample: "智算研究院" },
-            { name: "aging_bucket", type: "varchar(16)", nullable: false, description: "账龄区间", sample: "30-60天" },
-            { name: "receivable_amount", type: "numeric(18,2)", nullable: false, description: "应收金额", sample: "298000.00" },
-            { name: "owner_dept", type: "varchar(32)", nullable: false, description: "归属部门", sample: "华东大区" },
+            {
+              name: 'customer_name',
+              type: 'varchar(128)',
+              nullable: false,
+              description: '客户名称',
+              sample: '智算研究院',
+            },
+            {
+              name: 'aging_bucket',
+              type: 'varchar(16)',
+              nullable: false,
+              description: '账龄区间',
+              sample: '30-60天',
+            },
+            {
+              name: 'receivable_amount',
+              type: 'numeric(18,2)',
+              nullable: false,
+              description: '应收金额',
+              sample: '298000.00',
+            },
+            {
+              name: 'owner_dept',
+              type: 'varchar(32)',
+              nullable: false,
+              description: '归属部门',
+              sample: '华东大区',
+            },
           ],
-          indexes: [{ name: "idx_aging_bucket", type: "BTREE", fields: ["aging_bucket"] }],
+          indexes: [{ name: 'idx_aging_bucket', type: 'BTREE', fields: ['aging_bucket'] }],
           sampleRows: [
-            { customer_name: "智算研究院", aging_bucket: "30-60天", receivable_amount: "298000.00", owner_dept: "华东大区" },
-            { customer_name: "华东城运集团", aging_bucket: "0-30天", receivable_amount: "182400.00", owner_dept: "政企事业部" },
+            {
+              customer_name: '智算研究院',
+              aging_bucket: '30-60天',
+              receivable_amount: '298000.00',
+              owner_dept: '华东大区',
+            },
+            {
+              customer_name: '华东城运集团',
+              aging_bucket: '0-30天',
+              receivable_amount: '182400.00',
+              owner_dept: '政企事业部',
+            },
           ],
         },
       ],
     },
   ],
-  "3": [
+  '3': [
     {
-      id: "db3-market-snapshot",
-      name: "market_snapshot.db",
-      engine: "SQLite 3",
-      description: "离线市场样本数据库。",
-      owner: "增长分析组",
+      id: 'db3-market-snapshot',
+      name: 'market_snapshot.db',
+      engine: 'SQLite 3',
+      description: '离线市场样本数据库。',
+      owner: '增长分析组',
       tables: [
         {
-          id: "tbl-leads-sample",
-          name: "leads_sample",
-          kind: "table",
-          rowCount: "18,240",
-          storage: "128 MB",
-          updatedAt: "2026-06-09 18:42",
-          description: "线索样本表。",
+          id: 'tbl-leads-sample',
+          name: 'leads_sample',
+          kind: 'table',
+          rowCount: '18,240',
+          storage: '128 MB',
+          updatedAt: '2026-06-09 18:42',
+          description: '线索样本表。',
           fields: [
-            { name: "lead_id", type: "text", keyRole: "PK", nullable: false, description: "线索ID", sample: "LD-20301" },
-            { name: "company", type: "text", nullable: false, description: "企业名称", sample: "星云物流" },
-            { name: "intent_level", type: "text", indexName: "idx_intent_level", nullable: false, description: "意向等级", sample: "高" },
-            { name: "captured_at", type: "text", nullable: false, description: "抓取时间", sample: "2026-06-08 10:20:11" },
+            {
+              name: 'lead_id',
+              type: 'text',
+              keyRole: 'PK',
+              nullable: false,
+              description: '线索ID',
+              sample: 'LD-20301',
+            },
+            {
+              name: 'company',
+              type: 'text',
+              nullable: false,
+              description: '企业名称',
+              sample: '星云物流',
+            },
+            {
+              name: 'intent_level',
+              type: 'text',
+              indexName: 'idx_intent_level',
+              nullable: false,
+              description: '意向等级',
+              sample: '高',
+            },
+            {
+              name: 'captured_at',
+              type: 'text',
+              nullable: false,
+              description: '抓取时间',
+              sample: '2026-06-08 10:20:11',
+            },
           ],
-          indexes: [{ name: "idx_intent_level", type: "BTREE", fields: ["intent_level"] }],
+          indexes: [{ name: 'idx_intent_level', type: 'BTREE', fields: ['intent_level'] }],
           sampleRows: [
-            { lead_id: "LD-20301", company: "星云物流", intent_level: "高", captured_at: "2026-06-08 10:20:11" },
-            { lead_id: "LD-20342", company: "南方智教", intent_level: "中", captured_at: "2026-06-08 10:23:44" },
+            {
+              lead_id: 'LD-20301',
+              company: '星云物流',
+              intent_level: '高',
+              captured_at: '2026-06-08 10:20:11',
+            },
+            {
+              lead_id: 'LD-20342',
+              company: '南方智教',
+              intent_level: '中',
+              captured_at: '2026-06-08 10:23:44',
+            },
           ],
         },
       ],
     },
     {
-      id: "db3-edge-capture",
-      name: "edge_capture.db",
-      engine: "SQLite 3",
-      description: "边缘采集设备离线缓存库。",
-      owner: "边缘采集组",
+      id: 'db3-edge-capture',
+      name: 'edge_capture.db',
+      engine: 'SQLite 3',
+      description: '边缘采集设备离线缓存库。',
+      owner: '边缘采集组',
       tables: [
         {
-          id: "tbl-device-packets",
-          name: "device_packets",
-          kind: "table",
-          rowCount: "8,420",
-          storage: "86 MB",
-          updatedAt: "2026-06-09 17:31",
-          description: "设备报文采样表。",
+          id: 'tbl-device-packets',
+          name: 'device_packets',
+          kind: 'table',
+          rowCount: '8,420',
+          storage: '86 MB',
+          updatedAt: '2026-06-09 17:31',
+          description: '设备报文采样表。',
           fields: [
-            { name: "packet_id", type: "text", keyRole: "PK", nullable: false, description: "报文ID", sample: "PK-99101" },
-            { name: "device_id", type: "text", nullable: false, description: "设备编号", sample: "DV-0028" },
-            { name: "protocol", type: "text", nullable: false, description: "协议类型", sample: "MQTT" },
-            { name: "payload_size", type: "integer", nullable: false, description: "负载大小", sample: "384" },
-          ],
-          indexes: [{ name: "idx_device_protocol", type: "BTREE", fields: ["device_id", "protocol"] }],
-          sampleRows: [
-            { packet_id: "PK-99101", device_id: "DV-0028", protocol: "MQTT", payload_size: 384 },
-            { packet_id: "PK-99132", device_id: "DV-0041", protocol: "HTTP", payload_size: 512 },
-          ],
-        },
-      ],
-    },
-  ],
-  "4": [
-    {
-      id: "db4-profile-hub",
-      name: "profile_hub",
-      engine: "MongoDB 7",
-      description: "用户画像中心。",
-      owner: "用户运营组",
-      tables: [
-        {
-          id: "col-user-profile",
-          name: "user_profile",
-          kind: "collection",
-          rowCount: "920 万",
-          storage: "240 GB",
-          updatedAt: "2026-06-10 09:01",
-          description: "用户画像主集合。",
-          fields: [
-            { name: "_id", type: "ObjectId", keyRole: "PK", nullable: false, description: "文档主键", sample: "665f14d1c0a2c1a8" },
-            { name: "user_id", type: "string", indexName: "idx_user_id", nullable: false, description: "用户编号", sample: "U-110238" },
-            { name: "tier", type: "string", indexName: "idx_tier_updated", nullable: false, description: "用户分层", sample: "A1" },
-            { name: "tags", type: "array<string>", nullable: false, description: "画像标签", sample: '["高价值","制造业"]' },
-            { name: "updated_at", type: "date", indexName: "idx_tier_updated", nullable: false, description: "最近更新时间", sample: "2026-06-08T14:32:00Z" },
+            {
+              name: 'packet_id',
+              type: 'text',
+              keyRole: 'PK',
+              nullable: false,
+              description: '报文ID',
+              sample: 'PK-99101',
+            },
+            {
+              name: 'device_id',
+              type: 'text',
+              nullable: false,
+              description: '设备编号',
+              sample: 'DV-0028',
+            },
+            {
+              name: 'protocol',
+              type: 'text',
+              nullable: false,
+              description: '协议类型',
+              sample: 'MQTT',
+            },
+            {
+              name: 'payload_size',
+              type: 'integer',
+              nullable: false,
+              description: '负载大小',
+              sample: '384',
+            },
           ],
           indexes: [
-            { name: "_id_", type: "HASHED", fields: ["_id"] },
-            { name: "idx_user_id", type: "BTREE", fields: ["user_id"] },
-            { name: "idx_tier_updated", type: "BTREE", fields: ["tier", "updated_at"] },
+            { name: 'idx_device_protocol', type: 'BTREE', fields: ['device_id', 'protocol'] },
           ],
           sampleRows: [
-            { _id: "665f14d1c0a2c1a8", user_id: "U-110238", tier: "A1", tags: '["高价值","制造业"]', updated_at: "2026-06-08T14:32:00Z" },
-            { _id: "665f19b1f1d239ab", user_id: "U-219984", tier: "B2", tags: '["教育","招投标"]', updated_at: "2026-06-08T14:11:00Z" },
-          ],
-        },
-      ],
-    },
-    {
-      id: "db4-behavior-stream",
-      name: "behavior_stream",
-      engine: "MongoDB 7",
-      description: "行为事件采集库。",
-      owner: "埋点平台组",
-      tables: [
-        {
-          id: "col-visit-events",
-          name: "visit_events",
-          kind: "collection",
-          rowCount: "1.8 亿",
-          storage: "1.2 TB",
-          updatedAt: "2026-06-10 09:06",
-          description: "站内访问事件集合。",
-          fields: [
-            { name: "_id", type: "ObjectId", keyRole: "PK", nullable: false, description: "文档主键", sample: "665f1d98a123c8de" },
-            { name: "event_name", type: "string", indexName: "idx_event_time", nullable: false, description: "事件名称", sample: "view_knowledge_graph" },
-            { name: "user_id", type: "string", nullable: false, description: "用户编号", sample: "U-882145" },
-            { name: "event_time", type: "date", indexName: "idx_event_time", nullable: false, description: "事件时间", sample: "2026-06-08T13:49:00Z" },
-          ],
-          indexes: [{ name: "idx_event_time", type: "BTREE", fields: ["event_name", "event_time"] }],
-          sampleRows: [
-            { _id: "665f1d98a123c8de", event_name: "view_knowledge_graph", user_id: "U-882145", event_time: "2026-06-08T13:49:00Z" },
-            { _id: "665f1dd8be43f991", event_name: "apply_api", user_id: "U-120390", event_time: "2026-06-08T13:51:00Z" },
+            { packet_id: 'PK-99101', device_id: 'DV-0028', protocol: 'MQTT', payload_size: 384 },
+            { packet_id: 'PK-99132', device_id: 'DV-0041', protocol: 'HTTP', payload_size: 512 },
           ],
         },
       ],
     },
   ],
-  "5": [
+  '4': [
     {
-      id: "db5-customer-space",
-      name: "customer_space",
-      engine: "Neo4j 5",
-      description: "客户、项目、知识沉淀空间。",
-      owner: "知识工程组",
+      id: 'db4-profile-hub',
+      name: 'profile_hub',
+      engine: 'MongoDB 7',
+      description: '用户画像中心。',
+      owner: '用户运营组',
       tables: [
         {
-          id: "graph-customer-entity",
-          name: "customer_entity_graph",
-          kind: "vertex",
-          rowCount: "126 万边 / 42 万节点",
-          storage: "图空间",
-          updatedAt: "2026-06-10 08:58",
-          description: "客户关系图，展示客户、项目、团队与知识资产关联。",
+          id: 'col-user-profile',
+          name: 'user_profile',
+          kind: 'collection',
+          rowCount: '920 万',
+          storage: '240 GB',
+          updatedAt: '2026-06-10 09:01',
+          description: '用户画像主集合。',
           fields: [
-            { name: "entity_id", type: "string", keyRole: "VERTEX", nullable: false, description: "实体编号", sample: "ENT-00021" },
-            { name: "entity_type", type: "string", indexName: "idx_entity_type", nullable: false, description: "实体类型", sample: "organization" },
-            { name: "entity_name", type: "string", nullable: false, description: "实体名称", sample: "企业客户" },
-            { name: "updated_at", type: "datetime", nullable: false, description: "最近同步时间", sample: "2026-06-08 14:26:00" },
+            {
+              name: '_id',
+              type: 'ObjectId',
+              keyRole: 'PK',
+              nullable: false,
+              description: '文档主键',
+              sample: '665f14d1c0a2c1a8',
+            },
+            {
+              name: 'user_id',
+              type: 'string',
+              indexName: 'idx_user_id',
+              nullable: false,
+              description: '用户编号',
+              sample: 'U-110238',
+            },
+            {
+              name: 'tier',
+              type: 'string',
+              indexName: 'idx_tier_updated',
+              nullable: false,
+              description: '用户分层',
+              sample: 'A1',
+            },
+            {
+              name: 'tags',
+              type: 'array<string>',
+              nullable: false,
+              description: '画像标签',
+              sample: '["高价值","制造业"]',
+            },
+            {
+              name: 'updated_at',
+              type: 'date',
+              indexName: 'idx_tier_updated',
+              nullable: false,
+              description: '最近更新时间',
+              sample: '2026-06-08T14:32:00Z',
+            },
           ],
           indexes: [
-            { name: "idx_entity_type", type: "RANGE", fields: ["entity_type"] },
-            { name: "idx_entity_id", type: "UNIQUE", fields: ["entity_id"] },
+            { name: '_id_', type: 'HASHED', fields: ['_id'] },
+            { name: 'idx_user_id', type: 'BTREE', fields: ['user_id'] },
+            { name: 'idx_tier_updated', type: 'BTREE', fields: ['tier', 'updated_at'] },
           ],
           sampleRows: [
-            { entity_id: "ENT-00021", entity_type: "organization", entity_name: "企业客户", updated_at: "2026-06-08 14:26:00" },
-            { entity_id: "ENT-00102", entity_type: "project", entity_name: "项目群", updated_at: "2026-06-08 14:26:00" },
-          ],
-          graph: structuredPreviewMap["5"].graph,
-        },
-        {
-          id: "graph-project-relation",
-          name: "project_relation_edge",
-          kind: "edge",
-          rowCount: "84 万边",
-          storage: "图空间",
-          updatedAt: "2026-06-10 08:57",
-          description: "项目关系边模式，展示签约、执行、沉淀等边类型。",
-          fields: [
-            { name: "source_id", type: "string", keyRole: "EDGE", nullable: false, description: "起点实体", sample: "ENT-00021" },
-            { name: "target_id", type: "string", keyRole: "EDGE", nullable: false, description: "终点实体", sample: "ENT-00102" },
-            { name: "relation_type", type: "string", indexName: "idx_relation_type", nullable: false, description: "关系类型", sample: "签约项目" },
-            { name: "confidence", type: "float", nullable: false, description: "关系置信度", sample: "0.94" },
-          ],
-          indexes: [{ name: "idx_relation_type", type: "RANGE", fields: ["relation_type"] }],
-          sampleRows: [
-            { source_id: "ENT-00021", target_id: "ENT-00102", relation_type: "签约项目", confidence: "0.94" },
-            { source_id: "ENT-00102", target_id: "ENT-00156", relation_type: "沉淀到", confidence: "0.88" },
+            {
+              _id: '665f14d1c0a2c1a8',
+              user_id: 'U-110238',
+              tier: 'A1',
+              tags: '["高价值","制造业"]',
+              updated_at: '2026-06-08T14:32:00Z',
+            },
+            {
+              _id: '665f19b1f1d239ab',
+              user_id: 'U-219984',
+              tier: 'B2',
+              tags: '["教育","招投标"]',
+              updated_at: '2026-06-08T14:11:00Z',
+            },
           ],
         },
       ],
     },
     {
-      id: "db5-knowledge-space",
-      name: "knowledge_space",
-      engine: "Neo4j 5",
-      description: "行业术语、知识点与文档引用空间。",
-      owner: "知识工程组",
+      id: 'db4-behavior-stream',
+      name: 'behavior_stream',
+      engine: 'MongoDB 7',
+      description: '行为事件采集库。',
+      owner: '埋点平台组',
       tables: [
         {
-          id: "graph-term-reference",
-          name: "term_reference_graph",
-          kind: "vertex",
-          rowCount: "18 万节点",
-          storage: "图空间",
-          updatedAt: "2026-06-10 08:42",
-          description: "术语引用图。",
+          id: 'col-visit-events',
+          name: 'visit_events',
+          kind: 'collection',
+          rowCount: '1.8 亿',
+          storage: '1.2 TB',
+          updatedAt: '2026-06-10 09:06',
+          description: '站内访问事件集合。',
           fields: [
-            { name: "term_id", type: "string", keyRole: "VERTEX", nullable: false, description: "术语编号", sample: "TR-0092" },
-            { name: "term_name", type: "string", nullable: false, description: "术语名称", sample: "知识图谱" },
-            { name: "doc_refs", type: "integer", nullable: false, description: "引用文档数", sample: "284" },
+            {
+              name: '_id',
+              type: 'ObjectId',
+              keyRole: 'PK',
+              nullable: false,
+              description: '文档主键',
+              sample: '665f1d98a123c8de',
+            },
+            {
+              name: 'event_name',
+              type: 'string',
+              indexName: 'idx_event_time',
+              nullable: false,
+              description: '事件名称',
+              sample: 'view_knowledge_graph',
+            },
+            {
+              name: 'user_id',
+              type: 'string',
+              nullable: false,
+              description: '用户编号',
+              sample: 'U-882145',
+            },
+            {
+              name: 'event_time',
+              type: 'date',
+              indexName: 'idx_event_time',
+              nullable: false,
+              description: '事件时间',
+              sample: '2026-06-08T13:49:00Z',
+            },
           ],
-          indexes: [{ name: "idx_term_name", type: "UNIQUE", fields: ["term_name"] }],
+          indexes: [
+            { name: 'idx_event_time', type: 'BTREE', fields: ['event_name', 'event_time'] },
+          ],
           sampleRows: [
-            { term_id: "TR-0092", term_name: "知识图谱", doc_refs: 284 },
-            { term_id: "TR-0101", term_name: "实体抽取", doc_refs: 126 },
+            {
+              _id: '665f1d98a123c8de',
+              event_name: 'view_knowledge_graph',
+              user_id: 'U-882145',
+              event_time: '2026-06-08T13:49:00Z',
+            },
+            {
+              _id: '665f1dd8be43f991',
+              event_name: 'apply_api',
+              user_id: 'U-120390',
+              event_time: '2026-06-08T13:51:00Z',
+            },
           ],
         },
       ],
     },
   ],
-  "6": [
+  '5': [
     {
-      id: "db6-topology-space",
-      name: "ops_topology",
-      engine: "Nebula Graph",
-      description: "运维拓扑与依赖图空间。",
-      owner: "基础设施组",
+      id: 'db5-customer-space',
+      name: 'customer_space',
+      engine: 'Neo4j 5',
+      description: '客户、项目、知识沉淀空间。',
+      owner: '知识工程组',
       tables: [
         {
-          id: "graph-service-topology",
-          name: "service_topology_graph",
-          kind: "vertex",
-          rowCount: "842 万边 / 230 万节点",
-          storage: "图空间",
-          updatedAt: "2026-06-10 08:40",
-          description: "服务依赖拓扑图。",
+          id: 'graph-customer-entity',
+          name: 'customer_entity_graph',
+          kind: 'vertex',
+          rowCount: '126 万边 / 42 万节点',
+          storage: '图空间',
+          updatedAt: '2026-06-10 08:58',
+          description: '客户关系图，展示客户、项目、团队与知识资产关联。',
           fields: [
-            { name: "service_id", type: "fixed_string(32)", keyRole: "VERTEX", nullable: false, description: "服务编号", sample: "SRV-0211" },
-            { name: "service_name", type: "string", nullable: false, description: "服务名称", sample: "应用服务" },
-            { name: "layer", type: "string", nullable: false, description: "所属层级", sample: "应用层" },
-            { name: "owner_team", type: "string", nullable: false, description: "负责团队", sample: "运维团队" },
+            {
+              name: 'entity_id',
+              type: 'string',
+              keyRole: 'VERTEX',
+              nullable: false,
+              description: '实体编号',
+              sample: 'ENT-00021',
+            },
+            {
+              name: 'entity_type',
+              type: 'string',
+              indexName: 'idx_entity_type',
+              nullable: false,
+              description: '实体类型',
+              sample: 'organization',
+            },
+            {
+              name: 'entity_name',
+              type: 'string',
+              nullable: false,
+              description: '实体名称',
+              sample: '企业客户',
+            },
+            {
+              name: 'updated_at',
+              type: 'datetime',
+              nullable: false,
+              description: '最近同步时间',
+              sample: '2026-06-08 14:26:00',
+            },
           ],
-          indexes: [{ name: "tagidx_service_name", type: "TAG INDEX", fields: ["service_name"] }],
+          indexes: [
+            { name: 'idx_entity_type', type: 'RANGE', fields: ['entity_type'] },
+            { name: 'idx_entity_id', type: 'UNIQUE', fields: ['entity_id'] },
+          ],
           sampleRows: [
-            { service_id: "SRV-0211", service_name: "应用服务", layer: "应用层", owner_team: "运维团队" },
-            { service_id: "SRV-0314", service_name: "设备主机", layer: "基础层", owner_team: "平台组" },
+            {
+              entity_id: 'ENT-00021',
+              entity_type: 'organization',
+              entity_name: '企业客户',
+              updated_at: '2026-06-08 14:26:00',
+            },
+            {
+              entity_id: 'ENT-00102',
+              entity_type: 'project',
+              entity_name: '项目群',
+              updated_at: '2026-06-08 14:26:00',
+            },
           ],
-          graph: structuredPreviewMap["6"].graph,
+          graph: structuredPreviewMap['5'].graph,
         },
         {
-          id: "graph-ticket-link",
-          name: "incident_ticket_edge",
-          kind: "edge",
-          rowCount: "92 万边",
-          storage: "图空间",
-          updatedAt: "2026-06-10 08:39",
-          description: "故障工单关联边。",
+          id: 'graph-project-relation',
+          name: 'project_relation_edge',
+          kind: 'edge',
+          rowCount: '84 万边',
+          storage: '图空间',
+          updatedAt: '2026-06-10 08:57',
+          description: '项目关系边模式，展示签约、执行、沉淀等边类型。',
           fields: [
-            { name: "src_service", type: "fixed_string(32)", keyRole: "EDGE", nullable: false, description: "源服务ID", sample: "SRV-0314" },
-            { name: "dst_ticket", type: "fixed_string(32)", keyRole: "EDGE", nullable: false, description: "目标工单ID", sample: "TCK-8841" },
-            { name: "severity", type: "string", nullable: false, description: "故障级别", sample: "P1" },
-            { name: "created_at", type: "timestamp", nullable: false, description: "创建时间", sample: "2026-06-08 16:12:00" },
+            {
+              name: 'source_id',
+              type: 'string',
+              keyRole: 'EDGE',
+              nullable: false,
+              description: '起点实体',
+              sample: 'ENT-00021',
+            },
+            {
+              name: 'target_id',
+              type: 'string',
+              keyRole: 'EDGE',
+              nullable: false,
+              description: '终点实体',
+              sample: 'ENT-00102',
+            },
+            {
+              name: 'relation_type',
+              type: 'string',
+              indexName: 'idx_relation_type',
+              nullable: false,
+              description: '关系类型',
+              sample: '签约项目',
+            },
+            {
+              name: 'confidence',
+              type: 'float',
+              nullable: false,
+              description: '关系置信度',
+              sample: '0.94',
+            },
           ],
-          indexes: [{ name: "edgeidx_severity", type: "EDGE INDEX", fields: ["severity"] }],
+          indexes: [{ name: 'idx_relation_type', type: 'RANGE', fields: ['relation_type'] }],
           sampleRows: [
-            { src_service: "SRV-0314", dst_ticket: "TCK-8841", severity: "P1", created_at: "2026-06-08 16:12:00" },
-            { src_service: "SRV-0211", dst_ticket: "TCK-8859", severity: "P2", created_at: "2026-06-08 17:03:00" },
+            {
+              source_id: 'ENT-00021',
+              target_id: 'ENT-00102',
+              relation_type: '签约项目',
+              confidence: '0.94',
+            },
+            {
+              source_id: 'ENT-00102',
+              target_id: 'ENT-00156',
+              relation_type: '沉淀到',
+              confidence: '0.88',
+            },
           ],
         },
       ],
     },
     {
-      id: "db6-host-space",
-      name: "host_asset",
-      engine: "Nebula Graph",
-      description: "主机、机房、网络设备图空间。",
-      owner: "基础设施组",
+      id: 'db5-knowledge-space',
+      name: 'knowledge_space',
+      engine: 'Neo4j 5',
+      description: '行业术语、知识点与文档引用空间。',
+      owner: '知识工程组',
       tables: [
         {
-          id: "graph-host-asset",
-          name: "host_asset_graph",
-          kind: "vertex",
-          rowCount: "52 万节点",
-          storage: "图空间",
-          updatedAt: "2026-06-10 08:20",
-          description: "主机资产主图。",
+          id: 'graph-term-reference',
+          name: 'term_reference_graph',
+          kind: 'vertex',
+          rowCount: '18 万节点',
+          storage: '图空间',
+          updatedAt: '2026-06-10 08:42',
+          description: '术语引用图。',
           fields: [
-            { name: "host_id", type: "fixed_string(32)", keyRole: "VERTEX", nullable: false, description: "主机编号", sample: "HOST-9921" },
-            { name: "hostname", type: "string", nullable: false, description: "主机名", sample: "prod-edge-01" },
-            { name: "idc", type: "string", nullable: false, description: "机房", sample: "南京一号机房" },
-            { name: "status", type: "string", nullable: false, description: "运行状态", sample: "RUNNING" },
+            {
+              name: 'term_id',
+              type: 'string',
+              keyRole: 'VERTEX',
+              nullable: false,
+              description: '术语编号',
+              sample: 'TR-0092',
+            },
+            {
+              name: 'term_name',
+              type: 'string',
+              nullable: false,
+              description: '术语名称',
+              sample: '知识图谱',
+            },
+            {
+              name: 'doc_refs',
+              type: 'integer',
+              nullable: false,
+              description: '引用文档数',
+              sample: '284',
+            },
           ],
-          indexes: [{ name: "tagidx_hostname", type: "TAG INDEX", fields: ["hostname"] }],
+          indexes: [{ name: 'idx_term_name', type: 'UNIQUE', fields: ['term_name'] }],
           sampleRows: [
-            { host_id: "HOST-9921", hostname: "prod-edge-01", idc: "南京一号机房", status: "RUNNING" },
-            { host_id: "HOST-9928", hostname: "prod-edge-02", idc: "南京二号机房", status: "RUNNING" },
+            { term_id: 'TR-0092', term_name: '知识图谱', doc_refs: 284 },
+            { term_id: 'TR-0101', term_name: '实体抽取', doc_refs: 126 },
+          ],
+        },
+      ],
+    },
+  ],
+  '6': [
+    {
+      id: 'db6-topology-space',
+      name: 'ops_topology',
+      engine: 'Nebula Graph',
+      description: '运维拓扑与依赖图空间。',
+      owner: '基础设施组',
+      tables: [
+        {
+          id: 'graph-service-topology',
+          name: 'service_topology_graph',
+          kind: 'vertex',
+          rowCount: '842 万边 / 230 万节点',
+          storage: '图空间',
+          updatedAt: '2026-06-10 08:40',
+          description: '服务依赖拓扑图。',
+          fields: [
+            {
+              name: 'service_id',
+              type: 'fixed_string(32)',
+              keyRole: 'VERTEX',
+              nullable: false,
+              description: '服务编号',
+              sample: 'SRV-0211',
+            },
+            {
+              name: 'service_name',
+              type: 'string',
+              nullable: false,
+              description: '服务名称',
+              sample: '应用服务',
+            },
+            {
+              name: 'layer',
+              type: 'string',
+              nullable: false,
+              description: '所属层级',
+              sample: '应用层',
+            },
+            {
+              name: 'owner_team',
+              type: 'string',
+              nullable: false,
+              description: '负责团队',
+              sample: '运维团队',
+            },
+          ],
+          indexes: [{ name: 'tagidx_service_name', type: 'TAG INDEX', fields: ['service_name'] }],
+          sampleRows: [
+            {
+              service_id: 'SRV-0211',
+              service_name: '应用服务',
+              layer: '应用层',
+              owner_team: '运维团队',
+            },
+            {
+              service_id: 'SRV-0314',
+              service_name: '设备主机',
+              layer: '基础层',
+              owner_team: '平台组',
+            },
+          ],
+          graph: structuredPreviewMap['6'].graph,
+        },
+        {
+          id: 'graph-ticket-link',
+          name: 'incident_ticket_edge',
+          kind: 'edge',
+          rowCount: '92 万边',
+          storage: '图空间',
+          updatedAt: '2026-06-10 08:39',
+          description: '故障工单关联边。',
+          fields: [
+            {
+              name: 'src_service',
+              type: 'fixed_string(32)',
+              keyRole: 'EDGE',
+              nullable: false,
+              description: '源服务ID',
+              sample: 'SRV-0314',
+            },
+            {
+              name: 'dst_ticket',
+              type: 'fixed_string(32)',
+              keyRole: 'EDGE',
+              nullable: false,
+              description: '目标工单ID',
+              sample: 'TCK-8841',
+            },
+            {
+              name: 'severity',
+              type: 'string',
+              nullable: false,
+              description: '故障级别',
+              sample: 'P1',
+            },
+            {
+              name: 'created_at',
+              type: 'timestamp',
+              nullable: false,
+              description: '创建时间',
+              sample: '2026-06-08 16:12:00',
+            },
+          ],
+          indexes: [{ name: 'edgeidx_severity', type: 'EDGE INDEX', fields: ['severity'] }],
+          sampleRows: [
+            {
+              src_service: 'SRV-0314',
+              dst_ticket: 'TCK-8841',
+              severity: 'P1',
+              created_at: '2026-06-08 16:12:00',
+            },
+            {
+              src_service: 'SRV-0211',
+              dst_ticket: 'TCK-8859',
+              severity: 'P2',
+              created_at: '2026-06-08 17:03:00',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'db6-host-space',
+      name: 'host_asset',
+      engine: 'Nebula Graph',
+      description: '主机、机房、网络设备图空间。',
+      owner: '基础设施组',
+      tables: [
+        {
+          id: 'graph-host-asset',
+          name: 'host_asset_graph',
+          kind: 'vertex',
+          rowCount: '52 万节点',
+          storage: '图空间',
+          updatedAt: '2026-06-10 08:20',
+          description: '主机资产主图。',
+          fields: [
+            {
+              name: 'host_id',
+              type: 'fixed_string(32)',
+              keyRole: 'VERTEX',
+              nullable: false,
+              description: '主机编号',
+              sample: 'HOST-9921',
+            },
+            {
+              name: 'hostname',
+              type: 'string',
+              nullable: false,
+              description: '主机名',
+              sample: 'prod-edge-01',
+            },
+            {
+              name: 'idc',
+              type: 'string',
+              nullable: false,
+              description: '机房',
+              sample: '南京一号机房',
+            },
+            {
+              name: 'status',
+              type: 'string',
+              nullable: false,
+              description: '运行状态',
+              sample: 'RUNNING',
+            },
+          ],
+          indexes: [{ name: 'tagidx_hostname', type: 'TAG INDEX', fields: ['hostname'] }],
+          sampleRows: [
+            {
+              host_id: 'HOST-9921',
+              hostname: 'prod-edge-01',
+              idc: '南京一号机房',
+              status: 'RUNNING',
+            },
+            {
+              host_id: 'HOST-9928',
+              hostname: 'prod-edge-02',
+              idc: '南京二号机房',
+              status: 'RUNNING',
+            },
           ],
         },
       ],
@@ -1409,15 +2078,15 @@ const databaseCatalogMap: Record<string, DatabaseCatalog[]> = {
 
 const initialDocImportTasks: DocImportTask[] = [
   {
-    id: "task1",
-    name: "文档批量导入",
-    serverIP: "192.168.1.200",
+    id: 'task1',
+    name: '文档批量导入',
+    serverIP: '192.168.1.200',
     serverPort: 8080,
-    readPath: "/data/finance/docs",
-    backupPath: "/backup/finance/docs",
-    targetKnowledgeBase: "财务知识库",
-    targetCatalog: "财务报表",
-    status: "running",
+    readPath: '/data/finance/docs',
+    backupPath: '/backup/finance/docs',
+    targetKnowledgeBase: '财务知识库',
+    targetCatalog: '财务报表',
+    status: 'running',
     progress: 45,
     totalFiles: 150,
     importedFiles: 68,
@@ -1425,19 +2094,19 @@ const initialDocImportTasks: DocImportTask[] = [
     errorFiles: 1,
     totalSize: 52428800,
     importedSize: 23592960,
-    startTime: "2024-01-15 10:00:00",
+    startTime: '2024-01-15 10:00:00',
     files: [],
   },
   {
-    id: "task2",
-    name: "技术文档归档任务",
-    serverIP: "192.168.1.201",
+    id: 'task2',
+    name: '技术文档归档任务',
+    serverIP: '192.168.1.201',
     serverPort: 8080,
-    readPath: "/data/tech/docs",
-    backupPath: "/backup/tech/docs",
-    targetKnowledgeBase: "技术知识库",
-    targetCatalog: "技术文档",
-    status: "completed",
+    readPath: '/data/tech/docs',
+    backupPath: '/backup/tech/docs',
+    targetKnowledgeBase: '技术知识库',
+    targetCatalog: '技术文档',
+    status: 'completed',
     progress: 100,
     totalFiles: 80,
     importedFiles: 80,
@@ -1445,20 +2114,20 @@ const initialDocImportTasks: DocImportTask[] = [
     errorFiles: 0,
     totalSize: 31457280,
     importedSize: 31457280,
-    startTime: "2024-01-14 09:00:00",
-    endTime: "2024-01-14 11:30:00",
+    startTime: '2024-01-14 09:00:00',
+    endTime: '2024-01-14 11:30:00',
     files: [],
   },
   {
-    id: "task3",
-    name: "合同文件同步任务",
-    serverIP: "192.168.1.202",
+    id: 'task3',
+    name: '合同文件同步任务',
+    serverIP: '192.168.1.202',
     serverPort: 8080,
-    readPath: "/data/legal/contracts",
-    backupPath: "/backup/legal/contracts",
-    targetKnowledgeBase: "法律知识库",
-    targetCatalog: "合同文档",
-    status: "error",
+    readPath: '/data/legal/contracts',
+    backupPath: '/backup/legal/contracts',
+    targetKnowledgeBase: '法律知识库',
+    targetCatalog: '合同文档',
+    status: 'error',
     progress: 30,
     totalFiles: 200,
     importedFiles: 60,
@@ -1466,54 +2135,54 @@ const initialDocImportTasks: DocImportTask[] = [
     errorFiles: 1,
     totalSize: 104857600,
     importedSize: 31457280,
-    startTime: "2024-01-15 13:00:00",
-    error: "服务器连接超时",
+    startTime: '2024-01-15 13:00:00',
+    error: '服务器连接超时',
     files: [],
   },
 ];
 
 const sampleDocumentFiles: DocumentFile[] = [
   {
-    id: "1",
-    name: "产品需求文档.docx",
-    path: "D:\\文档\\产品需求文档.docx",
-    type: "docx",
+    id: '1',
+    name: '产品需求文档.docx',
+    path: 'D:\\文档\\产品需求文档.docx',
+    type: 'docx',
     size: 245760,
-    status: "completed",
-    importTime: "2024-01-15 10:30:00",
+    status: 'completed',
+    importTime: '2024-01-15 10:30:00',
     recordCount: 156,
   },
   {
-    id: "2",
-    name: "客户数据.xlsx",
-    path: "D:\\文档\\客户数据.xlsx",
-    type: "xlsx",
+    id: '2',
+    name: '客户数据.xlsx',
+    path: 'D:\\文档\\客户数据.xlsx',
+    type: 'xlsx',
     size: 524288,
-    status: "completed",
-    importTime: "2024-01-15 11:00:00",
+    status: 'completed',
+    importTime: '2024-01-15 11:00:00',
     recordCount: 2340,
   },
   {
-    id: "3",
-    name: "项目计划.pptx",
-    path: "D:\\文档\\项目计划.pptx",
-    type: "pptx",
+    id: '3',
+    name: '项目计划.pptx',
+    path: 'D:\\文档\\项目计划.pptx',
+    type: 'pptx',
     size: 1048576,
-    status: "completed",
-    importTime: "2024-01-15 14:20:00",
+    status: 'completed',
+    importTime: '2024-01-15 14:20:00',
     recordCount: 45,
   },
 ];
 
 const initialImportJobs: ImportJob[] = [
   {
-    id: "1",
-    name: "MySQL客户数据导入",
-    source: "生产MySQL数据库",
-    type: "database",
-    status: "running",
+    id: '1',
+    name: 'MySQL客户数据导入',
+    source: '生产MySQL数据库',
+    type: 'database',
+    status: 'running',
     progress: 65,
-    startTime: "2024-01-15 14:30:00",
+    startTime: '2024-01-15 14:30:00',
     recordsTotal: 10000,
     recordsProcessed: 6500,
     recordsSuccess: 6480,
@@ -1523,13 +2192,13 @@ const initialImportJobs: ImportJob[] = [
     alerts: [],
   },
   {
-    id: "4",
-    name: "PostgreSQL数据同步",
-    source: "PostgreSQL数据仓库",
-    type: "database",
-    status: "running",
+    id: '4',
+    name: 'PostgreSQL数据同步',
+    source: 'PostgreSQL数据仓库',
+    type: 'database',
+    status: 'running',
     progress: 35,
-    startTime: "2024-01-15 15:00:00",
+    startTime: '2024-01-15 15:00:00',
     recordsTotal: 20000,
     recordsProcessed: 7000,
     recordsSuccess: 6980,
@@ -1539,14 +2208,14 @@ const initialImportJobs: ImportJob[] = [
     alerts: [],
   },
   {
-    id: "2",
-    name: "文档批量导入",
-    source: "D:\\文档",
-    type: "document",
-    status: "completed",
+    id: '2',
+    name: '文档批量导入',
+    source: 'D:\\文档',
+    type: 'document',
+    status: 'completed',
     progress: 100,
-    startTime: "2024-01-15 10:00:00",
-    endTime: "2024-01-15 11:30:00",
+    startTime: '2024-01-15 10:00:00',
+    endTime: '2024-01-15 11:30:00',
     recordsTotal: 2541,
     recordsProcessed: 2541,
     recordsSuccess: 2535,
@@ -1555,103 +2224,95 @@ const initialImportJobs: ImportJob[] = [
     dataReceived: 8200000,
     alerts: [
       {
-        id: "a1",
-        time: "2024-01-15 10:15:00",
-        level: "warning",
-        content: "检测到格式不兼容的行，已跳过3条记录",
+        id: 'a1',
+        time: '2024-01-15 10:15:00',
+        level: 'warning',
+        content: '检测到格式不兼容的行，已跳过3条记录',
       },
       {
-        id: "a2",
-        time: "2024-01-15 11:20:00",
-        level: "error",
-        content: "文件损坏：合同模板.pdf 无法解析",
-        processed: true,
-        processType: "skipped" as const,
+        id: 'a2',
+        time: '2024-01-15 11:20:00',
+        level: 'error',
+        content: '文件损坏：合同模板.pdf 无法解析',
       },
     ],
   },
   {
-    id: "3",
-    name: "Oracle关系数据同步",
-    source: "Oracle企业库",
-    type: "database",
-    status: "error",
+    id: '3',
+    name: 'Oracle关系数据同步',
+    source: 'Oracle企业库',
+    type: 'database',
+    status: 'error',
     progress: 30,
-    startTime: "2024-01-15 13:00:00",
+    startTime: '2024-01-15 13:00:00',
     recordsTotal: 50000,
     recordsProcessed: 15000,
     recordsSuccess: 14950,
     recordsError: 50,
     dataSent: 3200000,
     dataReceived: 4800000,
-    error: "连接超时：远程服务器无响应",
+    error: '连接超时：远程服务器无响应',
     alerts: [
       {
-        id: "a3",
-        time: "2024-01-15 13:05:00",
-        level: "warning",
-        content: "网络延迟过高 (>2000ms)",
+        id: 'a3',
+        time: '2024-01-15 13:05:00',
+        level: 'warning',
+        content: '网络延迟过高 (>2000ms)',
       },
       {
-        id: "a4",
-        time: "2024-01-15 13:30:00",
-        level: "error",
-        content: "连接超时：远程服务器无响应",
-        processed: true,
-        processType: "skipped" as const,
+        id: 'a4',
+        time: '2024-01-15 13:30:00',
+        level: 'error',
+        content: '连接超时：远程服务器无响应',
       },
     ],
   },
 ];
 
 const knowledgeBaseOptions = [
-  { label: "财务知识库", value: "财务知识库" },
-  { label: "技术知识库", value: "技术知识库" },
-  { label: "法律知识库", value: "法律知识库" },
-  { label: "人力资源库", value: "人力资源库" },
-  { label: "产品知识库", value: "产品知识库" },
-  { label: "市场营销库", value: "市场营销库" },
+  { label: '财务知识库', value: '财务知识库' },
+  { label: '技术知识库', value: '技术知识库' },
+  { label: '法律知识库', value: '法律知识库' },
+  { label: '人力资源库', value: '人力资源库' },
+  { label: '产品知识库', value: '产品知识库' },
+  { label: '市场营销库', value: '市场营销库' },
 ];
 
 const catalogOptions = [
-  { label: "财务报表", value: "财务报表" },
-  { label: "技术文档", value: "技术文档" },
-  { label: "合同文档", value: "合同文档" },
-  { label: "人事档案", value: "人事档案" },
-  { label: "产品资料", value: "产品资料" },
-  { label: "市场分析", value: "市场分析" },
+  { label: '财务报表', value: '财务报表' },
+  { label: '技术文档', value: '技术文档' },
+  { label: '合同文档', value: '合同文档' },
+  { label: '人事档案', value: '人事档案' },
+  { label: '产品资料', value: '产品资料' },
+  { label: '市场分析', value: '市场分析' },
 ];
 
 export default function MonitorPage() {
-  const [activeTab, setActiveTab] = useState<string>("monitor");
+  const [activeTab, setActiveTab] = useState<string>('monitor');
   const [activeAlertKey, setActiveAlertKey] = useState<string[]>(
     initialImportJobs.length > 0 ? [initialImportJobs[0].id] : [],
   );
-  const [dataSources, setDataSources] =
-    useState<DataSource[]>(initialDataSources);
-  const [documentFiles, setDocumentFiles] =
-    useState<DocumentFile[]>(sampleDocumentFiles);
+  const [dataSources, setDataSources] = useState<DataSource[]>(initialDataSources);
+  const [documentFiles, setDocumentFiles] = useState<DocumentFile[]>(sampleDocumentFiles);
   const [importJobs, setImportJobs] = useState<ImportJob[]>(initialImportJobs);
-  const [docImportTasks, setDocImportTasks] = useState<DocImportTask[]>(
-    initialDocImportTasks,
-  );
+  const [docImportTasks, setDocImportTasks] = useState<DocImportTask[]>(initialDocImportTasks);
 
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [docFolderModalVisible, setDocFolderModalVisible] = useState(false);
   const [docTaskModalVisible, setDocTaskModalVisible] = useState(false);
   const [editRecord, setEditRecord] = useState<DataSource | null>(null);
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState('');
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
-  const [selectedFolder, setSelectedFolder] = useState("");
+  const [selectedFolder, setSelectedFolder] = useState('');
   const [docTypeFilter, setDocTypeFilter] = useState<string | null>(null);
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | null>(null);
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
-  const [tableDetailSearch, setTableDetailSearch] = useState("");
-  const [catalogSearch, setCatalogSearch] = useState("");
-  const [objectSearch, setObjectSearch] = useState("");
-  const [objectKindFilter, setObjectKindFilter] = useState<string>("all");
-  const [detailTab, setDetailTab] = useState("fields");
+  const [tableDetailSearch, setTableDetailSearch] = useState('');
+  const [catalogSearch, setCatalogSearch] = useState('');
+  const [objectSearch, setObjectSearch] = useState('');
+  const [objectKindFilter, setObjectKindFilter] = useState<string>('all');
+  const [detailTab, setDetailTab] = useState('fields');
 
   const [form] = Form.useForm();
   const [docForm] = Form.useForm();
@@ -1661,24 +2322,12 @@ export default function MonitorPage() {
   const [selectedSource, setSelectedSource] = useState<DataSource | null>(null);
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false);
   const [syncDrawerVisible, setSyncDrawerVisible] = useState(false);
-  const [syncPolicies, setSyncPolicies] =
-    useState<Record<string, SyncPolicy>>(initialSyncPolicies);
-
-  const [processAlertModalVisible, setProcessAlertModalVisible] =
-    useState(false);
-  const [currentProcessAlert, setCurrentProcessAlert] =
-    useState<ImportAlert | null>(null);
-  const [currentProcessJobId, setCurrentProcessJobId] = useState<string>("");
-
-  const [editAlertModalVisible, setEditAlertModalVisible] = useState(false);
-  const [editAlertContent, setEditAlertContent] = useState("");
+  const [syncPolicies, setSyncPolicies] = useState<Record<string, SyncPolicy>>(initialSyncPolicies);
 
   const [statsUpdated, setStatsUpdated] = useState(0);
-  const [currentTime, setCurrentTime] = useState("");
+  const [currentTime, setCurrentTime] = useState('');
 
-  const [selectedDocTask, setSelectedDocTask] = useState<DocImportTask | null>(
-    null,
-  );
+  const [selectedDocTask, setSelectedDocTask] = useState<DocImportTask | null>(null);
   const [taskDetailDrawerVisible, setTaskDetailDrawerVisible] = useState(false);
   const graphPreviewRef = useRef<EntityRelationGraphRef>(null);
   const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -1693,11 +2342,11 @@ export default function MonitorPage() {
     if (!selectedSource) {
       setSelectedCatalogId(null);
       setSelectedObjectId(null);
-      setTableDetailSearch("");
-      setCatalogSearch("");
-      setObjectSearch("");
-      setObjectKindFilter("all");
-      setDetailTab("fields");
+      setTableDetailSearch('');
+      setCatalogSearch('');
+      setObjectSearch('');
+      setObjectKindFilter('all');
+      setDetailTab('fields');
       return;
     }
 
@@ -1707,20 +2356,19 @@ export default function MonitorPage() {
 
     setSelectedCatalogId(firstCatalog?.id || null);
     setSelectedObjectId(firstObject?.id || null);
-    setTableDetailSearch("");
-    setCatalogSearch("");
-    setObjectSearch("");
-    setObjectKindFilter("all");
-    setDetailTab(firstObject?.graph ? "graph" : "fields");
+    setTableDetailSearch('');
+    setCatalogSearch('');
+    setObjectSearch('');
+    setObjectKindFilter('all');
+    setDetailTab(firstObject?.graph ? 'graph' : 'fields');
   }, [selectedSource]);
-
 
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
   const handleFullscreenToggle = () => {
@@ -1740,73 +2388,65 @@ export default function MonitorPage() {
   }, [currentTime]);
 
   useEffect(() => {
-    if (activeTab === "monitor") {
+    if (activeTab === 'monitor') {
       intervalRef.current = setInterval(() => {
         setStatsUpdated((prev) => prev + 1);
         setCurrentTime(new Date().toLocaleTimeString());
 
         setImportJobs((prev) =>
           prev.map((job) => {
-            if (job.status === "running") {
+            if (job.status === 'running') {
               const processed = Math.min(
                 job.recordsProcessed + Math.floor(Math.random() * 100),
                 job.recordsTotal,
               );
-              const success = Math.floor(
-                processed * (0.98 + Math.random() * 0.02),
-              );
+              const success = Math.floor(processed * (0.98 + Math.random() * 0.02));
               const randomAlertChance = Math.random();
 
               const newAlerts = [...job.alerts];
               if (randomAlertChance < 0.15) {
                 const alertMessages = [
                   {
-                    level: "info",
-                    content: `正在处理第 ${processed} 条记录`,
+                    level: 'info',
+                    content: `正在同步第 ${processed} 条记录`,
                   },
                   {
-                    level: "info",
+                    level: 'info',
                     content: `数据传输速率: ${Math.floor(Math.random() * 2000 + 1000)} 条/秒`,
                   },
                   {
-                    level: "warning",
+                    level: 'warning',
                     content: `检测到重复数据，已自动去重 ${Math.floor(Math.random() * 10) + 1} 条`,
                   },
                   {
-                    level: "warning",
+                    level: 'warning',
                     content: `网络延迟: ${Math.floor(Math.random() * 500 + 100)}ms，传输速度略有下降`,
                   },
                   {
-                    level: "error",
+                    level: 'error',
                     content: `字段格式异常：第 ${Math.floor(Math.random() * processed)} 条记录的日期字段无法解析`,
                   },
                   {
-                    level: "info",
+                    level: 'info',
                     content: `已完成 ${((processed / job.recordsTotal) * 100).toFixed(1)}% 数据同步`,
                   },
                   {
-                    level: "warning",
+                    level: 'warning',
                     content: `内存使用率较高: ${(75 + Math.random() * 20).toFixed(1)}%`,
                   },
                 ];
                 const randomMessage =
-                  alertMessages[
-                    Math.floor(Math.random() * alertMessages.length)
-                  ];
+                  alertMessages[Math.floor(Math.random() * alertMessages.length)];
                 newAlerts.unshift({
                   id: `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                   time: new Date().toLocaleString(),
-                  level: randomMessage.level as "info" | "warning" | "error",
+                  level: randomMessage.level as 'info' | 'warning' | 'error',
                   content: randomMessage.content,
                 });
                 if (newAlerts.length > 10) {
                   newAlerts.pop();
                 }
               }
-
-              const hasUnprocessedError = newAlerts.some(
-                (a) => a.level === "error" && !a.processed,
-              );
 
               return {
                 ...job,
@@ -1815,10 +2455,9 @@ export default function MonitorPage() {
                 recordsError: processed - success,
                 progress: Math.round((processed / job.recordsTotal) * 100),
                 dataSent: job.dataSent + Math.floor(Math.random() * 50000),
-                dataReceived:
-                  job.dataReceived + Math.floor(Math.random() * 100000),
+                dataReceived: job.dataReceived + Math.floor(Math.random() * 100000),
                 alerts: newAlerts,
-                status: hasUnprocessedError ? "paused" : "running",
+                status: 'running',
               };
             }
             return job;
@@ -1901,10 +2540,7 @@ export default function MonitorPage() {
 
   const filteredDataSources = dataSources.filter((item) => {
     if (typeFilter && item.type !== typeFilter) return false;
-    if (
-      searchText &&
-      !item.name.toLowerCase().includes(searchText.toLowerCase())
-    ) {
+    if (searchText && !item.name.toLowerCase().includes(searchText.toLowerCase())) {
       return false;
     }
     return true;
@@ -1912,10 +2548,7 @@ export default function MonitorPage() {
 
   const filteredDocTasks = docImportTasks.filter((item) => {
     if (typeFilter && item.status !== typeFilter) return false;
-    if (
-      searchText &&
-      !item.name.toLowerCase().includes(searchText.toLowerCase())
-    ) {
+    if (searchText && !item.name.toLowerCase().includes(searchText.toLowerCase())) {
       return false;
     }
     return true;
@@ -1923,22 +2556,13 @@ export default function MonitorPage() {
 
   const filteredDocuments = documentFiles.filter((item) => {
     if (docTypeFilter && item.type !== docTypeFilter) return false;
-    if (
-      searchText &&
-      !item.name.toLowerCase().includes(searchText.toLowerCase())
-    ) {
+    if (searchText && !item.name.toLowerCase().includes(searchText.toLowerCase())) {
       return false;
     }
     return true;
   });
 
   const alertCount = importJobs.reduce((sum, j) => sum + j.alerts.length, 0);
-
-  const pendingErrorCount = importJobs.reduce(
-    (sum, j) =>
-      sum + j.alerts.filter((a) => a.level === "error" && !a.processed).length,
-    0,
-  );
 
   const handleAddDataSource = () => {
     setEditRecord(null);
@@ -1954,7 +2578,7 @@ export default function MonitorPage() {
 
   const handleDeleteDataSource = (id: string) => {
     setDataSources(dataSources.filter((item) => item.id !== id));
-    message.success("删除成功");
+    message.success('删除成功');
   };
 
   const handleSelectSource = (record: DataSource) => {
@@ -1969,10 +2593,7 @@ export default function MonitorPage() {
 
   const handleRunSync = (record: DataSource, policy: SyncPolicy) => {
     setLoading(true);
-    message.loading(
-      `正在执行${syncModeConfig[policy.mode].label}: ${record.name}...`,
-      2,
-    );
+    message.loading(`正在执行${syncModeConfig[policy.mode].label}: ${record.name}...`, 2);
     setTimeout(() => {
       setDataSources(
         dataSources.map((item) =>
@@ -1982,23 +2603,23 @@ export default function MonitorPage() {
                 lastSync: new Date().toLocaleString(),
                 recordCount:
                   item.recordCount +
-                  (policy.mode === "full"
+                  (policy.mode === 'full'
                     ? Math.floor(Math.random() * 5000)
                     : Math.floor(Math.random() * 1200)),
                 syncMode: policy.mode,
                 syncFrequency:
-                  policy.frequency === "manual"
-                    ? "手动触发"
-                    : policy.frequency === "hourly"
-                      ? "每小时"
-                      : "每天 02:00",
+                  policy.frequency === 'manual'
+                    ? '手动触发'
+                    : policy.frequency === 'hourly'
+                      ? '每小时'
+                      : '每天 02:00',
                 exceptionPolicy: policy.exceptionPolicy,
               }
             : item,
         ),
       );
       setLoading(false);
-      message.success("同步成功");
+      message.success('同步成功');
     }, 2000);
   };
 
@@ -2018,11 +2639,11 @@ export default function MonitorPage() {
                 ...item,
                 syncMode: nextPolicy.mode,
                 syncFrequency:
-                  nextPolicy.frequency === "manual"
-                    ? "手动触发"
-                    : nextPolicy.frequency === "hourly"
-                      ? "每小时"
-                      : "每天 02:00",
+                  nextPolicy.frequency === 'manual'
+                    ? '手动触发'
+                    : nextPolicy.frequency === 'hourly'
+                      ? '每小时'
+                      : '每天 02:00',
                 exceptionPolicy: nextPolicy.exceptionPolicy,
               }
             : item,
@@ -2031,7 +2652,7 @@ export default function MonitorPage() {
       setSyncDrawerVisible(false);
       handleRunSync(selectedSource, nextPolicy);
     } catch (error) {
-      console.error("Sync validation failed:", error);
+      console.error('Sync validation failed:', error);
     }
   };
 
@@ -2046,63 +2667,63 @@ export default function MonitorPage() {
                   ...item,
                   ...values,
                   category: typeConfig[values.type].category,
-                  isGraph: typeConfig[values.type].category === "graph",
+                  isGraph: typeConfig[values.type].category === 'graph',
                 }
               : item,
           ),
         );
-        message.success("更新成功");
+        message.success('更新成功');
       } else {
         const category = typeConfig[values.type].category;
         const newSource: DataSource = {
           ...values,
           id: Date.now().toString(),
-          status: "connected",
+          status: 'connected',
           lastSync: new Date().toLocaleString(),
           recordCount: 0,
-          isGraph: category === "graph",
+          isGraph: category === 'graph',
           category,
           env: values.env,
           latency: Math.floor(Math.random() * 40) + 8,
           owner: values.owner,
-          syncMode: "full",
-          syncFrequency: "手动触发",
-          exceptionPolicy: "retry",
+          syncMode: 'full',
+          syncFrequency: '手动触发',
+          exceptionPolicy: 'retry',
           description: values.description,
         };
         setDataSources([newSource, ...dataSources]);
         setSyncPolicies((prev) => ({
           ...prev,
           [newSource.id]: {
-            mode: "full",
-            frequency: "manual",
+            mode: 'full',
+            frequency: 'manual',
             batchSize: 5000,
-            exceptionPolicy: "retry",
+            exceptionPolicy: 'retry',
             maxRetries: 3,
             notify: true,
           },
         }));
-        message.success("添加成功");
+        message.success('添加成功');
       }
       setModalVisible(false);
       form.resetFields();
     } catch (error) {
-      console.error("Validation failed:", error);
+      console.error('Validation failed:', error);
     }
   };
 
   const handleTestConnection = () => {
-    message.loading("正在测试连接...", 1.5);
+    message.loading('正在测试连接...', 1.5);
     setTimeout(() => {
-      message.success("连接测试成功!");
+      message.success('连接测试成功!');
     }, 1500);
   };
 
   const handleScanFolder = async () => {
     try {
-      const folderPath = docForm.getFieldValue("folderPath");
+      const folderPath = docForm.getFieldValue('folderPath');
       if (!folderPath) {
-        message.warning("请输入文件夹路径");
+        message.warning('请输入文件夹路径');
         return;
       }
       setSelectedFolder(folderPath);
@@ -2110,68 +2731,68 @@ export default function MonitorPage() {
 
       const mockFiles: DocumentFile[] = [
         {
-          id: "d1",
-          name: "年度报告2023.docx",
+          id: 'd1',
+          name: '年度报告2023.docx',
           path: `${folderPath}\\年度报告2023.docx`,
-          type: "docx",
+          type: 'docx',
           size: 512000,
-          status: "pending",
+          status: 'pending',
         },
         {
-          id: "d2",
-          name: "财务数据表.xlsx",
+          id: 'd2',
+          name: '财务数据表.xlsx',
           path: `${folderPath}\\财务数据表.xlsx`,
-          type: "xlsx",
+          type: 'xlsx',
           size: 768000,
-          status: "pending",
+          status: 'pending',
         },
         {
-          id: "d3",
-          name: "技术方案.md",
+          id: 'd3',
+          name: '技术方案.md',
           path: `${folderPath}\\技术方案.md`,
-          type: "md",
+          type: 'md',
           size: 45056,
-          status: "pending",
+          status: 'pending',
         },
         {
-          id: "d4",
-          name: "会议纪要.txt",
+          id: 'd4',
+          name: '会议纪要.txt',
           path: `${folderPath}\\会议纪要.txt`,
-          type: "txt",
+          type: 'txt',
           size: 8192,
-          status: "pending",
+          status: 'pending',
         },
         {
-          id: "d5",
-          name: "产品手册.pdf",
+          id: 'd5',
+          name: '产品手册.pdf',
           path: `${folderPath}\\产品手册.pdf`,
-          type: "pdf",
+          type: 'pdf',
           size: 2097152,
-          status: "pending",
+          status: 'pending',
         },
         {
-          id: "d6",
-          name: "官网首页.html",
+          id: 'd6',
+          name: '官网首页.html',
           path: `${folderPath}\\官网首页.html`,
-          type: "html",
+          type: 'html',
           size: 32768,
-          status: "pending",
+          status: 'pending',
         },
         {
-          id: "d7",
-          name: "客户往来.eml",
+          id: 'd7',
+          name: '客户往来.eml',
           path: `${folderPath}\\客户往来.eml`,
-          type: "eml",
+          type: 'eml',
           size: 12288,
-          status: "pending",
+          status: 'pending',
         },
         {
-          id: "d8",
-          name: "项目路演.pptx",
+          id: 'd8',
+          name: '项目路演.pptx',
           path: `${folderPath}\\项目路演.pptx`,
-          type: "pptx",
+          type: 'pptx',
           size: 1572864,
-          status: "pending",
+          status: 'pending',
         },
       ];
 
@@ -2183,14 +2804,14 @@ export default function MonitorPage() {
       }, 1500);
     } catch (error) {
       setLoading(false);
-      message.error("扫描文件夹失败");
+      message.error('扫描文件夹失败');
     }
   };
 
   const handleImportDocument = (file: DocumentFile) => {
     setDocumentFiles(
       documentFiles.map((item) =>
-        item.id === file.id ? { ...item, status: "importing" as const } : item,
+        item.id === file.id ? { ...item, status: 'importing' as const } : item,
       ),
     );
 
@@ -2203,10 +2824,10 @@ export default function MonitorPage() {
           item.id === file.id
             ? {
                 ...item,
-                status: success ? ("completed" as const) : ("error" as const),
+                status: success ? ('completed' as const) : ('error' as const),
                 importTime: new Date().toLocaleString(),
                 recordCount: Math.floor(Math.random() * 1000) + 100,
-                error: success ? undefined : "文件编码不支持",
+                error: success ? undefined : '文件编码不支持',
               }
             : item,
         ),
@@ -2220,16 +2841,16 @@ export default function MonitorPage() {
   };
 
   const handleImportAllDocuments = () => {
-    const pendingDocs = documentFiles.filter((d) => d.status === "pending");
+    const pendingDocs = documentFiles.filter((d) => d.status === 'pending');
     if (pendingDocs.length === 0) {
-      message.info("没有待导入的文件");
+      message.info('没有待导入的文件');
       return;
     }
 
     let index = 0;
     const importNext = () => {
       if (index >= pendingDocs.length) {
-        message.success("批量导入完成");
+        message.success('批量导入完成');
         return;
       }
 
@@ -2243,47 +2864,9 @@ export default function MonitorPage() {
     setTimeout(importNext, 1500);
   };
 
-  const handleProcessAlert = (alert: ImportAlert, jobId: string) => {
-    setCurrentProcessAlert(alert);
-    setCurrentProcessJobId(jobId);
-    setProcessAlertModalVisible(true);
-  };
-
-  const handleConfirmProcess = (processType: "skipped" | "edited") => {
-    if (!currentProcessAlert || !currentProcessJobId) return;
-
-    setImportJobs((prev) =>
-      prev.map((job) => {
-        if (job.id === currentProcessJobId) {
-          return {
-            ...job,
-            status: "running" as const,
-            alerts: job.alerts.map((alert) =>
-              alert.id === currentProcessAlert.id
-                ? { ...alert, processed: true, processType }
-                : alert,
-            ),
-          };
-        }
-        return job;
-      }),
-    );
-
-    setProcessAlertModalVisible(false);
-    setCurrentProcessAlert(null);
-    setCurrentProcessJobId("");
-
-    if (processType === "skipped") {
-      message.success("已跳过错误记录，任务继续执行");
-    } else if (processType === "edited") {
-      setEditAlertContent("");
-      setEditAlertModalVisible(true);
-    }
-  };
-
   const handleDeleteDocument = (id: string) => {
     setDocumentFiles(documentFiles.filter((item) => item.id !== id));
-    message.success("删除成功");
+    message.success('删除成功');
   };
 
   const handleSelectFolder = () => {
@@ -2298,67 +2881,67 @@ export default function MonitorPage() {
       const mockFiles: DocFileInTask[] = [
         {
           id: `file_${Date.now()}_1`,
-          name: "年度报告2023.docx",
+          name: '年度报告2023.docx',
           path: `${values.readPath}/年度报告2023.docx`,
-          type: "docx",
+          type: 'docx',
           size: 512000,
-          status: "pending",
+          status: 'pending',
         },
         {
           id: `file_${Date.now()}_2`,
-          name: "财务数据表.xlsx",
+          name: '财务数据表.xlsx',
           path: `${values.readPath}/财务数据表.xlsx`,
-          type: "xlsx",
+          type: 'xlsx',
           size: 768000,
-          status: "pending",
+          status: 'pending',
         },
         {
           id: `file_${Date.now()}_3`,
-          name: "技术方案.md",
+          name: '技术方案.md',
           path: `${values.readPath}/技术方案.md`,
-          type: "md",
+          type: 'md',
           size: 45056,
-          status: "pending",
+          status: 'pending',
         },
         {
           id: `file_${Date.now()}_4`,
-          name: "会议纪要.txt",
+          name: '会议纪要.txt',
           path: `${values.readPath}/会议纪要.txt`,
-          type: "txt",
+          type: 'txt',
           size: 8192,
-          status: "pending",
+          status: 'pending',
         },
         {
           id: `file_${Date.now()}_5`,
-          name: "产品手册.pdf",
+          name: '产品手册.pdf',
           path: `${values.readPath}/产品手册.pdf`,
-          type: "pdf",
+          type: 'pdf',
           size: 2097152,
-          status: "pending",
+          status: 'pending',
         },
         {
           id: `file_${Date.now()}_6`,
-          name: "官网首页.html",
+          name: '官网首页.html',
           path: `${values.readPath}/官网首页.html`,
-          type: "html",
+          type: 'html',
           size: 32768,
-          status: "pending",
+          status: 'pending',
         },
         {
           id: `file_${Date.now()}_7`,
-          name: "客户往来.eml",
+          name: '客户往来.eml',
           path: `${values.readPath}/客户往来.eml`,
-          type: "eml",
+          type: 'eml',
           size: 12288,
-          status: "pending",
+          status: 'pending',
         },
         {
           id: `file_${Date.now()}_8`,
-          name: "项目路演.pptx",
+          name: '项目路演.pptx',
           path: `${values.readPath}/项目路演.pptx`,
-          type: "pptx",
+          type: 'pptx',
           size: 1572864,
-          status: "pending",
+          status: 'pending',
         },
       ];
 
@@ -2373,7 +2956,7 @@ export default function MonitorPage() {
         backupPath: values.backupPath,
         targetKnowledgeBase: values.targetKnowledgeBase,
         targetCatalog: values.targetCatalog,
-        status: "pending",
+        status: 'pending',
         progress: 0,
         totalFiles: mockFiles.length,
         importedFiles: 0,
@@ -2400,7 +2983,7 @@ export default function MonitorPage() {
   const handleStartDocTask = (task: DocImportTask) => {
     setDocImportTasks(
       docImportTasks.map((item) =>
-        item.id === task.id ? { ...item, status: "running" as const } : item,
+        item.id === task.id ? { ...item, status: 'running' as const } : item,
       ),
     );
     message.success(`任务 "${task.name}" 已启动`);
@@ -2412,7 +2995,7 @@ export default function MonitorPage() {
         item.id === task.id
           ? {
               ...item,
-              status: "pending" as const,
+              status: 'pending' as const,
               progress: 0,
               importedFiles: 0,
               successFiles: 0,
@@ -2423,7 +3006,7 @@ export default function MonitorPage() {
               files:
                 item.files?.map((f) => ({
                   ...f,
-                  status: "pending" as const,
+                  status: 'pending' as const,
                 })) || [],
             }
           : item,
@@ -2432,7 +3015,7 @@ export default function MonitorPage() {
     setTimeout(() => {
       setDocImportTasks(
         docImportTasks.map((item) =>
-          item.id === task.id ? { ...item, status: "running" as const } : item,
+          item.id === task.id ? { ...item, status: 'running' as const } : item,
         ),
       );
       message.success(`任务 "${task.name}" 已重新开始执行`);
@@ -2442,7 +3025,7 @@ export default function MonitorPage() {
   const handlePauseDocTask = (task: DocImportTask) => {
     setDocImportTasks(
       docImportTasks.map((item) =>
-        item.id === task.id ? { ...item, status: "paused" as const } : item,
+        item.id === task.id ? { ...item, status: 'paused' as const } : item,
       ),
     );
     message.success(`任务 "${task.name}" 已暂停`);
@@ -2450,7 +3033,7 @@ export default function MonitorPage() {
 
   const handleDeleteDocTask = (taskId: string) => {
     setDocImportTasks(docImportTasks.filter((item) => item.id !== taskId));
-    message.success("任务已删除");
+    message.success('任务已删除');
   };
 
   const handleViewDocTaskDetail = (task: DocImportTask) => {
@@ -2464,22 +3047,22 @@ export default function MonitorPage() {
         item.id === job.id
           ? {
               ...item,
-              status: "running" as const,
+              status: 'running' as const,
               startTime: new Date().toLocaleString(),
             }
           : item,
       ),
     );
-    message.success("导入任务已启动");
+    message.success('导入任务已启动');
   };
 
   const handlePauseImportJob = (job: ImportJob) => {
     setImportJobs(
       importJobs.map((item) =>
-        item.id === job.id ? { ...item, status: "paused" as const } : item,
+        item.id === job.id ? { ...item, status: 'paused' as const } : item,
       ),
     );
-    message.success("导入任务已暂停");
+    message.success('导入任务已暂停');
   };
 
   const handleStopImportJob = (job: ImportJob) => {
@@ -2488,14 +3071,14 @@ export default function MonitorPage() {
         item.id === job.id
           ? {
               ...item,
-              status: "error" as const,
+              status: 'error' as const,
               endTime: new Date().toLocaleString(),
-              error: "用户手动停止",
+              error: '用户手动停止',
             }
           : item,
       ),
     );
-    message.warning("导入任务已停止");
+    message.warning('导入任务已停止');
   };
 
   const handleRestartImportJob = (job: ImportJob) => {
@@ -2504,7 +3087,7 @@ export default function MonitorPage() {
         item.id === job.id
           ? {
               ...item,
-              status: "running" as const,
+              status: 'running' as const,
               progress: 0,
               recordsProcessed: 0,
               recordsSuccess: 0,
@@ -2519,16 +3102,16 @@ export default function MonitorPage() {
           : item,
       ),
     );
-    message.success("导入任务已重启");
+    message.success('导入任务已重启');
   };
 
   const handleCreateNewJob = () => {
     const newJob: ImportJob = {
       id: Date.now().toString(),
-      name: "新导入任务",
-      source: "生产MySQL数据库",
-      type: "database",
-      status: "waiting",
+      name: '新导入任务',
+      source: '生产MySQL数据库',
+      type: 'database',
+      status: 'waiting',
       progress: 0,
       startTime: new Date().toLocaleString(),
       recordsTotal: 10000,
@@ -2540,19 +3123,13 @@ export default function MonitorPage() {
       alerts: [],
     };
     setImportJobs([newJob, ...importJobs]);
-    message.success("新导入任务已创建");
+    message.success('新导入任务已创建');
   };
 
-  const selectedPreview = selectedSource
-    ? structuredPreviewMap[selectedSource.id]
-    : undefined;
-  const selectedCatalogs = selectedSource
-    ? databaseCatalogMap[selectedSource.id] || []
-    : [];
+  const selectedPreview = selectedSource ? structuredPreviewMap[selectedSource.id] : undefined;
+  const selectedCatalogs = selectedSource ? databaseCatalogMap[selectedSource.id] || [] : [];
   const selectedCatalog =
-    selectedCatalogs.find((item) => item.id === selectedCatalogId) ||
-    selectedCatalogs[0] ||
-    null;
+    selectedCatalogs.find((item) => item.id === selectedCatalogId) || selectedCatalogs[0] || null;
   const selectedDatabaseObject =
     selectedCatalog?.tables.find((item) => item.id === selectedObjectId) ||
     selectedCatalog?.tables[0] ||
@@ -2561,7 +3138,7 @@ export default function MonitorPage() {
     !catalogSearch.trim()
       ? true
       : [catalog.name, catalog.engine, catalog.description, catalog.owner]
-          .join(" ")
+          .join(' ')
           .toLowerCase()
           .includes(catalogSearch.trim().toLowerCase()),
   );
@@ -2571,11 +3148,11 @@ export default function MonitorPage() {
     (!catalogSearch.trim() ? selectedCatalog : null) ||
     null;
   const filteredDatabaseObjects = (visibleCatalog?.tables || []).filter((item) => {
-    const matchesKind = objectKindFilter === "all" ? true : item.kind === objectKindFilter;
+    const matchesKind = objectKindFilter === 'all' ? true : item.kind === objectKindFilter;
     const matchesSearch = !objectSearch.trim()
       ? true
       : [item.name, item.kind, item.description, item.updatedAt]
-          .join(" ")
+          .join(' ')
           .toLowerCase()
           .includes(objectSearch.trim().toLowerCase());
     return matchesKind && matchesSearch;
@@ -2583,10 +3160,9 @@ export default function MonitorPage() {
   const visibleDatabaseObject =
     filteredDatabaseObjects.find((item) => item.id === selectedDatabaseObject?.id) ||
     filteredDatabaseObjects[0] ||
-    (!objectSearch.trim() && objectKindFilter === "all" ? selectedDatabaseObject : null) ||
+    (!objectSearch.trim() && objectKindFilter === 'all' ? selectedDatabaseObject : null) ||
     null;
-  const isGraphPreview =
-    selectedSource?.category === "graph" && Boolean(selectedPreview?.graph);
+  const isGraphPreview = selectedSource?.category === 'graph' && Boolean(selectedPreview?.graph);
   const expandedGraphPreview =
     isGraphPreview && selectedPreview?.graph
       ? expandGraphPreview(selectedPreview.graph)
@@ -2597,18 +3173,18 @@ export default function MonitorPage() {
       : undefined;
   useEffect(() => {
     if (!visibleDatabaseObject) {
-      setDetailTab("fields");
+      setDetailTab('fields');
       return;
     }
-    setDetailTab(visibleDatabaseObject.graph ? "graph" : "fields");
+    setDetailTab(visibleDatabaseObject.graph ? 'graph' : 'fields');
   }, [visibleDatabaseObject]);
 
-  const selectedObjectGraph =
-    visibleDatabaseObject?.graph
-      ? expandGraphPreview(visibleDatabaseObject.graph)
-      : undefined;
-  const selectedObjectEntityGraph =
-    selectedObjectGraph ? toEntityPreviewGraph(selectedObjectGraph) : undefined;
+  const selectedObjectGraph = visibleDatabaseObject?.graph
+    ? expandGraphPreview(visibleDatabaseObject.graph)
+    : undefined;
+  const selectedObjectEntityGraph = selectedObjectGraph
+    ? toEntityPreviewGraph(selectedObjectGraph)
+    : undefined;
   const normalizedTableDetailSearch = tableDetailSearch.trim().toLowerCase();
   const filteredObjectFields = visibleDatabaseObject
     ? visibleDatabaseObject.fields.filter((field) => {
@@ -2618,10 +3194,10 @@ export default function MonitorPage() {
           field.type,
           field.description,
           field.sample,
-          field.keyRole || "",
-          field.indexName || "",
+          field.keyRole || '',
+          field.indexName || '',
         ]
-          .join(" ")
+          .join(' ')
           .toLowerCase()
           .includes(normalizedTableDetailSearch);
       })
@@ -2630,7 +3206,7 @@ export default function MonitorPage() {
     ? visibleDatabaseObject.indexes.filter((index) => {
         if (!normalizedTableDetailSearch) return true;
         return [index.name, index.type, ...index.fields]
-          .join(" ")
+          .join(' ')
           .toLowerCase()
           .includes(normalizedTableDetailSearch);
       })
@@ -2638,29 +3214,23 @@ export default function MonitorPage() {
   const filteredObjectSampleRows = visibleDatabaseObject
     ? visibleDatabaseObject.sampleRows.filter((row) => {
         if (!normalizedTableDetailSearch) return true;
-        return Object.values(row)
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedTableDetailSearch);
+        return Object.values(row).join(' ').toLowerCase().includes(normalizedTableDetailSearch);
       })
     : [];
 
-  const renderPreviewValue = (
-    column: StructuredPreviewColumn,
-    value: string | number,
-  ) => {
-    if (column.renderType === "tag") {
+  const renderPreviewValue = (column: StructuredPreviewColumn, value: string | number) => {
+    if (column.renderType === 'tag') {
       return <Tag color="blue">{String(value)}</Tag>;
     }
-    if (column.renderType === "json") {
+    if (column.renderType === 'json') {
       return (
         <code
           style={{
             fontSize: 12,
-            padding: "2px 8px",
+            padding: '2px 8px',
             borderRadius: 8,
-            background: "rgba(15,23,42,0.06)",
-            color: "#334155",
+            background: 'rgba(15,23,42,0.06)',
+            color: '#334155',
           }}
         >
           {String(value)}
@@ -2690,15 +3260,17 @@ export default function MonitorPage() {
     }
 
     return (
-      <div style={{ display: "grid", gridTemplateColumns: inDrawer ? "280px minmax(0, 1fr)" : "260px minmax(0, 1fr)", gap: 16, minHeight: 0 }}>
-        <Card
-          size="small"
-          title="资源浏览"
-          style={{ borderRadius: 16, minHeight: 0 }}
-          bodyStyle={{ padding: 12, display: "flex", flexDirection: "column", gap: 12, height: "100%" }}
-        >
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: inDrawer ? '280px minmax(0, 1fr)' : '260px minmax(0, 1fr)',
+          gap: 16,
+          minHeight: 0,
+        }}
+      >
+        <Card size="small" title="资源浏览" style={{ borderRadius: 16, minHeight: 0 }}>
           <div>
-            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>数据库</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>数据库</div>
             <Search
               allowClear
               placeholder="搜索数据库名/引擎/团队"
@@ -2706,7 +3278,16 @@ export default function MonitorPage() {
               onChange={(event) => setCatalogSearch(event.target.value)}
             />
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: inDrawer ? 240 : 220, overflowY: "auto", paddingRight: 2 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              maxHeight: inDrawer ? 240 : 220,
+              overflowY: 'auto',
+              paddingRight: 2,
+            }}
+          >
             {filteredCatalogs.map((catalog) => {
               const active = catalog.id === visibleCatalog?.id;
               return (
@@ -2715,52 +3296,74 @@ export default function MonitorPage() {
                   onClick={() => {
                     setSelectedCatalogId(catalog.id);
                     setSelectedObjectId(catalog.tables[0]?.id || null);
-                    setTableDetailSearch("");
+                    setTableDetailSearch('');
                   }}
                   style={{
-                    cursor: "pointer",
+                    cursor: 'pointer',
                     padding: 12,
                     borderRadius: 14,
-                    border: `1px solid ${active ? "#2563eb" : "#dbe7f3"}`,
-                    background: active ? "rgba(37,99,235,0.08)" : "#fff",
+                    border: `1px solid ${active ? '#2563eb' : '#dbe7f3'}`,
+                    background: active ? 'rgba(37,99,235,0.08)' : '#fff',
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#0f172a" }}>{catalog.name}</div>
-                    <Tag color={active ? "blue" : "default"}>{catalog.tables.length}</Tag>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+                      {catalog.name}
+                    </div>
+                    <Tag color={active ? 'blue' : 'default'}>{catalog.tables.length}</Tag>
                   </div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>{catalog.description}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+                    {catalog.description}
+                  </div>
                   <Tag color="default">{catalog.engine}</Tag>
                 </div>
               );
             })}
           </div>
 
-          <div style={{ borderTop: "1px solid #edf2f7", paddingTop: 12 }}>
-            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>对象</div>
+          <div style={{ borderTop: '1px solid #edf2f7', paddingTop: 12 }}>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>对象</div>
             <Search
               allowClear
               placeholder="搜索表/集合/图对象"
               value={objectSearch}
               onChange={(event) => setObjectSearch(event.target.value)}
             />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10, marginBottom: 10 }}>
-              {["all", "table", "view", "collection", "vertex", "edge"].map((kind) => {
+            <div
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 10 }}
+            >
+              {['all', 'table', 'view', 'collection', 'vertex', 'edge'].map((kind) => {
                 const active = objectKindFilter === kind;
                 return (
                   <Button
                     key={kind}
                     size="small"
-                    type={active ? "primary" : "default"}
+                    type={active ? 'primary' : 'default'}
                     onClick={() => setObjectKindFilter(kind)}
                     style={{ borderRadius: 999 }}
                   >
-                    {kind === "all" ? "全部" : kind}
+                    {kind === 'all' ? '全部' : kind}
                   </Button>
                 );
               })}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: inDrawer ? 420 : 380, overflowY: "auto", paddingRight: 2 }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                maxHeight: inDrawer ? 420 : 380,
+                overflowY: 'auto',
+                paddingRight: 2,
+              }}
+            >
               {filteredDatabaseObjects.map((item) => {
                 const active = item.id === visibleDatabaseObject?.id;
                 return (
@@ -2768,22 +3371,33 @@ export default function MonitorPage() {
                     key={item.id}
                     onClick={() => {
                       setSelectedObjectId(item.id);
-                      setTableDetailSearch("");
+                      setTableDetailSearch('');
                     }}
                     style={{
-                      cursor: "pointer",
+                      cursor: 'pointer',
                       padding: 12,
                       borderRadius: 14,
-                      border: `1px solid ${active ? "#0f766e" : "#dbe7f3"}`,
-                      background: active ? "rgba(15,118,110,0.08)" : "#fff",
+                      border: `1px solid ${active ? '#0f766e' : '#dbe7f3'}`,
+                      background: active ? 'rgba(15,118,110,0.08)' : '#fff',
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{item.name}</div>
-                      <Tag color={item.graph ? "purple" : "geekblue"}>{item.kind}</Tag>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                        {item.name}
+                      </div>
+                      <Tag color={item.graph ? 'purple' : 'geekblue'}>{item.kind}</Tag>
                     </div>
-                    <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>{item.description}</div>
-                    <div style={{ fontSize: 12, color: "#94a3b8" }}>{item.rowCount}</div>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>
+                      {item.description}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#94a3b8' }}>{item.rowCount}</div>
                   </div>
                 );
               })}
@@ -2794,43 +3408,90 @@ export default function MonitorPage() {
           </div>
         </Card>
 
-        <Card
-          size="small"
-          title="对象详情"
-          style={{ borderRadius: 16, minHeight: 0 }}
-          bodyStyle={{ padding: 14, display: "flex", flexDirection: "column", gap: 16, minHeight: 0 }}
-        >
+        <Card size="small" title="对象详情" style={{ borderRadius: 16, minHeight: 0 }}>
           {visibleDatabaseObject ? (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: 16,
+                  flexWrap: 'wrap',
+                }}
+              >
                 <div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>{visibleDatabaseObject.name}</div>
-                  <div style={{ fontSize: 13, color: "#64748b", maxWidth: 720 }}>{visibleDatabaseObject.description}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+                    {visibleDatabaseObject.name}
+                  </div>
+                  <div style={{ fontSize: 13, color: '#64748b', maxWidth: 720 }}>
+                    {visibleDatabaseObject.description}
+                  </div>
                 </div>
                 <Space size={[8, 8]} wrap>
                   <Tag color="blue">{visibleCatalog?.name}</Tag>
-                  <Tag color={visibleDatabaseObject.graph ? "purple" : "geekblue"}>{visibleDatabaseObject.kind}</Tag>
+                  <Tag color={visibleDatabaseObject.graph ? 'purple' : 'geekblue'}>
+                    {visibleDatabaseObject.kind}
+                  </Tag>
                   <Tag>{visibleDatabaseObject.rowCount}</Tag>
                   <Tag color="default">{visibleDatabaseObject.updatedAt}</Tag>
                 </Space>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-                <div style={{ ...compactMetricCardStyle, background: "#eff6ff", border: "1px solid #bfdbfe" }}>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>字段数</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#1d4ed8" }}>{visibleDatabaseObject.fields.length}</div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    ...compactMetricCardStyle,
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>字段数</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#1d4ed8' }}>
+                    {visibleDatabaseObject.fields.length}
+                  </div>
                 </div>
-                <div style={{ ...compactMetricCardStyle, background: "#ecfeff", border: "1px solid #a5f3fc" }}>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>索引数</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#0f766e" }}>{visibleDatabaseObject.indexes.length}</div>
+                <div
+                  style={{
+                    ...compactMetricCardStyle,
+                    background: '#ecfeff',
+                    border: '1px solid #a5f3fc',
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>索引数</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#0f766e' }}>
+                    {visibleDatabaseObject.indexes.length}
+                  </div>
                 </div>
-                <div style={{ ...compactMetricCardStyle, background: "#faf5ff", border: "1px solid #e9d5ff" }}>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>存储占用</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#7c3aed" }}>{visibleDatabaseObject.storage}</div>
+                <div
+                  style={{
+                    ...compactMetricCardStyle,
+                    background: '#faf5ff',
+                    border: '1px solid #e9d5ff',
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>存储占用</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#7c3aed' }}>
+                    {visibleDatabaseObject.storage}
+                  </div>
                 </div>
-                <div style={{ ...compactMetricCardStyle, background: "#fff7ed", border: "1px solid #fed7aa" }}>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>对象类型</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#c2410c" }}>{visibleDatabaseObject.kind}</div>
+                <div
+                  style={{
+                    ...compactMetricCardStyle,
+                    background: '#fff7ed',
+                    border: '1px solid #fed7aa',
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>对象类型</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#c2410c' }}>
+                    {visibleDatabaseObject.kind}
+                  </div>
                 </div>
               </div>
 
@@ -2848,18 +3509,18 @@ export default function MonitorPage() {
                   ...(selectedObjectEntityGraph
                     ? [
                         {
-                          key: "graph",
-                          label: "图谱视图",
+                          key: 'graph',
+                          label: '图谱视图',
                           children: (
                             <div
                               style={{
                                 borderRadius: 16,
-                                overflow: "hidden",
-                                border: "1px solid #e5edf8",
-                                background: "#f8fafc",
+                                overflow: 'hidden',
+                                border: '1px solid #e5edf8',
+                                background: '#f8fafc',
                               }}
                             >
-                              <div style={{ padding: 12, borderBottom: "1px solid #e5edf8" }}>
+                              <div style={{ padding: 12, borderBottom: '1px solid #e5edf8' }}>
                                 <CompactGraphPreviewToolbar
                                   graphName={visibleDatabaseObject.name}
                                   onZoomIn={() => graphPreviewRef.current?.zoomIn()}
@@ -2877,7 +3538,10 @@ export default function MonitorPage() {
                                   onLinkWidthChange={setLinkWidth}
                                 />
                               </div>
-                              <div ref={inDrawer ? undefined : graphContainerRef} style={{ height: inDrawer ? 420 : 520 }}>
+                              <div
+                                ref={inDrawer ? undefined : graphContainerRef}
+                                style={{ height: inDrawer ? 420 : 520 }}
+                              >
                                 <EntityRelationGraph
                                   actionRef={graphPreviewRef}
                                   data={selectedObjectEntityGraph}
@@ -2898,7 +3562,7 @@ export default function MonitorPage() {
                       ]
                     : []),
                   {
-                    key: "fields",
+                    key: 'fields',
                     label: `字段 (${filteredObjectFields.length})`,
                     children: (
                       <Table
@@ -2907,38 +3571,44 @@ export default function MonitorPage() {
                         rowKey="name"
                         scroll={{ x: 900 }}
                         columns={[
-                          { title: "字段名", dataIndex: "name", key: "name", width: 180 },
-                          { title: "类型", dataIndex: "type", key: "type", width: 140 },
+                          { title: '字段名', dataIndex: 'name', key: 'name', width: 180 },
+                          { title: '类型', dataIndex: 'type', key: 'type', width: 140 },
                           {
-                            title: "主键/约束",
-                            dataIndex: "keyRole",
-                            key: "keyRole",
+                            title: '主键/约束',
+                            dataIndex: 'keyRole',
+                            key: 'keyRole',
                             width: 100,
-                            render: (value?: string) => value ? <Tag color="blue">{value}</Tag> : "-",
+                            render: (value?: string) =>
+                              value ? <Tag color="blue">{value}</Tag> : '-',
                           },
                           {
-                            title: "索引",
-                            dataIndex: "indexName",
-                            key: "indexName",
+                            title: '索引',
+                            dataIndex: 'indexName',
+                            key: 'indexName',
                             width: 150,
-                            render: (value?: string) => value || "-",
+                            render: (value?: string) => value || '-',
                           },
                           {
-                            title: "可空",
-                            dataIndex: "nullable",
-                            key: "nullable",
+                            title: '可空',
+                            dataIndex: 'nullable',
+                            key: 'nullable',
                             width: 90,
-                            render: (value?: boolean) => (value ? "YES" : "NO"),
+                            render: (value?: boolean) => (value ? 'YES' : 'NO'),
                           },
-                          { title: "说明", dataIndex: "description", key: "description", width: 220 },
-                          { title: "示例", dataIndex: "sample", key: "sample", width: 180 },
+                          {
+                            title: '说明',
+                            dataIndex: 'description',
+                            key: 'description',
+                            width: 220,
+                          },
+                          { title: '示例', dataIndex: 'sample', key: 'sample', width: 180 },
                         ]}
                         dataSource={filteredObjectFields}
                       />
                     ),
                   },
                   {
-                    key: "indexes",
+                    key: 'indexes',
                     label: `索引 (${filteredObjectIndexes.length})`,
                     children:
                       filteredObjectIndexes.length > 0 ? (
@@ -2947,12 +3617,12 @@ export default function MonitorPage() {
                           pagination={false}
                           rowKey="name"
                           columns={[
-                            { title: "索引名", dataIndex: "name", key: "name", width: 220 },
-                            { title: "类型", dataIndex: "type", key: "type", width: 120 },
+                            { title: '索引名', dataIndex: 'name', key: 'name', width: 220 },
+                            { title: '类型', dataIndex: 'type', key: 'type', width: 120 },
                             {
-                              title: "字段",
-                              dataIndex: "fields",
-                              key: "fields",
+                              title: '字段',
+                              dataIndex: 'fields',
+                              key: 'fields',
                               render: (fields: string[]) => (
                                 <Space size={[6, 6]} wrap>
                                   {fields.map((field) => (
@@ -2965,11 +3635,14 @@ export default function MonitorPage() {
                           dataSource={filteredObjectIndexes}
                         />
                       ) : (
-                        <Empty description="当前对象没有索引信息" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                        <Empty
+                          description="当前对象没有索引信息"
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        />
                       ),
                   },
                   {
-                    key: "samples",
+                    key: 'samples',
                     label: `示例数据 (${filteredObjectSampleRows.length})`,
                     children: (
                       <Table
@@ -3020,7 +3693,7 @@ export default function MonitorPage() {
       );
     }
 
-    if (selectedSource.category === "graph" && selectedPreview.graph) {
+    if (selectedSource.category === 'graph' && selectedPreview.graph) {
       const compactEntityGraph = toEntityPreviewGraph(selectedPreview.graph);
       return (
         <div>
@@ -3029,22 +3702,22 @@ export default function MonitorPage() {
               style={{
                 fontSize: 16,
                 fontWeight: 600,
-                color: "#0f172a",
+                color: '#0f172a',
                 marginBottom: 6,
               }}
             >
               图谱预览
             </div>
-            <div style={{ color: "#64748b", fontSize: 13 }}>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
               图数据库以关系网络方式展示实体、边和关联路径。
             </div>
           </div>
           <div
             style={{
               borderRadius: 16,
-              overflow: "hidden",
-              border: "1px solid #e5edf8",
-              background: "#f8fafc",
+              overflow: 'hidden',
+              border: '1px solid #e5edf8',
+              background: '#f8fafc',
               height: 420,
             }}
           >
@@ -3071,15 +3744,13 @@ export default function MonitorPage() {
             style={{
               fontSize: 16,
               fontWeight: 600,
-              color: "#0f172a",
+              color: '#0f172a',
               marginBottom: 6,
             }}
           >
             {selectedPreview.table.title}
           </div>
-          <div style={{ color: "#64748b", fontSize: 13 }}>
-            {selectedPreview.table.subtitle}
-          </div>
+          <div style={{ color: '#64748b', fontSize: 13 }}>{selectedPreview.table.subtitle}</div>
         </div>
         <Table
           columns={selectedPreview.table.columns.map((column) => ({
@@ -3087,8 +3758,7 @@ export default function MonitorPage() {
             dataIndex: column.dataIndex,
             key: column.dataIndex,
             width: column.width,
-            render: (value: string | number) =>
-              renderPreviewValue(column, value),
+            render: (value: string | number) => renderPreviewValue(column, value),
           }))}
           dataSource={selectedPreview.table.rows.map((row, index) => ({
             key: `${selectedSource.id}-${index}`,
@@ -3104,30 +3774,28 @@ export default function MonitorPage() {
 
   const dataSourceColumns = [
     {
-      title: "数据源名称",
-      dataIndex: "name",
-      key: "name",
+      title: '数据源名称',
+      dataIndex: 'name',
+      key: 'name',
       width: 220,
       render: (name: string, record: DataSource) => (
         <Space direction="vertical" size={2}>
           <Space>
-            <span style={{ fontWeight: 600, color: "#0f172a" }}>{name}</span>
-            {record.category === "graph" && (
+            <span style={{ fontWeight: 600, color: '#0f172a' }}>{name}</span>
+            {record.category === 'graph' && (
               <Tag color="purple" icon={<ForkOutlined />}>
                 图数据库
               </Tag>
             )}
           </Space>
-          <span style={{ fontSize: 12, color: "#64748b" }}>
-            {record.description}
-          </span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>{record.description}</span>
         </Space>
       ),
     },
     {
-      title: "类型",
-      dataIndex: "type",
-      key: "type",
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
       width: 130,
       render: (type: string) => {
         const config = typeConfig[type];
@@ -3139,13 +3807,13 @@ export default function MonitorPage() {
       },
     },
     {
-      title: "接入信息",
-      key: "connection",
+      title: '接入信息',
+      key: 'connection',
       width: 250,
       render: (_: any, record: DataSource) => (
         <Space direction="vertical" size={2}>
-          <span style={{ fontFamily: "monospace", fontSize: 12, color: "#334155" }}>
-            {record.type === "sqlite"
+          <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#334155' }}>
+            {record.type === 'sqlite'
               ? `${record.host}\\${record.database}`
               : `${record.host}:${record.port}/${record.database}`}
           </span>
@@ -3157,15 +3825,15 @@ export default function MonitorPage() {
       ),
     },
     {
-      title: "延迟",
-      dataIndex: "latency",
-      key: "latency",
+      title: '延迟',
+      dataIndex: 'latency',
+      key: 'latency',
       width: 100,
       render: (latency: number) => `${latency} ms`,
     },
     {
-      title: "同步策略",
-      key: "syncPolicy",
+      title: '同步策略',
+      key: 'syncPolicy',
       width: 190,
       render: (_: any, record: DataSource) => (
         <Space direction="vertical" size={2}>
@@ -3177,28 +3845,26 @@ export default function MonitorPage() {
               {exceptionPolicyConfig[record.exceptionPolicy].label}
             </Tag>
           </Space>
-          <span style={{ fontSize: 12, color: "#64748b" }}>
-            {record.syncFrequency}
-          </span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>{record.syncFrequency}</span>
         </Space>
       ),
     },
     {
-      title: "数据规模",
-      key: "volume",
+      title: '数据规模',
+      key: 'volume',
       width: 130,
       render: (_: any, record: DataSource) => (
         <Space direction="vertical" size={2}>
-          <span style={{ fontWeight: 600, color: "#0f172a" }}>
+          <span style={{ fontWeight: 600, color: '#0f172a' }}>
             {record.recordCount.toLocaleString()}
           </span>
-          <span style={{ fontSize: 12, color: "#64748b" }}>{record.lastSync}</span>
+          <span style={{ fontSize: 12, color: '#64748b' }}>{record.lastSync}</span>
         </Space>
       ),
     },
     {
-      title: "操作",
-      key: "action",
+      title: '操作',
+      key: 'action',
       width: 260,
       render: (_: any, record: DataSource) => (
         <Space size="small">
@@ -3247,9 +3913,9 @@ export default function MonitorPage() {
 
   const documentColumns = [
     {
-      title: "文件名",
-      dataIndex: "name",
-      key: "name",
+      title: '文件名',
+      dataIndex: 'name',
+      key: 'name',
       width: 220,
       render: (name: string, record: DocumentFile) => {
         const config = docTypeConfig[record.type] || docTypeConfig.txt;
@@ -3264,24 +3930,22 @@ export default function MonitorPage() {
       },
     },
     {
-      title: "路径",
-      dataIndex: "path",
-      key: "path",
+      title: '路径',
+      dataIndex: 'path',
+      key: 'path',
       width: 280,
       render: (path: string) => (
         <Tooltip title={path}>
-          <span
-            style={{ fontFamily: "monospace", fontSize: 11, color: "#999" }}
-          >
-            {path.length > 40 ? "..." + path.slice(-40) : path}
+          <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#999' }}>
+            {path.length > 40 ? '...' + path.slice(-40) : path}
           </span>
         </Tooltip>
       ),
     },
     {
-      title: "大小",
-      dataIndex: "size",
-      key: "size",
+      title: '大小',
+      dataIndex: 'size',
+      key: 'size',
       width: 100,
       render: (size: number) => {
         if (size < 1024) return `${size} B`;
@@ -3290,9 +3954,9 @@ export default function MonitorPage() {
       },
     },
     {
-      title: "状态",
-      dataIndex: "status",
-      key: "status",
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
       width: 110,
       render: (status: string) => {
         const config = statusConfig[status];
@@ -3304,26 +3968,26 @@ export default function MonitorPage() {
       },
     },
     {
-      title: "记录数",
-      dataIndex: "recordCount",
-      key: "recordCount",
+      title: '记录数',
+      dataIndex: 'recordCount',
+      key: 'recordCount',
       width: 100,
-      render: (count: number | undefined) => count?.toLocaleString() || "-",
+      render: (count: number | undefined) => count?.toLocaleString() || '-',
     },
     {
-      title: "导入时间",
-      dataIndex: "importTime",
-      key: "importTime",
+      title: '导入时间',
+      dataIndex: 'importTime',
+      key: 'importTime',
       width: 160,
-      render: (time: string | undefined) => time || "-",
+      render: (time: string | undefined) => time || '-',
     },
     {
-      title: "操作",
-      key: "action",
+      title: '操作',
+      key: 'action',
       width: 180,
       render: (_: any, record: DocumentFile) => (
         <Space size="small">
-          {record.status === "pending" && (
+          {record.status === 'pending' && (
             <Button
               type="link"
               size="small"
@@ -3333,12 +3997,8 @@ export default function MonitorPage() {
               导入
             </Button>
           )}
-          {record.status === "error" && (
-            <Button
-              type="link"
-              size="small"
-              onClick={() => handleImportDocument(record)}
-            >
+          {record.status === 'error' && (
+            <Button type="link" size="small" onClick={() => handleImportDocument(record)}>
               重试
             </Button>
           )}
@@ -3359,41 +4019,37 @@ export default function MonitorPage() {
 
   const docTaskColumns = [
     {
-      title: "任务名称",
-      dataIndex: "name",
-      key: "name",
+      title: '任务名称',
+      dataIndex: 'name',
+      key: 'name',
       width: 200,
       render: (name: string, record: DocImportTask) => (
         <Space direction="vertical" size={0}>
-          <span style={{ fontWeight: 500, color: "#1890ff" }}>{name}</span>
-          <span style={{ fontSize: 11, color: "#999" }}>
+          <span style={{ fontWeight: 500, color: '#1890ff' }}>{name}</span>
+          <span style={{ fontSize: 11, color: '#999' }}>
             {record.serverIP}:{record.serverPort}
           </span>
         </Space>
       ),
     },
     {
-      title: "目标知识库",
-      dataIndex: "targetKnowledgeBase",
-      key: "targetKnowledgeBase",
+      title: '目标知识库',
+      dataIndex: 'targetKnowledgeBase',
+      key: 'targetKnowledgeBase',
       width: 120,
-      render: (targetKnowledgeBase: string) => (
-        <Tag color="blue">{targetKnowledgeBase}</Tag>
-      ),
+      render: (targetKnowledgeBase: string) => <Tag color="blue">{targetKnowledgeBase}</Tag>,
     },
     {
-      title: "目标编目",
-      dataIndex: "targetCatalog",
-      key: "targetCatalog",
+      title: '目标编目',
+      dataIndex: 'targetCatalog',
+      key: 'targetCatalog',
       width: 120,
-      render: (targetCatalog: string) => (
-        <Tag color="green">{targetCatalog}</Tag>
-      ),
+      render: (targetCatalog: string) => <Tag color="green">{targetCatalog}</Tag>,
     },
     {
-      title: "进度",
-      dataIndex: "progress",
-      key: "progress",
+      title: '进度',
+      dataIndex: 'progress',
+      key: 'progress',
       width: 150,
       render: (progress: number, record: DocImportTask) => (
         <div>
@@ -3401,34 +4057,34 @@ export default function MonitorPage() {
             percent={progress}
             size="small"
             status={
-              record.status === "error"
-                ? "exception"
-                : record.status === "completed"
-                  ? "success"
-                  : "active"
+              record.status === 'error'
+                ? 'exception'
+                : record.status === 'completed'
+                  ? 'success'
+                  : 'active'
             }
           />
-          <span style={{ fontSize: 11, color: "#999" }}>
+          <span style={{ fontSize: 11, color: '#999' }}>
             {record.importedFiles}/{record.totalFiles} 文件
           </span>
         </div>
       ),
     },
     {
-      title: "成功/失败",
-      key: "status",
+      title: '成功/失败',
+      key: 'status',
       width: 120,
       render: (_: any, record: DocImportTask) => (
         <Space>
-          <span style={{ color: "#52c41a" }}>{record.successFiles}</span>
+          <span style={{ color: '#52c41a' }}>{record.successFiles}</span>
           <span>/</span>
-          <span style={{ color: "#ff4d4f" }}>{record.errorFiles}</span>
+          <span style={{ color: '#ff4d4f' }}>{record.errorFiles}</span>
         </Space>
       ),
     },
     {
-      title: "数据量",
-      key: "size",
+      title: '数据量',
+      key: 'size',
       width: 120,
       render: (_: any, record: DocImportTask) => (
         <span style={{ fontSize: 12 }}>
@@ -3438,9 +4094,9 @@ export default function MonitorPage() {
       ),
     },
     {
-      title: "状态",
-      dataIndex: "status",
-      key: "status",
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
       width: 110,
       render: (status: string) => {
         const config = statusConfig[status] || statusConfig.pending;
@@ -3452,15 +4108,15 @@ export default function MonitorPage() {
       },
     },
     {
-      title: "开始时间",
-      dataIndex: "startTime",
-      key: "startTime",
+      title: '开始时间',
+      dataIndex: 'startTime',
+      key: 'startTime',
       width: 160,
-      render: (time: string | undefined) => time || "-",
+      render: (time: string | undefined) => time || '-',
     },
     {
-      title: "操作",
-      key: "action",
+      title: '操作',
+      key: 'action',
       width: 260,
       render: (_: any, record: DocImportTask) => (
         <Space size="small">
@@ -3472,7 +4128,7 @@ export default function MonitorPage() {
           >
             详情
           </Button>
-          {record.status === "pending" && (
+          {record.status === 'pending' && (
             <Button
               type="link"
               size="small"
@@ -3482,7 +4138,7 @@ export default function MonitorPage() {
               启动
             </Button>
           )}
-          {(record.status === "completed" || record.status === "error") && (
+          {(record.status === 'completed' || record.status === 'error') && (
             <Button
               type="link"
               size="small"
@@ -3519,12 +4175,12 @@ export default function MonitorPage() {
 
   const monitorColumns = [
     {
-      title: "任务名称",
-      dataIndex: "name",
-      key: "name",
+      title: '任务名称',
+      dataIndex: 'name',
+      key: 'name',
       width: 180,
       render: (name: string, record: ImportJob) => (
-        <span style={{ fontWeight: 500, color: "#1890ff" }}>{name}</span>
+        <span style={{ fontWeight: 500, color: '#1890ff' }}>{name}</span>
 
         // <Space>
         //   <span style={{ fontWeight: 500 }}>{name}</span>
@@ -3537,99 +4193,96 @@ export default function MonitorPage() {
       ),
     },
     {
-      title: "数据类型",
-      dataIndex: "type",
-      key: "type",
+      title: '数据类型',
+      dataIndex: 'type',
+      key: 'type',
       width: 100,
       render: (type: string) => (
-        <Tag
-          icon={type === "document" ? <FileOutlined /> : <DatabaseOutlined />}
-        >
-          {type === "document" ? "文档" : "数据库"}
+        <Tag icon={type === 'document' ? <FileOutlined /> : <DatabaseOutlined />}>
+          {type === 'document' ? '文档' : '数据库'}
         </Tag>
       ),
     },
     {
-      title: "数据源",
-      dataIndex: "source",
-      key: "source",
+      title: '数据源',
+      dataIndex: 'source',
+      key: 'source',
       width: 160,
     },
     {
-      title: "进度",
-      dataIndex: "progress",
-      key: "progress",
+      title: '进度',
+      dataIndex: 'progress',
+      key: 'progress',
       width: 150,
       render: (progress: number, record: ImportJob) => (
         <Progress
           percent={progress}
           size="small"
           status={
-            record.status === "error"
-              ? "exception"
-              : record.status === "completed"
-                ? "success"
-                : "active"
+            record.status === 'error'
+              ? 'exception'
+              : record.status === 'completed'
+                ? 'success'
+                : 'active'
           }
         />
       ),
     },
     {
-      title: "处理/总共",
-      key: "records",
+      title: '已同步/总量',
+      key: 'records',
       width: 120,
       render: (_: any, record: ImportJob) => (
         <span style={{ fontSize: 12 }}>
-          {record.recordsProcessed.toLocaleString()}/
-          {record.recordsTotal.toLocaleString()}
+          {record.recordsProcessed.toLocaleString()}/{record.recordsTotal.toLocaleString()}
         </span>
       ),
     },
     {
-      title: "发送/接收",
-      key: "data",
+      title: '发送/接收',
+      key: 'data',
       width: 140,
       render: (_: any, record: ImportJob) => (
         <Space direction="vertical" size={0}>
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
+              display: 'flex',
+              alignItems: 'center',
               gap: 4,
             }}
           >
-            <ArrowUpOutlined style={{ color: "#16a34a", fontSize: 13 }} />
-            <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 500 }}>
-              {record.status === "running"
+            <ArrowUpOutlined style={{ color: '#16a34a', fontSize: 13 }} />
+            <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 500 }}>
+              {record.status === 'running'
                 ? record.dataSent > 1024 * 1024
                   ? `${(record.dataSent / 1024 / 1024).toFixed(2)} MB`
                   : `${record.dataSent} KB`
-                : "0 KB"}
+                : '0 KB'}
             </span>
           </div>
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
+              display: 'flex',
+              alignItems: 'center',
               gap: 4,
             }}
           >
-            <ArrowDownOutlined style={{ color: "#2563eb", fontSize: 13 }} />
-            <span style={{ fontSize: 13, color: "#2563eb", fontWeight: 500 }}>
-              {record.status === "running"
+            <ArrowDownOutlined style={{ color: '#2563eb', fontSize: 13 }} />
+            <span style={{ fontSize: 13, color: '#2563eb', fontWeight: 500 }}>
+              {record.status === 'running'
                 ? record.dataReceived > 1024 * 1024
                   ? `${(record.dataReceived / 1024 / 1024).toFixed(2)} MB`
                   : `${record.dataReceived} KB`
-                : "0 KB"}
+                : '0 KB'}
             </span>
           </div>
         </Space>
       ),
     },
     {
-      title: "状态",
-      dataIndex: "status",
-      key: "status",
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
       width: 100,
       render: (status: string) => {
         const config = statusConfig[status];
@@ -3641,9 +4294,9 @@ export default function MonitorPage() {
       },
     },
     {
-      title: "开始时间",
-      dataIndex: "startTime",
-      key: "startTime",
+      title: '开始时间',
+      dataIndex: 'startTime',
+      key: 'startTime',
       width: 160,
       render: (time: string, record: ImportJob) => (
         <span style={{ fontSize: 12 }}>
@@ -3654,8 +4307,8 @@ export default function MonitorPage() {
       ),
     },
     {
-      title: "操作",
-      key: "action",
+      title: '操作',
+      key: 'action',
       width: 160,
       render: (_: any, record: ImportJob) => (
         <Space size="small">
@@ -3681,7 +4334,7 @@ export default function MonitorPage() {
               </Popconfirm>
             </>
           )} */}
-          {["completed", "error"].includes(record.status) && (
+          {['completed', 'error'].includes(record.status) && (
             <Button
               type="link"
               size="small"
@@ -3730,36 +4383,33 @@ export default function MonitorPage() {
   // };
 
   const renderDataStats = () => {
-    const runningJobs = importJobs.filter((j) => j.status === "running");
-    const failedJobs = importJobs.filter((j) => j.status === "error");
+    const runningJobs = importJobs.filter((j) => j.status === 'running');
+    const failedJobs = importJobs.filter((j) => j.status === 'error');
     const totalDataSent = runningJobs.reduce((sum, j) => sum + j.dataSent, 0);
-    const totalDataReceived = runningJobs.reduce(
-      (sum, j) => sum + j.dataReceived,
-      0,
-    );
+    const totalDataReceived = runningJobs.reduce((sum, j) => sum + j.dataReceived, 0);
 
     const statCardStyle: React.CSSProperties = {
       borderRadius: 18,
-      boxShadow: "0 8px 28px rgba(15, 23, 42, 0.05)",
-      overflow: "hidden",
+      boxShadow: '0 8px 28px rgba(15, 23, 42, 0.05)',
+      overflow: 'hidden',
     };
 
     const runningCardBgStyle: React.CSSProperties = {
-      background: "#f0f5ff",
-      position: "relative",
+      background: '#f0f5ff',
+      position: 'relative',
     };
 
     const failedCardBgStyle: React.CSSProperties = {
-      background: "#fff5f5",
-      position: "relative",
+      background: '#fff5f5',
+      position: 'relative',
     };
 
     const statHeaderStyle: React.CSSProperties = {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "16px 20px 12px",
-      borderBottom: "1px solid rgba(0, 0, 0, 0.04)",
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '16px 20px 12px',
+      borderBottom: '1px solid rgba(0, 0, 0, 0.04)',
     };
 
     const statValueStyle: React.CSSProperties = {
@@ -3769,154 +4419,122 @@ export default function MonitorPage() {
 
     const statLabelStyle: React.CSSProperties = {
       fontSize: 13,
-      color: "#64748b",
+      color: '#64748b',
       marginTop: 4,
     };
 
     const dataTransferCardStyle: React.CSSProperties = {
       borderRadius: 18,
-      boxShadow: "0 8px 28px rgba(15, 23, 42, 0.05)",
-      overflow: "hidden",
+      boxShadow: '0 8px 28px rgba(15, 23, 42, 0.05)',
+      overflow: 'hidden',
     };
 
     const dataTransferBgStyle: React.CSSProperties = {
-      background: "#f3f3f3",
+      background: '#f3f3f3',
     };
 
     return (
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={6}>
           <Card
-            bordered={false}
             style={{ ...statCardStyle, ...runningCardBgStyle }}
             styles={{ body: { padding: 0 } }}
           >
             <div style={statHeaderStyle}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#333" }}>
-                运行中任务
-              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>运行中任务</span>
               <div
                 style={{
-                  width: 36,
-                  height: 36,
+                  width: 26,
+                  height: 26,
                   borderRadius: 10,
-                  background: "#dbeafe",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  background: '#dbeafe',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                <LoadingOutlined
-                  spin
-                  style={{ color: "#2563eb", fontSize: 18 }}
-                />
+                <LoadingOutlined spin style={{ color: '#2563eb', fontSize: 18 }} />
               </div>
             </div>
-            <div style={{ padding: "16px 20px 20px" }}>
-              <div style={{ ...statValueStyle, color: "#333" }}>
-                {runningJobs.length}
-              </div>
-              <div style={{ ...statLabelStyle, color: "#666" }}>
-                个任务正在执行
-              </div>
+            <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ ...statValueStyle, color: '#333' }}>{runningJobs.length}</div>
+              <div style={{ ...statLabelStyle, color: '#666' }}>个任务正在执行</div>
             </div>
           </Card>
         </Col>
         <Col span={6}>
           <Card
-            bordered={false}
             style={{ ...statCardStyle, ...failedCardBgStyle }}
             styles={{ body: { padding: 0 } }}
           >
             <div style={statHeaderStyle}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#333" }}>
-                失败任务
-              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>失败任务</span>
               <div
                 style={{
-                  width: 36,
-                  height: 36,
+                  width: 26,
+                  height: 26,
                   borderRadius: 10,
-                  background: "#fee2e2",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  background: '#fee2e2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                <CloseCircleOutlined
-                  style={{ color: "#dc2626", fontSize: 18 }}
-                />
+                <CloseCircleOutlined style={{ color: '#dc2626', fontSize: 18 }} />
               </div>
             </div>
-            <div style={{ padding: "16px 20px 20px" }}>
-              <div style={{ ...statValueStyle, color: "#333" }}>
-                {failedJobs.length}
-              </div>
-              <div style={{ ...statLabelStyle, color: "#666" }}>
-                个任务执行失败
-              </div>
+            <div style={{ padding: '16px 20px 20px' }}>
+              <div style={{ ...statValueStyle, color: '#333' }}>{failedJobs.length}</div>
+              <div style={{ ...statLabelStyle, color: '#666' }}>个任务执行失败</div>
             </div>
           </Card>
         </Col>
         <Col span={12}>
           <Card
-            bordered={false}
             style={{ ...dataTransferCardStyle, ...dataTransferBgStyle }}
             styles={{ body: { padding: 0 } }}
           >
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "16px 20px 12px",
-                borderBottom: "1px solid rgba(0, 0, 0, 0.04)",
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px 20px 12px',
+                borderBottom: '1px solid rgba(0, 0, 0, 0.04)',
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>
-                数据传输
-              </span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>数据传输</span>
               <div
                 style={{
-                  display: "flex",
+                  display: 'flex',
                   gap: 8,
                 }}
               >
                 <div
                   style={{
-                    padding: "4px 10px",
+                    padding: '4px 10px',
                     borderRadius: 6,
-                    background: "#f0fdf4",
-                    display: "flex",
-                    alignItems: "center",
+                    background: '#f0fdf4',
+                    display: 'flex',
+                    alignItems: 'center',
                     gap: 6,
                   }}
                 >
-                  <ArrowUpOutlined style={{ color: "#16a34a", fontSize: 12 }} />
-                  <span
-                    style={{ fontSize: 12, color: "#16a34a", fontWeight: 500 }}
-                  >
-                    发送
-                  </span>
+                  <ArrowUpOutlined style={{ color: '#16a34a', fontSize: 12 }} />
+                  <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 500 }}>发送</span>
                 </div>
                 <div
                   style={{
-                    padding: "4px 10px",
+                    padding: '4px 10px',
                     borderRadius: 6,
-                    background: "#eff6ff",
-                    display: "flex",
-                    alignItems: "center",
+                    background: '#eff6ff',
+                    display: 'flex',
+                    alignItems: 'center',
                     gap: 6,
                   }}
                 >
-                  <ArrowDownOutlined
-                    style={{ color: "#2563eb", fontSize: 12 }}
-                  />
-                  <span
-                    style={{ fontSize: 12, color: "#2563eb", fontWeight: 500 }}
-                  >
-                    接收
-                  </span>
+                  <ArrowDownOutlined style={{ color: '#2563eb', fontSize: 12 }} />
+                  <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 500 }}>接收</span>
                 </div>
               </div>
             </div>
@@ -3924,30 +4542,22 @@ export default function MonitorPage() {
               <Col span={12}>
                 <div
                   style={{
-                    padding: "20px 20px 16px",
-                    borderRight: "1px solid rgba(0, 0, 0, 0.04)",
+                    padding: '20px 20px 16px',
+                    borderRight: '1px solid rgba(0, 0, 0, 0.04)',
                   }}
                 >
-                  <div style={{ ...statValueStyle, color: "#16a34a" }}>
+                  <div style={{ ...statValueStyle, color: '#16a34a' }}>
                     {(totalDataSent / 1024 / 1024).toFixed(2)}
-                    <span
-                      style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}
-                    >
-                      MB
-                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}>MB</span>
                   </div>
                   <div style={statLabelStyle}>数据发送量</div>
                 </div>
               </Col>
               <Col span={12}>
-                <div style={{ padding: "20px 20px 16px" }}>
-                  <div style={{ ...statValueStyle, color: "#2563eb" }}>
+                <div style={{ padding: '20px 20px 16px' }}>
+                  <div style={{ ...statValueStyle, color: '#2563eb' }}>
                     {(totalDataReceived / 1024 / 1024).toFixed(2)}
-                    <span
-                      style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}
-                    >
-                      MB
-                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}>MB</span>
                   </div>
                   <div style={statLabelStyle}>数据接收量</div>
                 </div>
@@ -3961,25 +4571,23 @@ export default function MonitorPage() {
 
   const renderAlerts = () => {
     const runningJobs = importJobs.filter(
-      (job) => job.status === "running" || job.status === "paused",
+      (job) => job.status === 'running' || job.status === 'paused',
     );
 
     if (runningJobs.length === 0) {
       return (
         <Empty
           description="暂无正在执行的任务"
-          style={{ padding: "60px 0" }}
+          style={{ padding: '60px 0' }}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       );
     }
 
     const items = runningJobs.map((job) => {
-      const errorCount = job.alerts.filter((a) => a.level === "error").length;
-      const warningCount = job.alerts.filter(
-        (a) => a.level === "warning",
-      ).length;
-      const infoCount = job.alerts.filter((a) => a.level === "info").length;
+      const errorCount = job.alerts.filter((a) => a.level === 'error').length;
+      const warningCount = job.alerts.filter((a) => a.level === 'warning').length;
+      const infoCount = job.alerts.filter((a) => a.level === 'info').length;
       const totalCount = job.alerts.length;
 
       return {
@@ -3987,23 +4595,18 @@ export default function MonitorPage() {
         label: (
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-              padding: "6px 4px",
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              padding: '6px 4px',
             }}
           >
             <Space size={8}>
-              {job.status === "running" ? (
-                <LoadingOutlined
-                  spin
-                  style={{ color: "#1890ff", fontSize: 14 }}
-                />
+              {job.status === 'running' ? (
+                <LoadingOutlined spin style={{ color: '#1890ff', fontSize: 14 }} />
               ) : (
-                <PauseCircleOutlined
-                  style={{ color: "#faad14", fontSize: 14 }}
-                />
+                <PauseCircleOutlined style={{ color: '#faad14', fontSize: 14 }} />
               )}
               <span style={{ fontWeight: 600, fontSize: 13 }}>{job.name}</span>
             </Space>
@@ -4013,7 +4616,7 @@ export default function MonitorPage() {
                   color="error"
                   style={{
                     margin: 0,
-                    padding: "0 6px",
+                    padding: '0 6px',
                     fontSize: 11,
                     fontWeight: 600,
                   }}
@@ -4026,7 +4629,7 @@ export default function MonitorPage() {
                   color="warning"
                   style={{
                     margin: 0,
-                    padding: "0 6px",
+                    padding: '0 6px',
                     fontSize: 11,
                     fontWeight: 600,
                   }}
@@ -4039,7 +4642,7 @@ export default function MonitorPage() {
                   color="processing"
                   style={{
                     margin: 0,
-                    padding: "0 6px",
+                    padding: '0 6px',
                     fontSize: 11,
                   }}
                 >
@@ -4058,93 +4661,78 @@ export default function MonitorPage() {
           job.alerts.length === 0 ? (
             <div
               style={{
-                textAlign: "center",
-                padding: "30px 20px",
-                background: "rgba(82, 196, 26, 0.05)",
+                textAlign: 'center',
+                padding: '30px 20px',
+                background: 'rgba(82, 196, 26, 0.05)',
                 borderRadius: 8,
                 margin: 8,
               }}
             >
-              <CheckCircleOutlined
-                style={{ fontSize: 32, color: "#52c41a", marginBottom: 8 }}
-              />
-              <div style={{ color: "#52c41a", fontWeight: 500 }}>
-                运行正常，暂无告警
-              </div>
+              <CheckCircleOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 8 }} />
+              <div style={{ color: '#52c41a', fontWeight: 500 }}>运行正常，暂无告警</div>
             </div>
           ) : (
-            <div style={{ padding: "4px 8px" }}>
+            <div style={{ padding: 4 }}>
               {job.alerts
-                .sort(
-                  (a, b) =>
-                    new Date(b.time).getTime() - new Date(a.time).getTime(),
-                )
+                .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
                 .slice(0, 8)
                 .map((alert, idx) => {
                   const colors =
-                    alert.level === "error"
-                      ? { bg: "#fff1f0", dot: "#ff4d4f" }
-                      : alert.level === "warning"
-                        ? { bg: "#fffbe6", dot: "#faad14" }
-                        : { bg: "#e6f7ff", dot: "#1890ff" };
+                    alert.level === 'error'
+                      ? { bg: '#fff7f7', dot: '#ff4d4f', border: '#ffd6d6', label: '错误' }
+                      : alert.level === 'warning'
+                        ? { bg: '#fffaf0', dot: '#faad14', border: '#ffe7a3', label: '警告' }
+                        : { bg: '#f5f9ff', dot: '#1890ff', border: '#cfe4ff', label: '信息' };
 
                   return (
                     <div
                       key={alert.id || idx}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "10px 12px",
-                        marginBottom: 6,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '10px 12px',
+                        marginBottom: 8,
                         background: colors.bg,
-                        borderRadius: 4,
+                        border: `1px solid ${colors.border}`,
+                        borderLeft: `3px solid ${colors.dot}`,
+                        borderRadius: 6,
                         fontSize: 13,
+                        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.03)',
                       }}
                     >
                       <span
                         style={{
                           width: 8,
                           height: 8,
-                          borderRadius: "50%",
+                          borderRadius: '50%',
                           background: colors.dot,
+                          boxShadow: `0 0 0 3px ${colors.dot}1f`,
                           flexShrink: 0,
                         }}
                       />
-                      <span style={{ flex: 1, color: "#333" }}>
-                        {alert.content}
-                      </span>
-                      <span
-                        style={{ color: "#999", fontSize: 12, flexShrink: 0 }}
+                      <Tag
+                        color={
+                          alert.level === 'error'
+                            ? 'error'
+                            : alert.level === 'warning'
+                              ? 'warning'
+                              : 'processing'
+                        }
+                        style={{
+                          margin: 0,
+                          borderRadius: 4,
+                          fontSize: 11,
+                          lineHeight: '18px',
+                          flexShrink: 0,
+                        }}
                       >
-                        {alert.time.split(" ")[1] || alert.time}
+                        {colors.label}
+                      </Tag>
+                      <span style={{ flex: 1, color: '#333' }}>{alert.content}</span>
+                      <span style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>
+                        {alert.time.split(' ')[1] || alert.time}
                       </span>
-                      {alert.processed ? (
-                        <Tag
-                          color="success"
-                          style={{ marginLeft: 8, fontSize: 11 }}
-                        >
-                          <CheckCircleOutlined style={{ marginRight: 4 }} />
-                          {alert.processType === "skipped"
-                            ? "已跳过"
-                            : "已修正"}
-                        </Tag>
-                      ) : alert.level === "error" ? (
-                        <Button
-                          type="link"
-                          size="small"
-                          icon={<SettingOutlined />}
-                          onClick={() => handleProcessAlert(alert, job.id)}
-                          style={{
-                            padding: "0 4px",
-                            height: 24,
-                            marginLeft: 4,
-                            fontSize: 12,
-                          }}
-                        >
-                          去处理
-                        </Button>
-                      ) : null}
                     </div>
                   );
                 })}
@@ -4160,18 +4748,18 @@ export default function MonitorPage() {
         activeKey={activeAlertKey}
         onChange={(keys) => setActiveAlertKey(keys as string[])}
         style={{
-          background: "#fff",
-          border: "1px solid #f0f0f0",
+          background: '#fff',
+          border: '1px solid #f0f0f0',
           borderRadius: 8,
         }}
         expandIcon={({ isActive }) => (
           <ArrowDownOutlined
             rotate={isActive ? 180 : 0}
             style={{
-              color: "#000",
+              color: '#000',
               fontSize: 12,
-              marginTop: "16px",
-              transition: "transform 0.3s ease",
+              marginTop: '16px',
+              transition: 'transform 0.3s ease',
             }}
           />
         )}
@@ -4180,38 +4768,16 @@ export default function MonitorPage() {
   };
 
   return (
-    <>
-      {pendingErrorCount > 0 && (
-        <Alert
-          message={
-            <span>
-              <WarningOutlined style={{ marginRight: 8 }} />
-              您有 <strong>{pendingErrorCount}</strong>{" "}
-              个错误待处理，任务已暂停，请及时解决后继续执行
-            </span>
-          }
-          type="error"
-          showIcon
-          style={{ marginBottom: 16 }}
-          action={
-            <Button
-              size="small"
-              type="primary"
-              danger
-              onClick={() => setActiveTab("monitor")}
-            >
-              查看
-            </Button>
-          }
-        />
-      )}
-
-
-      {activeTab === "monitor" && (
+    <div className={styles.monitorPage}>
+      {activeTab === 'monitor' && (
         <div key="monitor" className="slide-in-right">
-          <Row gutter={16}>
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
             <Col span={18}>
               <Card
+                style={{
+                  borderRadius: 8,
+                  border: '1px solid #edf0f5',
+                }}
                 styles={{
                   body: { padding: 20 },
                 }}
@@ -4223,71 +4789,89 @@ export default function MonitorPage() {
                   dataSource={importJobs}
                   rowKey="id"
                   pagination={{ pageSize: 6 }}
+                  size="middle"
+                  style={{ minHeight: '60vh' }}
                 />
               </Card>
             </Col>
             <Col span={6}>
               <Card
-                headStyle={{
-                  background: "#fff2f0",
-                  borderBottom: "2px solid #ff4d4f",
-                  borderRadius: "8px 8px 0 0",
-                }}
                 title={
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "center",
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
                       gap: 8,
+                      width: '100%',
                     }}
                   >
-                    <span
-                      style={{
-                        display: "inline-block",
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        backgroundColor: alertCount > 0 ? "#ff4d4f" : "#52c41a",
-                        boxShadow:
-                          alertCount > 0
-                            ? "0 0 8px rgba(255, 77, 79, 0.6)"
-                            : "0 0 4px rgba(82, 196, 26, 0.4)",
-                        animation:
-                          alertCount > 0 ? "pulse 1.5s infinite" : "none",
-                      }}
-                    />
-                    <WarningOutlined style={{ color: "#ff4d4f" }} />
-                    <span
-                      style={{
-                        fontWeight: 700,
-                        fontSize: 15,
-                        background: "linear-gradient(90deg, #ff4d4f, #ff85c0)",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                      }}
-                    >
-                      实时告警
-                    </span>
-                    {alertCount > 0 && (
-                      <Tag
-                        color="error"
+                    <Space size={8}>
+                      <span
                         style={{
-                          marginLeft: 8,
-                          fontWeight: 700,
-                          fontSize: 12,
-                          animation: "shake 0.5s ease-in-out",
+                          display: 'inline-block',
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          backgroundColor: alertCount > 0 ? '#faad14' : '#52c41a',
+                          boxShadow:
+                            alertCount > 0
+                              ? '0 0 0 4px rgba(250, 173, 20, 0.14), 0 0 12px rgba(250, 173, 20, 0.45)'
+                              : '0 0 0 4px rgba(82, 196, 26, 0.12)',
+                          animation: 'pulse 1.6s ease-in-out infinite',
+                        }}
+                      />
+                      <WarningOutlined style={{ color: alertCount > 0 ? '#d48806' : '#64748b' }} />
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 15,
+                          color: '#1f2937',
                         }}
                       >
-                        {alertCount} 条
+                        实时告警
+                      </span>
+                    </Space>
+                    <Space size={6}>
+                      <Tag
+                        color={alertCount > 0 ? 'warning' : 'success'}
+                        style={{ margin: 0, fontWeight: 600, fontSize: 12 }}
+                      >
+                        {alertCount > 0 ? `${alertCount} 条` : '正常'}
                       </Tag>
-                    )}
+                      <Tag color="processing" style={{ margin: 0, fontSize: 12 }}>
+                        实时
+                      </Tag>
+                    </Space>
                   </div>
                 }
                 style={{
-                  border: "1px solid rgba(255, 77, 79, 0.3)",
-                  boxShadow: "0 4px 20px rgba(255, 77, 79, 0.15)",
+                  borderRadius: 8,
+                  border:
+                    alertCount > 0 ? '1px solid rgba(250, 173, 20, 0.36)' : '1px solid #edf0f5',
+                  background: '#f8fafc',
+                  boxShadow: alertCount > 0 ? '0 8px 24px rgba(250, 173, 20, 0.10)' : 'none',
+                  minHeight: 'calc(90vh - 80px)',
                 }}
+                bodyStyle={{ background: '#f8fafc', padding: 12 }}
               >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 10,
+                    padding: '6px 8px',
+                    background: '#fff',
+                    border: '1px solid #f0f0f0',
+                    borderRadius: 6,
+                    color: '#64748b',
+                    fontSize: 12,
+                  }}
+                >
+                  <span>监听中</span>
+                  <span>更新 {currentTime || '--:--:--'}</span>
+                </div>
                 {renderAlerts()}
               </Card>
             </Col>
@@ -4295,30 +4879,24 @@ export default function MonitorPage() {
         </div>
       )}
 
-      {activeTab === "document" && (
+      {activeTab === 'document' && (
         <div key="document" className="slide-in-right">
           <Card>
             <Alert
-              message={
-                <span style={{ fontWeight: 600, fontSize: 15 }}>
-                  异构文档导入任务管理
-                </span>
-              }
+              message={<span style={{ fontWeight: 600, fontSize: 15 }}>异构文档导入任务管理</span>}
               description={
                 <div>
-                  <div
-                    style={{ fontSize: 13, color: "#475569", marginBottom: 8 }}
-                  >
+                  <div style={{ fontSize: 13, color: '#475569', marginBottom: 8 }}>
                     创建文档导入任务，指定文件采集服务器IP和端口、读取路径、备份路径。
                     导入的文档将自动归入指定的
                     <span
                       style={{
-                        background: "#dbeafe",
-                        color: "#1e40af",
-                        padding: "2px 6px",
+                        background: '#dbeafe',
+                        color: '#1e40af',
+                        padding: '2px 6px',
                         borderRadius: 4,
                         fontWeight: 600,
-                        margin: "0 2px",
+                        margin: '0 2px',
                       }}
                     >
                       知识库
@@ -4326,19 +4904,19 @@ export default function MonitorPage() {
                     和
                     <span
                       style={{
-                        background: "#dbeafe",
-                        color: "#1e40af",
-                        padding: "2px 6px",
+                        background: '#dbeafe',
+                        color: '#1e40af',
+                        padding: '2px 6px',
                         borderRadius: 4,
                         fontWeight: 600,
-                        margin: "0 2px",
+                        margin: '0 2px',
                       }}
                     >
                       编目
                     </span>
                     。
                   </div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>
                     <strong>支持的格式：</strong>
                     <Tag color="default">docx</Tag>
                     <Tag color="default">xlsx</Tag>
@@ -4356,22 +4934,18 @@ export default function MonitorPage() {
               closable
               style={{
                 marginBottom: 20,
-                background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
-                border: "1px solid #93c5fd",
+                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                border: '1px solid #93c5fd',
                 borderRadius: 8,
-                boxShadow: "0 2px 12px rgba(59, 130, 246, 0.15)",
+                boxShadow: '0 2px 12px rgba(59, 130, 246, 0.15)',
               }}
-              icon={
-                <InfoCircleOutlined
-                  style={{ color: "#2563eb", fontSize: 16 }}
-                />
-              }
+              icon={<InfoCircleOutlined style={{ color: '#2563eb', fontSize: 16 }} />}
             />
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 marginBottom: 16,
               }}
             >
@@ -4388,19 +4962,15 @@ export default function MonitorPage() {
                   onChange={setTypeFilter}
                   style={{ width: 120 }}
                   options={[
-                    { label: "待处理", value: "pending" },
-                    { label: "运行中", value: "running" },
-                    { label: "已暂停", value: "paused" },
-                    { label: "已完成", value: "completed" },
-                    { label: "错误", value: "error" },
+                    { label: '待导入', value: 'pending' },
+                    { label: '运行中', value: 'running' },
+                    { label: '已暂停', value: 'paused' },
+                    { label: '已完成', value: 'completed' },
+                    { label: '错误', value: 'error' },
                   ]}
                 />
               </Space>
-              <Button
-                type="primary"
-                icon={<CloudUploadOutlined />}
-                onClick={handleSelectFolder}
-              >
+              <Button type="primary" icon={<CloudUploadOutlined />} onClick={handleSelectFolder}>
                 创建导入任务
               </Button>
             </div>
@@ -4415,16 +4985,19 @@ export default function MonitorPage() {
         </div>
       )}
 
-      {activeTab === "database" && (
-        <div key="database" className="slide-in-right" style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 240px)' }}>
+      {activeTab === 'database' && (
+        <div
+          key="database"
+          className="slide-in-right"
+          style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 240px)' }}
+        >
           <div
             style={{
               padding: 24,
               borderRadius: 24,
-              background:
-                "linear-gradient(180deg, rgba(248,250,252,0.96) 0%, #ffffff 55%)",
-              border: "1px solid rgba(148,163,184,0.16)",
-              boxShadow: "0 18px 60px rgba(15, 23, 42, 0.08)",
+              background: 'linear-gradient(180deg, rgba(248,250,252,0.96) 0%, #ffffff 55%)',
+              border: '1px solid rgba(148,163,184,0.16)',
+              boxShadow: '0 18px 60px rgba(15, 23, 42, 0.08)',
               display: 'flex',
               flexDirection: 'column',
               flex: 1,
@@ -4432,12 +5005,12 @@ export default function MonitorPage() {
           >
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
                 gap: 16,
                 marginBottom: 20,
-                flexWrap: "wrap",
+                flexWrap: 'wrap',
               }}
             >
               <div>
@@ -4445,50 +5018,50 @@ export default function MonitorPage() {
                   style={{
                     fontSize: 26,
                     fontWeight: 700,
-                    color: "#0f172a",
-                    letterSpacing: "0.02em",
+                    color: '#0f172a',
+                    letterSpacing: '0.02em',
                     marginBottom: 6,
                   }}
                 >
                   <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-                marginBottom: 14,
-              }}
-            >
-              {databaseTypeOptions.map((option) => {
-                const config = typeConfig[option.value];
-                const count = dataSources.filter((item) => item.type === option.value).length;
-                const active = typeFilter === option.value;
-
-                return (
-                  <Button
-                    key={option.value}
-                    size="small"
-                    type={active ? "primary" : "default"}
-                    icon={config.icon}
-                    onClick={() => setTypeFilter(active ? null : option.value)}
                     style={{
-                      height: 30,
-                      borderRadius: 999,
-                      paddingInline: 12,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      borderColor: active ? config.accent : "rgba(148,163,184,0.28)",
-                      background: active ? config.accent : "#fff",
-                      boxShadow: "none",
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      flexWrap: 'wrap',
+                      marginBottom: 14,
                     }}
                   >
-                    {config.label}
-                    <span style={{ opacity: 0.78 }}>{count}</span>
-                  </Button>
-                );
-              })}
-            </div>
+                    {databaseTypeOptions.map((option) => {
+                      const config = typeConfig[option.value];
+                      const count = dataSources.filter((item) => item.type === option.value).length;
+                      const active = typeFilter === option.value;
+
+                      return (
+                        <Button
+                          key={option.value}
+                          size="small"
+                          type={active ? 'primary' : 'default'}
+                          icon={config.icon}
+                          onClick={() => setTypeFilter(active ? null : option.value)}
+                          style={{
+                            height: 30,
+                            borderRadius: 999,
+                            paddingInline: 12,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            borderColor: active ? config.accent : 'rgba(148,163,184,0.28)',
+                            background: active ? config.accent : '#fff',
+                            boxShadow: 'none',
+                          }}
+                        >
+                          {config.label}
+                          <span style={{ opacity: 0.78 }}>{count}</span>
+                        </Button>
+                      );
+                    })}
+                  </div>
                   {/* 结构化数据接入工作台 */}
                 </div>
               </div>
@@ -4500,24 +5073,22 @@ export default function MonitorPage() {
                   height: 42,
                   borderRadius: 12,
                   paddingInline: 18,
-                  border: "none",
-                  boxShadow: "0 12px 24px rgba(37,99,235,0.24)",
+                  border: 'none',
+                  boxShadow: '0 12px 24px rgba(37,99,235,0.24)',
                 }}
               >
                 新增数据源
               </Button>
             </div>
 
-            
-
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
                 marginBottom: 16,
                 gap: 12,
-                flexWrap: "wrap",
+                flexWrap: 'wrap',
               }}
             >
               <Space size={12} wrap>
@@ -4539,16 +5110,30 @@ export default function MonitorPage() {
               </Space>
             </div>
 
-            <Row gutter={16} style={{ display: 'flex', alignItems: 'stretch', flex: 1, minHeight: 0 }}>
-              <Col xs={24} xl={isGraphPreview ? 9 : 14} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <Row
+              gutter={16}
+              style={{ display: 'flex', alignItems: 'stretch', flex: 1, minHeight: 0 }}
+            >
+              <Col
+                xs={24}
+                xl={isGraphPreview ? 9 : 14}
+                style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
+              >
                 <Card
                   title="数据源资产清单"
                   extra={
-                    <span style={{ color: "#64748b", fontSize: 12 }}>
+                    <span style={{ color: '#64748b', fontSize: 12 }}>
                       共 {filteredDataSources.length} 个数据源
                     </span>
                   }
-                  style={{ borderRadius: 20, flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+                  style={{
+                    borderRadius: 20,
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    minHeight: 0,
+                  }}
                   styles={{ body: { flex: 1, overflow: 'auto' } }}
                 >
                   <Table
@@ -4559,8 +5144,8 @@ export default function MonitorPage() {
                     scroll={{ x: 1100 }}
                     rowClassName={(record) =>
                       record.id === selectedSource?.id
-                        ? "source-asset-row source-asset-row-selected"
-                        : "source-asset-row"
+                        ? 'source-asset-row source-asset-row-selected'
+                        : 'source-asset-row'
                     }
                     onRow={(record) => ({
                       onClick: () => handleSelectSource(record),
@@ -4568,9 +5153,13 @@ export default function MonitorPage() {
                   />
                 </Card>
               </Col>
-              <Col xs={24} xl={isGraphPreview ? 15 : 10} style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <Col
+                xs={24}
+                xl={isGraphPreview ? 15 : 10}
+                style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
+              >
                 <Card
-                  title={selectedSource ? `${selectedSource.name} 预览` : "智能预览"}
+                  title={selectedSource ? `${selectedSource.name} 预览` : '智能预览'}
                   extra={
                     selectedSource ? (
                       <Space size={8}>
@@ -4587,8 +5176,23 @@ export default function MonitorPage() {
                       </Space>
                     ) : null
                   }
-                  style={{ borderRadius: 20, flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
-                  styles={{ body: { display: "flex", flexDirection: "column", gap: 16, flex: 1, overflow: 'auto' } }}
+                  style={{
+                    borderRadius: 20,
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100%',
+                    minHeight: 0,
+                  }}
+                  styles={{
+                    body: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 16,
+                      flex: 1,
+                      overflow: 'auto',
+                    },
+                  }}
                 >
                   {renderOptimizedStructuredPreview()}
                 </Card>
@@ -4599,7 +5203,7 @@ export default function MonitorPage() {
       )}
 
       <Modal
-        title={editRecord ? "编辑数据源" : "添加数据源"}
+        title={editRecord ? '编辑数据源' : '添加数据源'}
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
         onOk={handleDataSourceSubmit}
@@ -4609,19 +5213,19 @@ export default function MonitorPage() {
           <Form.Item
             name="name"
             label="数据源名称"
-            rules={[{ required: true, message: "请输入数据源名称" }]}
+            rules={[{ required: true, message: '请输入数据源名称' }]}
           >
             <Input placeholder="例如: 生产MySQL数据库" />
           </Form.Item>
           <Form.Item
             name="type"
             label="数据源类型"
-            rules={[{ required: true, message: "请选择数据源类型" }]}
+            rules={[{ required: true, message: '请选择数据源类型' }]}
           >
             <Select
               placeholder="选择数据源类型"
               options={databaseTypeOptions}
-              onChange={(value) => form.setFieldValue("port", typeConfig[value].port)}
+              onChange={(value) => form.setFieldValue('port', typeConfig[value].port)}
             />
           </Form.Item>
           <Row gutter={16}>
@@ -4629,14 +5233,14 @@ export default function MonitorPage() {
               <Form.Item
                 name="env"
                 label="环境"
-                rules={[{ required: true, message: "请选择环境" }]}
+                rules={[{ required: true, message: '请选择环境' }]}
               >
                 <Select
                   options={[
-                    { label: "生产", value: "生产" },
-                    { label: "分析", value: "分析" },
-                    { label: "测试", value: "测试" },
-                    { label: "知识", value: "知识" },
+                    { label: '生产', value: '生产' },
+                    { label: '分析', value: '分析' },
+                    { label: '测试', value: '测试' },
+                    { label: '知识', value: '知识' },
                   ]}
                 />
               </Form.Item>
@@ -4645,7 +5249,7 @@ export default function MonitorPage() {
               <Form.Item
                 name="owner"
                 label="归属团队"
-                rules={[{ required: true, message: "请输入归属团队" }]}
+                rules={[{ required: true, message: '请输入归属团队' }]}
               >
                 <Input placeholder="例如：知识工程组" />
               </Form.Item>
@@ -4656,7 +5260,7 @@ export default function MonitorPage() {
               <Form.Item
                 name="host"
                 label="主机地址"
-                rules={[{ required: true, message: "请输入主机地址" }]}
+                rules={[{ required: true, message: '请输入主机地址' }]}
               >
                 <Input placeholder="如 10.10.20.31 或 F:\\samples" />
               </Form.Item>
@@ -4665,7 +5269,7 @@ export default function MonitorPage() {
               <Form.Item
                 name="port"
                 label="端口"
-                rules={[{ required: true, message: "请输入端口" }]}
+                rules={[{ required: true, message: '请输入端口' }]}
               >
                 <Input type="number" placeholder="3306 / 7687 / 0" />
               </Form.Item>
@@ -4689,12 +5293,9 @@ export default function MonitorPage() {
           <Form.Item
             name="description"
             label="数据源说明"
-            rules={[{ required: true, message: "请输入数据源说明" }]}
+            rules={[{ required: true, message: '请输入数据源说明' }]}
           >
-            <Input.TextArea
-              rows={3}
-              placeholder="描述该数据源承载的数据、接入用途和展示重点"
-            />
+            <Input.TextArea rows={3} placeholder="描述该数据源承载的数据、接入用途和展示重点" />
           </Form.Item>
           <Divider />
           <Button icon={<ApiOutlined />} onClick={handleTestConnection}>
@@ -4715,35 +5316,35 @@ export default function MonitorPage() {
           <Form.Item
             name="taskName"
             label="任务名称"
-            rules={[{ required: true, message: "请输入任务名称" }]}
+            rules={[{ required: true, message: '请输入任务名称' }]}
           >
             <Input placeholder="例如: 财务文档批量导入任务" />
           </Form.Item>
 
           <div
             style={{
-              background: "#fafafa",
-              borderRadius: "8px",
-              padding: "16px",
-              marginBottom: "16px",
-              border: "1px solid #e0e0e0",
+              background: '#fafafa',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '16px',
+              border: '1px solid #e0e0e0',
             }}
           >
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                marginBottom: "16px",
-                color: "#262626",
-                fontSize: "15px",
+                display: 'flex',
+                alignItems: 'center',
+                marginBottom: '16px',
+                color: '#262626',
+                fontSize: '15px',
                 fontWeight: 600,
               }}
             >
               <CloudServerOutlined
                 style={{
-                  fontSize: "18px",
-                  color: "#1890ff",
-                  marginRight: "8px",
+                  fontSize: '18px',
+                  color: '#1890ff',
+                  marginRight: '8px',
                 }}
               />
               <span>文件采集服务器配置</span>
@@ -4754,7 +5355,7 @@ export default function MonitorPage() {
                 <Form.Item
                   name="serverIP"
                   label="服务器IP"
-                  rules={[{ required: true, message: "请输入服务器IP" }]}
+                  rules={[{ required: true, message: '请输入服务器IP' }]}
                 >
                   <Input placeholder="例如: 192.168.1.200" />
                 </Form.Item>
@@ -4763,7 +5364,7 @@ export default function MonitorPage() {
                 <Form.Item
                   name="serverPort"
                   label="端口"
-                  rules={[{ required: true, message: "请输入端口" }]}
+                  rules={[{ required: true, message: '请输入端口' }]}
                 >
                   <Input type="number" placeholder="8080" />
                 </Form.Item>
@@ -4773,7 +5374,7 @@ export default function MonitorPage() {
             <Form.Item
               name="readPath"
               label="读取路径"
-              rules={[{ required: true, message: "请输入读取路径" }]}
+              rules={[{ required: true, message: '请输入读取路径' }]}
             >
               <Input
                 placeholder="例如: /data/finance/docs"
@@ -4784,31 +5385,31 @@ export default function MonitorPage() {
                       size="small"
                       icon={<FolderOpenOutlined />}
                       onClick={() => {
-                        const path = docTaskForm.getFieldValue("readPath");
+                        const path = docTaskForm.getFieldValue('readPath');
                         if (!path) {
-                          message.warning("请先输入读取路径");
+                          message.warning('请先输入读取路径');
                           return;
                         }
                         message.loading({
-                          content: "正在扫描文件夹...",
-                          key: "scanFolder",
+                          content: '正在扫描文件夹...',
+                          key: 'scanFolder',
                         });
                         setTimeout(() => {
                           message.success({
                             content: (
                               <div>
-                                扫描完成：发现 <strong>23</strong> 个文件， 共{" "}
+                                扫描完成：发现 <strong>23</strong> 个文件， 共{' '}
                                 <strong>156.8 MB</strong>
                               </div>
                             ),
-                            key: "scanFolder",
+                            key: 'scanFolder',
                           });
                         }, 1500);
                       }}
                       style={{
-                        color: "#1890ff",
-                        cursor: "pointer",
-                        padding: "0 4px",
+                        color: '#1890ff',
+                        cursor: 'pointer',
+                        padding: '0 4px',
                       }}
                     />
                   </Tooltip>
@@ -4819,7 +5420,7 @@ export default function MonitorPage() {
             <Form.Item
               name="backupPath"
               label="备份路径"
-              rules={[{ required: true, message: "请输入备份路径" }]}
+              rules={[{ required: true, message: '请输入备份路径' }]}
             >
               <Input placeholder="例如: /backup/finance/docs" />
             </Form.Item>
@@ -4827,38 +5428,35 @@ export default function MonitorPage() {
 
           <div
             style={{
-              background: "#fafafa",
-              borderRadius: "8px",
-              padding: "16px",
-              marginBottom: "16px",
-              border: "1px solid #e0e0e0",
+              background: '#fafafa',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '16px',
+              border: '1px solid #e0e0e0',
             }}
           >
             <div
               style={{
-                display: "flex",
-                alignItems: "center",
-                marginBottom: "16px",
-                color: "#262626",
-                fontSize: "15px",
+                display: 'flex',
+                alignItems: 'center',
+                marginBottom: '16px',
+                color: '#262626',
+                fontSize: '15px',
                 fontWeight: 600,
               }}
             >
               <AimOutlined
                 style={{
-                  fontSize: "18px",
-                  color: "#52c41a",
-                  marginRight: "8px",
+                  fontSize: '18px',
+                  color: '#52c41a',
+                  marginRight: '8px',
                 }}
               />
               <span>目标配置</span>
             </div>
 
             <Form.Item name="targetKnowledgeBase" label="目标知识库">
-              <Select
-                placeholder="选择目标知识库"
-                options={knowledgeBaseOptions}
-              />
+              <Select placeholder="选择目标知识库" options={knowledgeBaseOptions} />
             </Form.Item>
 
             <Form.Item name="targetCatalog" label="目标编目">
@@ -4868,232 +5466,15 @@ export default function MonitorPage() {
         </Form>
       </Modal>
 
-      <Modal
-        title={
-          <span>
-            <SettingOutlined style={{ marginRight: 8 }} />
-            处理警告
-          </span>
-        }
-        open={processAlertModalVisible}
-        onCancel={() => {
-          setProcessAlertModalVisible(false);
-          setCurrentProcessAlert(null);
-          setCurrentProcessJobId("");
-        }}
-        footer={null}
-        width={480}
-      >
-        {currentProcessAlert && (
-          <div>
-            <div
-              style={{
-                padding: 16,
-                marginBottom: 16,
-                background:
-                  currentProcessAlert.level === "error"
-                    ? "#fff1f0"
-                    : currentProcessAlert.level === "warning"
-                      ? "#fffbe6"
-                      : "#e6f7ff",
-                borderRadius: 8,
-                border: "1px solid #f0f0f0",
-              }}
-            >
-              <Space>
-                <WarningOutlined
-                  style={{
-                    color:
-                      currentProcessAlert.level === "error"
-                        ? "#ff4d4f"
-                        : currentProcessAlert.level === "warning"
-                          ? "#faad14"
-                          : "#1890ff",
-                    fontSize: 18,
-                  }}
-                />
-                <span style={{ fontWeight: 500, fontSize: 14 }}>
-                  {currentProcessAlert.content}
-                </span>
-              </Space>
-            </div>
-
-            <Divider style={{ margin: "12px 0" }} />
-
-            <div style={{ textAlign: "center", marginTop: 16 }}>
-              {/* <div
-                style={{
-                  display: "block",
-                  marginBottom: 16,
-                  color: "#666",
-                  fontWeight: 600,
-                }}
-              >
-                遇到错误，任务已暂停，请选择处理方式：
-              </div> */}
-              <Space size={16}>
-                <Button
-                  icon={<StepForwardOutlined />}
-                  onClick={() => handleConfirmProcess("skipped")}
-                  // style={{
-                  //   background: "#fa8c16",
-                  //   borderColor: "#fa8c16",
-                  // }}
-                >
-                  跳过当前记录
-                </Button>
-                <Button
-                  type="primary"
-                  icon={<EditOutlined />}
-                  onClick={() => handleConfirmProcess("edited")}
-                  style={{
-                    background: "#1890ff",
-                    borderColor: "#1890ff",
-                  }}
-                >
-                  编辑解决
-                </Button>
-              </Space>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      <Modal
-        title={
-          <span>
-            <EditOutlined style={{ marginRight: 8 }} />
-            编辑解决错误
-          </span>
-        }
-        open={editAlertModalVisible}
-        onCancel={() => {
-          setEditAlertModalVisible(false);
-          setEditAlertContent("");
-        }}
-        footer={null}
-        width={600}
-      >
-        <div>
-          <div>
-            <Alert
-              message="修正提示"
-              description="日期字段格式不正确，请修正为标准格式"
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-            />
-            <Card
-              size="small"
-              style={{ marginBottom: 16, background: "#fafafa" }}
-            >
-              <Row gutter={[16, 16]}>
-                <Col span={6}>
-                  <div style={{ color: "#888", fontSize: 12 }}>字段名</div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>日期字段</div>
-                </Col>
-                <Col span={6}>
-                  <div style={{ color: "#888", fontSize: 12 }}>错误数据</div>
-                  <div
-                    style={{
-                      color: "#ff4d4f",
-                      fontWeight: 600,
-                      fontSize: 14,
-                    }}
-                  >
-                    2024年1月15日
-                  </div>
-                </Col>
-                <Col span={6}>
-                  <div style={{ color: "#888", fontSize: 12 }}>修改示例</div>
-                  <div
-                    style={{
-                      color: "#52c41a",
-                      fontWeight: 600,
-                      fontSize: 14,
-                    }}
-                  >
-                    2024-01-15
-                  </div>
-                </Col>
-                <Col span={6}>
-                  <div style={{ color: "#888", fontSize: 12 }}>修正值</div>
-                  <Input
-                    placeholder="请输入修正值"
-                    value={editAlertContent}
-                    onChange={(e) => setEditAlertContent(e.target.value)}
-                    style={{ fontSize: 13 }}
-                  />
-                </Col>
-              </Row>
-            </Card>
-          </div>
-
-          <div style={{ textAlign: "center", marginTop: 16 }}>
-            <Space>
-              <Button
-                type="primary"
-                icon={<CheckCircleOutlined />}
-                onClick={() => {
-                  if (!editAlertContent.trim()) {
-                    message.error("请输入修正值");
-                    return;
-                  }
-
-                  setImportJobs((prev) =>
-                    prev.map((job) => {
-                      if (job.id === currentProcessJobId) {
-                        return {
-                          ...job,
-                          status: "running" as const,
-                          alerts: job.alerts.map((alert) =>
-                            alert.id === currentProcessAlert?.id
-                              ? {
-                                  ...alert,
-                                  processed: true,
-                                  processType: "edited" as const,
-                                }
-                              : alert,
-                          ),
-                        };
-                      }
-                      return job;
-                    }),
-                  );
-                  setEditAlertModalVisible(false);
-                  setEditAlertContent("");
-                  setCurrentProcessAlert(null);
-                  setCurrentProcessJobId("");
-                  message.success("修正完成，任务继续执行");
-                }}
-                style={{ background: "#1890ff", borderColor: "#1890ff" }}
-              >
-                确认修正
-              </Button>
-              <Button
-                onClick={() => {
-                  setEditAlertModalVisible(false);
-                  setEditAlertContent("");
-                }}
-              >
-                取消
-              </Button>
-            </Space>
-          </div>
-        </div>
-      </Modal>
-
       <Drawer
-        title={
-          selectedSource ? `${selectedSource.name} - 数据预览` : "数据预览"
-        }
+        title={selectedSource ? `${selectedSource.name} - 数据预览` : '数据预览'}
         placement="right"
         width={1080}
         open={detailDrawerVisible}
         onClose={() => setDetailDrawerVisible(false)}
       >
         {selectedSource && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Card
               style={{
                 borderRadius: 20,
@@ -5134,7 +5515,9 @@ export default function MonitorPage() {
                 </Col>
               </Row>
               <Space size={[8, 8]} wrap style={{ marginTop: 16 }}>
-                <Tag color={typeConfig[selectedSource.type].color}>{typeConfig[selectedSource.type].label}</Tag>
+                <Tag color={typeConfig[selectedSource.type].color}>
+                  {typeConfig[selectedSource.type].label}
+                </Tag>
                 <Tag>{selectedSource.database}</Tag>
                 <Tag color="default">{selectedSource.owner}</Tag>
                 <Tag>{selectedSource.env}</Tag>
@@ -5147,7 +5530,7 @@ export default function MonitorPage() {
       </Drawer>
 
       <Drawer
-        title={selectedSource ? `${selectedSource.name} - 同步策略` : "同步策略"}
+        title={selectedSource ? `${selectedSource.name} - 同步策略` : '同步策略'}
         placement="right"
         width={520}
         open={syncDrawerVisible}
@@ -5160,30 +5543,27 @@ export default function MonitorPage() {
               showIcon
               style={{ marginBottom: 16 }}
               message="同步策略配置"
-              description="支持全量同步、增量同步，以及异常重试、跳过、暂停告警等策略组合。"
+              description="支持全量同步、增量同步，以及异常重试、跳过、记录告警等策略组合。"
             />
             <Form.Item
               name="mode"
               label="同步模式"
-              rules={[{ required: true, message: "请选择同步模式" }]}
+              rules={[{ required: true, message: '请选择同步模式' }]}
             >
               <Select
                 options={[
-                  { label: "全量同步", value: "full" },
-                  { label: "增量同步", value: "incremental" },
+                  { label: '全量同步', value: 'full' },
+                  { label: '增量同步', value: 'incremental' },
                 ]}
               />
             </Form.Item>
-            <Form.Item
-              noStyle
-              shouldUpdate={(prev, current) => prev.mode !== current.mode}
-            >
+            <Form.Item noStyle shouldUpdate={(prev, current) => prev.mode !== current.mode}>
               {({ getFieldValue }) =>
-                getFieldValue("mode") === "incremental" ? (
+                getFieldValue('mode') === 'incremental' ? (
                   <Form.Item
                     name="incrementalField"
                     label="增量字段"
-                    rules={[{ required: true, message: "请输入增量字段" }]}
+                    rules={[{ required: true, message: '请输入增量字段' }]}
                   >
                     <Input placeholder="如 updated_at / _id / event_time" />
                   </Form.Item>
@@ -5193,7 +5573,7 @@ export default function MonitorPage() {
             <Form.Item
               name="frequency"
               label="触发频率"
-              rules={[{ required: true, message: "请选择触发频率" }]}
+              rules={[{ required: true, message: '请选择触发频率' }]}
             >
               <Select options={frequencyOptions} />
             </Form.Item>
@@ -5202,7 +5582,7 @@ export default function MonitorPage() {
                 <Form.Item
                   name="batchSize"
                   label="批处理大小"
-                  rules={[{ required: true, message: "请输入批处理大小" }]}
+                  rules={[{ required: true, message: '请输入批处理大小' }]}
                 >
                   <Input type="number" placeholder="5000" />
                 </Form.Item>
@@ -5211,7 +5591,7 @@ export default function MonitorPage() {
                 <Form.Item
                   name="maxRetries"
                   label="最大重试次数"
-                  rules={[{ required: true, message: "请输入最大重试次数" }]}
+                  rules={[{ required: true, message: '请输入最大重试次数' }]}
                 >
                   <Input type="number" placeholder="3" />
                 </Form.Item>
@@ -5219,22 +5599,22 @@ export default function MonitorPage() {
             </Row>
             <Form.Item
               name="exceptionPolicy"
-              label="异常处理"
-              rules={[{ required: true, message: "请选择异常处理策略" }]}
+              label="异常策略"
+              rules={[{ required: true, message: '请选择异常策略' }]}
             >
               <Select
                 options={[
-                  { label: "自动重试", value: "retry" },
-                  { label: "跳过异常", value: "skip" },
-                  { label: "暂停并告警", value: "pause" },
+                  { label: '自动重试', value: 'retry' },
+                  { label: '跳过异常', value: 'skip' },
+                  { label: '记录告警', value: 'pause' },
                 ]}
               />
             </Form.Item>
             <Form.Item name="notify" label="通知策略">
               <Select
                 options={[
-                  { label: "发送通知", value: true },
-                  { label: "不发送通知", value: false },
+                  { label: '发送通知', value: true },
+                  { label: '不发送通知', value: false },
                 ]}
               />
             </Form.Item>
@@ -5250,10 +5630,8 @@ export default function MonitorPage() {
 
       <Drawer
         title={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 16, fontWeight: 600, color: "#262626" }}>
-              任务详情
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16, fontWeight: 600, color: '#262626' }}>任务详情</span>
           </div>
         }
         open={taskDetailDrawerVisible}
@@ -5268,11 +5646,10 @@ export default function MonitorPage() {
             <Card
               style={{
                 marginBottom: 20,
-                background: "linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)",
-                border: "none",
-                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
+                background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)',
+                border: 'none',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)',
               }}
-              bodyStyle={{ padding: "20px 24px" }}
             >
               <Row gutter={24} align="middle">
                 <Col span={16}>
@@ -5280,7 +5657,7 @@ export default function MonitorPage() {
                     <div
                       style={{
                         fontSize: 13,
-                        color: "#595959",
+                        color: '#595959',
                         marginBottom: 6,
                       }}
                     >
@@ -5289,15 +5666,15 @@ export default function MonitorPage() {
                     <Progress
                       percent={selectedDocTask.progress}
                       status={
-                        selectedDocTask.status === "error"
-                          ? "exception"
-                          : selectedDocTask.status === "completed"
-                            ? "success"
-                            : "active"
+                        selectedDocTask.status === 'error'
+                          ? 'exception'
+                          : selectedDocTask.status === 'completed'
+                            ? 'success'
+                            : 'active'
                       }
                       strokeColor={{
-                        "0%": "#108ee9",
-                        "100%": "#87d068",
+                        '0%': '#108ee9',
+                        '100%': '#87d068',
                       }}
                     />
                   </div>
@@ -5305,14 +5682,14 @@ export default function MonitorPage() {
                 <Col span={8}>
                   <div
                     style={{
-                      textAlign: "center",
-                      padding: "16px 0",
+                      textAlign: 'center',
+                      padding: '16px 0',
                     }}
                   >
                     <div
                       style={{
                         fontSize: 13,
-                        color: "#595959",
+                        color: '#595959',
                         marginBottom: 8,
                       }}
                     >
@@ -5323,8 +5700,8 @@ export default function MonitorPage() {
                       icon={statusConfig[selectedDocTask.status].icon}
                       style={{
                         fontSize: 14,
-                        padding: "4px 16px",
-                        borderRadius: "16px",
+                        padding: '4px 16px',
+                        borderRadius: '16px',
                       }}
                     >
                       {statusConfig[selectedDocTask.status].text}
@@ -5337,28 +5714,25 @@ export default function MonitorPage() {
             <Card
               style={{
                 marginBottom: 20,
-                border: "1px solid #f0f0f0",
-                boxShadow: "0 1px 4px rgba(0, 0, 0, 0.04)",
+                border: '1px solid #f0f0f0',
+                boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
               }}
-              bodyStyle={{ padding: "20px" }}
             >
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
+                  display: 'flex',
+                  alignItems: 'center',
                   gap: 8,
                   marginBottom: 20,
-                  padding: "0 4px",
+                  padding: '0 4px',
                 }}
               >
-                <InfoCircleOutlined
-                  style={{ color: "#1890ff", fontSize: 18 }}
-                />
+                <InfoCircleOutlined style={{ color: '#1890ff', fontSize: 18 }} />
                 <span
                   style={{
                     fontSize: 15,
                     fontWeight: 600,
-                    color: "#262626",
+                    color: '#262626',
                   }}
                 >
                   基本信息
@@ -5368,12 +5742,12 @@ export default function MonitorPage() {
                 <Col span={12}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      padding: "12px",
-                      background: "#fafafa",
-                      borderRadius: "8px",
-                      border: "1px solid #f0f0f0",
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      background: '#fafafa',
+                      borderRadius: '8px',
+                      border: '1px solid #f0f0f0',
                     }}
                   >
                     <FileOutlined
@@ -5387,7 +5761,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#8c8c8c",
+                          color: '#8c8c8c',
                           marginBottom: 4,
                         }}
                       >
@@ -5396,7 +5770,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 14,
-                          color: "#262626",
+                          color: '#262626',
                           fontWeight: 500,
                         }}
                       >
@@ -5408,12 +5782,12 @@ export default function MonitorPage() {
                 <Col span={12}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      padding: "12px",
-                      background: "#fafafa",
-                      borderRadius: "8px",
-                      border: "1px solid #f0f0f0",
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      background: '#fafafa',
+                      borderRadius: '8px',
+                      border: '1px solid #f0f0f0',
                     }}
                   >
                     <CloudServerOutlined
@@ -5427,7 +5801,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#8c8c8c",
+                          color: '#8c8c8c',
                           marginBottom: 4,
                         }}
                       >
@@ -5436,7 +5810,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 14,
-                          color: "#262626",
+                          color: '#262626',
                           fontWeight: 500,
                         }}
                       >
@@ -5448,12 +5822,12 @@ export default function MonitorPage() {
                 <Col span={12}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      padding: "12px",
-                      background: "#fafafa",
-                      borderRadius: "8px",
-                      border: "1px solid #f0f0f0",
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      background: '#fafafa',
+                      borderRadius: '8px',
+                      border: '1px solid #f0f0f0',
                     }}
                   >
                     <FolderOutlined
@@ -5467,7 +5841,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#8c8c8c",
+                          color: '#8c8c8c',
                           marginBottom: 4,
                         }}
                       >
@@ -5476,9 +5850,9 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 14,
-                          color: "#262626",
+                          color: '#262626',
                           fontWeight: 500,
-                          fontFamily: "monospace",
+                          fontFamily: 'monospace',
                         }}
                       >
                         {selectedDocTask.readPath}
@@ -5489,12 +5863,12 @@ export default function MonitorPage() {
                 <Col span={12}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      padding: "12px",
-                      background: "#fafafa",
-                      borderRadius: "8px",
-                      border: "1px solid #f0f0f0",
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      background: '#fafafa',
+                      borderRadius: '8px',
+                      border: '1px solid #f0f0f0',
                     }}
                   >
                     <DatabaseOutlined
@@ -5508,7 +5882,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#8c8c8c",
+                          color: '#8c8c8c',
                           marginBottom: 4,
                         }}
                       >
@@ -5517,9 +5891,9 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 14,
-                          color: "#262626",
+                          color: '#262626',
                           fontWeight: 500,
-                          fontFamily: "monospace",
+                          fontFamily: 'monospace',
                         }}
                       >
                         {selectedDocTask.backupPath}
@@ -5530,12 +5904,12 @@ export default function MonitorPage() {
                 <Col span={12}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      padding: "12px",
-                      background: "#fafafa",
-                      borderRadius: "8px",
-                      border: "1px solid #f0f0f0",
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      background: '#fafafa',
+                      borderRadius: '8px',
+                      border: '1px solid #f0f0f0',
                     }}
                   >
                     <DatabaseOutlined
@@ -5549,7 +5923,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#8c8c8c",
+                          color: '#8c8c8c',
                           marginBottom: 4,
                         }}
                       >
@@ -5559,8 +5933,8 @@ export default function MonitorPage() {
                         color="blue"
                         style={{
                           fontSize: 13,
-                          padding: "2px 12px",
-                          borderRadius: "4px",
+                          padding: '2px 12px',
+                          borderRadius: '4px',
                         }}
                       >
                         {selectedDocTask.targetKnowledgeBase}
@@ -5571,12 +5945,12 @@ export default function MonitorPage() {
                 <Col span={12}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      padding: "12px",
-                      background: "#fafafa",
-                      borderRadius: "8px",
-                      border: "1px solid #f0f0f0",
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      background: '#fafafa',
+                      borderRadius: '8px',
+                      border: '1px solid #f0f0f0',
                     }}
                   >
                     <AppstoreOutlined
@@ -5590,7 +5964,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#8c8c8c",
+                          color: '#8c8c8c',
                           marginBottom: 4,
                         }}
                       >
@@ -5600,8 +5974,8 @@ export default function MonitorPage() {
                         color="green"
                         style={{
                           fontSize: 13,
-                          padding: "2px 12px",
-                          borderRadius: "4px",
+                          padding: '2px 12px',
+                          borderRadius: '4px',
                         }}
                       >
                         {selectedDocTask.targetCatalog}
@@ -5612,12 +5986,12 @@ export default function MonitorPage() {
                 <Col span={12}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      padding: "12px",
-                      background: "#fafafa",
-                      borderRadius: "8px",
-                      border: "1px solid #f0f0f0",
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      background: '#fafafa',
+                      borderRadius: '8px',
+                      border: '1px solid #f0f0f0',
                     }}
                   >
                     <ClockCircleOutlined
@@ -5631,7 +6005,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#8c8c8c",
+                          color: '#8c8c8c',
                           marginBottom: 4,
                         }}
                       >
@@ -5640,7 +6014,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 14,
-                          color: "#262626",
+                          color: '#262626',
                           fontWeight: 500,
                         }}
                       >
@@ -5652,12 +6026,12 @@ export default function MonitorPage() {
                 <Col span={12}>
                   <div
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      padding: "12px",
-                      background: "#fafafa",
-                      borderRadius: "8px",
-                      border: "1px solid #f0f0f0",
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      padding: '12px',
+                      background: '#fafafa',
+                      borderRadius: '8px',
+                      border: '1px solid #f0f0f0',
                     }}
                   >
                     <CheckCircleOutlined
@@ -5671,7 +6045,7 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 12,
-                          color: "#8c8c8c",
+                          color: '#8c8c8c',
                           marginBottom: 4,
                         }}
                       >
@@ -5680,11 +6054,11 @@ export default function MonitorPage() {
                       <div
                         style={{
                           fontSize: 14,
-                          color: "#262626",
+                          color: '#262626',
                           fontWeight: 500,
                         }}
                       >
-                        {selectedDocTask.endTime || "-"}
+                        {selectedDocTask.endTime || '-'}
                       </div>
                     </div>
                   </div>
@@ -5695,9 +6069,7 @@ export default function MonitorPage() {
             {selectedDocTask.error && (
               <Alert
                 message={
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 8 }}
-                  >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <WarningOutlined style={{ fontSize: 18 }} />
                     <span style={{ fontWeight: 500 }}>任务错误</span>
                   </div>
@@ -5707,45 +6079,41 @@ export default function MonitorPage() {
                 showIcon={false}
                 style={{
                   marginBottom: 20,
-                  border: "1px solid #ffccc7",
-                  background: "#fff2f0",
-                  borderRadius: "8px",
+                  border: '1px solid #ffccc7',
+                  background: '#fff2f0',
+                  borderRadius: '8px',
                 }}
               />
             )}
 
             <Card
               style={{
-                border: "1px solid #f0f0f0",
-                boxShadow: "0 1px 4px rgba(0, 0, 0, 0.04)",
+                border: '1px solid #f0f0f0',
+                boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
               }}
-              bodyStyle={{ padding: "20px" }}
               title={
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <UnorderedListOutlined
-                    style={{ color: "#1890ff", fontSize: 18 }}
-                  />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <UnorderedListOutlined style={{ color: '#1890ff', fontSize: 18 }} />
                   <span
                     style={{
                       fontSize: 15,
                       fontWeight: 600,
-                      color: "#262626",
+                      color: '#262626',
                     }}
                   >
                     文件列表
                   </span>
                   <div
                     style={{
-                      marginLeft: "auto",
-                      background:
-                        "linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)",
-                      borderRadius: "16px",
-                      padding: "6px 16px",
+                      marginLeft: 'auto',
+                      background: 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)',
+                      borderRadius: '16px',
+                      padding: '6px 16px',
                       fontSize: 13,
-                      color: "#0050b3",
+                      color: '#0050b3',
                       fontWeight: 600,
-                      display: "flex",
-                      alignItems: "center",
+                      display: 'flex',
+                      alignItems: 'center',
                       gap: 6,
                     }}
                   >
@@ -5759,12 +6127,11 @@ export default function MonitorPage() {
               <Table
                 columns={[
                   {
-                    title: "文件名",
-                    dataIndex: "name",
-                    key: "name",
+                    title: '文件名',
+                    dataIndex: 'name',
+                    key: 'name',
                     render: (name: string, record: DocFileInTask) => {
-                      const config =
-                        docTypeConfig[record.type] || docTypeConfig.txt;
+                      const config = docTypeConfig[record.type] || docTypeConfig.txt;
                       return (
                         <Space>
                           <Tag color={config.color} icon={config.icon}>
@@ -5776,34 +6143,33 @@ export default function MonitorPage() {
                     },
                   },
                   {
-                    title: "路径",
-                    dataIndex: "path",
-                    key: "path",
+                    title: '路径',
+                    dataIndex: 'path',
+                    key: 'path',
                     ellipsis: true,
                     render: (path: string) => (
                       <Tooltip title={path}>
-                        <span style={{ fontSize: 12, color: "#999" }}>
-                          {path.length > 30 ? "..." + path.slice(-30) : path}
+                        <span style={{ fontSize: 12, color: '#999' }}>
+                          {path.length > 30 ? '...' + path.slice(-30) : path}
                         </span>
                       </Tooltip>
                     ),
                   },
                   {
-                    title: "大小",
-                    dataIndex: "size",
-                    key: "size",
+                    title: '大小',
+                    dataIndex: 'size',
+                    key: 'size',
                     width: 100,
                     render: (size: number) => {
                       if (size < 1024) return `${size} B`;
-                      if (size < 1024 * 1024)
-                        return `${(size / 1024).toFixed(1)} KB`;
+                      if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
                       return `${(size / 1024 / 1024).toFixed(1)} MB`;
                     },
                   },
                   {
-                    title: "状态",
-                    dataIndex: "status",
-                    key: "status",
+                    title: '状态',
+                    dataIndex: 'status',
+                    key: 'status',
                     width: 110,
                     render: (status: string) => {
                       const config = statusConfig[status];
@@ -5904,6 +6270,6 @@ export default function MonitorPage() {
           box-shadow: inset 3px 0 0 #2563eb;
         }
       `}</style>
-    </>
+    </div>
   );
 }
