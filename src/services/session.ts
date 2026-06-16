@@ -1,9 +1,8 @@
+import { API_PREFIX } from '@/constants';
 import { createIcon } from '@/utils/IconUtil';
 import { MenuDataItem } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
 import React, { lazy } from 'react';
-import { API_PREFIX } from '@/constants';
-
 
 let remoteMenu: any = null;
 
@@ -29,6 +28,29 @@ export async function ensureRemoteMenu() {
   return menus;
 }
 
+export function getFirstMenuPath(menuData?: MenuDataItem[]): string | undefined {
+  if (!menuData || menuData.length === 0) {
+    return undefined;
+  }
+
+  for (const item of menuData) {
+    if (item.hideInMenu) {
+      continue;
+    }
+    if (item.routes && item.routes.length > 0) {
+      const childPath = getFirstMenuPath(item.routes as MenuDataItem[]);
+      if (childPath) {
+        return childPath;
+      }
+    }
+    if (item.path && item.path !== '/') {
+      return item.path;
+    }
+  }
+
+  return undefined;
+}
+
 function normalizeComponentPath(componentPath: string) {
   return componentPath
     .split('/')
@@ -36,65 +58,83 @@ function normalizeComponentPath(componentPath: string) {
     .join('/');
 }
 
+function joinMenuPath(parentPath: string, currentPath: string) {
+  if (!currentPath) {
+    return parentPath || '/';
+  }
+  if (currentPath.startsWith('/')) {
+    return currentPath;
+  }
+  const normalizedParent = parentPath ? parentPath.replace(/\/+$/, '') : '';
+  return `${normalizedParent}/${currentPath}`.replace(/\/{2,}/g, '/');
+}
 
 function patchRouteItems(route: any, menu: any, parentPath: string) {
   for (const menuItem of menu) {
-    // component 为空或为 Layout/ParentView 时，视为目录类型
-    if (!menuItem.component || menuItem.component === 'Layout' || menuItem.component === 'ParentView') {
+    const fullPath = joinMenuPath(parentPath, menuItem.path);
+
+    if (
+      !menuItem.component ||
+      menuItem.component === 'Layout' ||
+      menuItem.component === 'ParentView'
+    ) {
       if (menuItem.routes) {
-        let hasItem = false;
-        let newItem = null;
-        for (const routeChild of route.routes) {
-          if (routeChild.path === menuItem.path) {
-            hasItem = true;
-            newItem = routeChild;
-          }
-        }
-        if (!hasItem) {
+        let newItem = route.routes?.find((routeChild: any) => routeChild.path === fullPath);
+        if (!newItem) {
           newItem = {
-            path: menuItem.path,
+            path: fullPath,
             routes: [],
-            children: []
-          }
-          route.routes.push(newItem)
+            children: [],
+          };
+          route.routes.push(newItem);
         }
-        patchRouteItems(newItem, menuItem.routes, parentPath + menuItem.path + '/');
+        patchRouteItems(newItem, menuItem.routes, fullPath);
       }
-    } else {
-      const normalizedComponent = normalizeComponentPath(menuItem.component);
-      const names: string[] = normalizedComponent.split('/');
-      let path = '';
-      names.forEach(name => {
-        if (path.length > 0) {
-          path += '/';
-        }
-        if (name !== 'index') {
-          path += name.at(0)?.toUpperCase() + name.substr(1);
-        } else {
-          path += name;
-        }
-      })
-      if (!path.endsWith('.tsx')) {
-        path += '.tsx'
-      }
-      if (route.routes === undefined) {
-        route.routes = [];
-      }
-      if (route.children === undefined) {
-        route.children = [];
-      }
-      const newRoute = {
-        element: React.createElement(lazy(() => import('@/pages/' + path))),
-        path: parentPath + menuItem.path,
-      }
-      route.children.push(newRoute);
-      route.routes.push(newRoute);
+      continue;
     }
+
+    const normalizedComponent = normalizeComponentPath(menuItem.component);
+    const names: string[] = normalizedComponent.split('/');
+    let path = '';
+    names.forEach((name) => {
+      if (path.length > 0) {
+        path += '/';
+      }
+      if (name !== 'index') {
+        path += name.at(0)?.toUpperCase() + name.substring(1);
+      } else {
+        path += name;
+      }
+    });
+
+    if (!path.endsWith('.tsx')) {
+      path += '.tsx';
+    }
+    if (route.routes === undefined) {
+      route.routes = [];
+    }
+    if (route.children === undefined) {
+      route.children = [];
+    }
+
+    const existedRoute = route.routes.find((routeChild: any) => routeChild.path === fullPath);
+    if (existedRoute) {
+      continue;
+    }
+
+    const newRoute = {
+      element: React.createElement(lazy(() => import('@/pages/' + path))),
+      path: fullPath,
+    };
+    route.children.push(newRoute);
+    route.routes.push(newRoute);
   }
 }
 
 export function patchRouteWithRemoteMenus(routes: any) {
-  if (remoteMenu === null) { return; }
+  if (remoteMenu === null) {
+    return;
+  }
   let proLayout = null;
   for (const routeItem of routes) {
     if (routeItem.id === 'ant-design-pro-layout') {
@@ -102,10 +142,18 @@ export function patchRouteWithRemoteMenus(routes: any) {
       break;
     }
   }
+  if (!proLayout) {
+    return;
+  }
+  if (!proLayout.routes) {
+    proLayout.routes = [];
+  }
+  if (!proLayout.children) {
+    proLayout.children = [];
+  }
   patchRouteItems(proLayout, remoteMenu, '');
 }
 
-/** 获取当前用户的权限信息 GET /admin-api/system/auth/get-permission-info */
 export async function getUserInfo(options?: Record<string, any>) {
   return request<API.UserInfoResult>(`${API_PREFIX}/system/auth/get-permission-info`, {
     method: 'GET',
@@ -113,12 +161,11 @@ export async function getUserInfo(options?: Record<string, any>) {
   });
 }
 
-// 刷新令牌
 export async function refreshToken(refreshTokenStr: string) {
   return request(`${API_PREFIX}/system/auth/refresh-token`, {
     method: 'POST',
     params: { refreshToken: refreshTokenStr },
-  })
+  });
 }
 
 export function convertCompatRouters(childrens: API.RoutersMenuItem[]): any[] {
@@ -126,7 +173,6 @@ export function convertCompatRouters(childrens: API.RoutersMenuItem[]): any[] {
     return {
       path: item.path,
       icon: createIcon(item.meta.icon),
-      //  icon: item.meta.icon,
       name: item.meta.title,
       routes: item.children ? convertCompatRouters(item.children) : undefined,
       hideChildrenInMenu: item.hidden,
@@ -137,21 +183,17 @@ export function convertCompatRouters(childrens: API.RoutersMenuItem[]): any[] {
   });
 }
 
-/**
- * 将后端 MenuVO 转换为前端路由格式
- * 后端返回: {id, parentId, name, path, component, componentName, icon, visible, keepAlive, alwaysShow, children}
- * 前端需要: {path, name, icon, component, routes, children, hideInMenu, hideChildrenInMenu}
- */
-function transformMenus(menus: any[]): any[] {
+function transformMenus(menus: any[], parentPath = ''): any[] {
   return menus.map((item: any) => {
-    const children = item.children ? transformMenus(item.children) : undefined;
+    const path = joinMenuPath(parentPath, item.path);
+    const children = item.children ? transformMenus(item.children, path) : undefined;
     return {
-      path: item.path,
+      path,
       name: item.name,
       icon: item.icon ? createIcon(item.icon) : undefined,
       component: item.component,
       routes: children,
-      children: children,
+      children,
       hideInMenu: item.visible === false,
       hideChildrenInMenu: item.visible === false,
       meta: {
@@ -162,10 +204,6 @@ function transformMenus(menus: any[]): any[] {
   });
 }
 
-/**
- * 获取路由菜单信息
- * 从 get-permission-info 接口返回的 menus 字段中提取路由
- */
 export async function getRoutersInfo(): Promise<MenuDataItem[]> {
   try {
     const res = await getUserInfo();
@@ -191,16 +229,15 @@ export function getMatchMenuItem(
         items.push(item);
         return;
       }
-      if (path.length >= item.path?.length) {
+      if (path.length >= item.path.length) {
         const exp = `${item.path}/*`;
         if (path.match(exp)) {
           if (item.routes) {
-            const subpath = path.substr(item.path.length + 1);
-            const subItem: MenuDataItem[] = getMatchMenuItem(subpath, item.routes);
+            const subItem: MenuDataItem[] = getMatchMenuItem(path, item.routes);
             items = items.concat(subItem);
           } else {
             const paths = path.split('/');
-            if (paths.length >= 2 && paths[0] === item.path && paths[1] === 'index') {
+            if (paths.length >= 2 && item.path === `/${paths[1]}`) {
               items.push(item);
             }
           }

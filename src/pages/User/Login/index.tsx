@@ -1,6 +1,7 @@
 import { clearSessionToken, setSessionToken } from '@/access';
+import { ensureRemoteMenu, getFirstMenuPath, setRemoteMenu } from '@/services/session';
 import { login } from '@/services/system/auth';
-import { history, Helmet, useIntl, useModel } from '@umijs/max';
+import { Helmet, useIntl, useModel } from '@umijs/max';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Form, Input, message } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
@@ -272,12 +273,14 @@ const Login: React.FC = () => {
         const current = new Date();
         const expireTime = current.setTime(current.getTime() + 1000 * 12 * 60 * 60);
         setSessionToken(response?.data?.accessToken, response?.data?.refreshToken, expireTime);
+        setRemoteMenu(null);
         message.success(
           intl.formatMessage({ id: 'pages.login.success', defaultMessage: '登录成功' }),
         );
         await fetchUserInfo();
-        const urlParams = new URL(window.location.href).searchParams;
-        history.push(urlParams.get('redirect') || '/');
+        const menus = await ensureRemoteMenu();
+        const firstMenuPath = getFirstMenuPath(menus);
+        window.location.replace(firstMenuPath || '/');
         return;
       }
 
