@@ -74,6 +74,32 @@ export function buildTreeData(
   return tree;
 }
 
+export function handleTree<T extends Record<string, any>>(
+  data: T[] = [],
+  id = 'id',
+  parentId = 'parentId',
+  children = 'children',
+  rootId?: any,
+): T[] {
+  const sourceData = Array.isArray(data) ? data : [];
+  const rootValue =
+    typeof rootId !== 'undefined'
+      ? rootId
+      : Math.min.apply(
+          Math,
+          sourceData.map((item) => item[parentId]),
+        ) || 0;
+  const cloneData = JSON.parse(JSON.stringify(sourceData));
+  const treeData = cloneData.filter((father: T) => {
+    const branchArr = cloneData.filter((child: T) => father[id] === child[parentId]);
+    if (branchArr.length > 0) {
+      father[children] = branchArr;
+    }
+    return father[parentId] === rootValue;
+  });
+  return treeData.length > 0 ? treeData : sourceData;
+}
+
 export const getPageQuery = () => parse(window.location.href.split('?')[1]);
 
 export function formatTreeData(arrayList: any): DataNode[] {

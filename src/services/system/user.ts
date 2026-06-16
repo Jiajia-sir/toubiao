@@ -1,4 +1,4 @@
-import { formatTreeData } from '@/utils/tree';
+import { handleTree } from '@/utils/tree';
 import { request } from '@umijs/max';
 import { DataNode } from 'antd/es/tree';
 import { downLoadXlsx } from '@/utils/downloadfile';
@@ -8,7 +8,7 @@ function transformUserPayload(params: API.System.User) {
   return {
     id: params.userId,
     deptId: params.deptId,
-    username: params.userName,
+    username: (params as any).username ?? params.userName,
     nickname: params.nickName,
     email: params.email,
     mobile: params.phonenumber,
@@ -27,7 +27,7 @@ function transformUserListParams(params?: API.System.UserListParams) {
   }
   return {
     ...params,
-    username: params.userName,
+    username: (params as any).username ?? params.userName,
     nickname: params.nickName,
     mobile: params.phonenumber,
   };
@@ -81,7 +81,7 @@ export async function updateUser(params: API.System.User, options?: { [key: stri
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: transformUserPayload(params),
+    data: params,
     ...(options || {})
   });
 }
@@ -180,7 +180,20 @@ export function getDeptTree(params: any): Promise<DataNode[]> {
       params,
     }).then((res: any) => {
       if (res && res.code === 200) {
-        const treeData = formatTreeData(res.data);
+        const deptList = (res.data || []).map((item: any) => {
+          const id = item.id ?? item.deptId;
+          const name = item.name ?? item.deptName ?? item.label ?? item.title;
+          return {
+            ...item,
+            id,
+            key: id,
+            title: name,
+            value: id,
+            label: name,
+            parentId: item.parentId ?? 0,
+          };
+        });
+        const treeData = handleTree(deptList, 'id');
         resolve(treeData);
       } else {
         resolve([]);

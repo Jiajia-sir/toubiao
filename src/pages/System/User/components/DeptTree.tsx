@@ -19,18 +19,21 @@ export type TreeProps = {
 const DeptTree: React.FC<TreeProps> = (props) => {
   const [treeData, setTreeData] = useState<any>([]);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
   const [autoExpandParent, setAutoExpandParent] = useState<boolean>(true);
 
   const fetchDeptList = async () => {
     const hide = message.loading('正在查询');
     try {
       await getDeptTree({}).then((res: any) => {
-        const exKeys = [];
-        exKeys.push('1');
+        const firstDept = res?.[0];
+        const firstDeptKey = firstDept?.key ?? firstDept?.id;
         setTreeData(res);
-        exKeys.push(res[0].children[0].id);
-        setExpandedKeys(exKeys);
-        props.onSelect(res[0].children[0]);
+        if (firstDept) {
+          setExpandedKeys([firstDeptKey]);
+          setSelectedKeys([firstDeptKey]);
+          props.onSelect(firstDept);
+        }
       });
       hide();
       return true;
@@ -45,6 +48,7 @@ const DeptTree: React.FC<TreeProps> = (props) => {
   }, []);
 
   const onSelect = (keys: React.Key[], info: any) => {
+    setSelectedKeys(keys);
     props.onSelect(info.node);
   };
 
@@ -59,6 +63,7 @@ const DeptTree: React.FC<TreeProps> = (props) => {
       defaultExpandAll
       onExpand={onExpand}
       expandedKeys={expandedKeys}
+      selectedKeys={selectedKeys}
       autoExpandParent={autoExpandParent}
       onSelect={onSelect}
       treeData={treeData}

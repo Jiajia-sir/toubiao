@@ -3,6 +3,7 @@ declare namespace API.System {
 
   interface User {
     userId: number;
+    username?: string;
     deptId: number;
     userName: string;
     nickName: string;
@@ -25,6 +26,7 @@ declare namespace API.System {
 
   export interface UserListParams {
     userId?: string;
+    username?: string;
     deptId?: string;
     userName?: string;
     nickName?: string;
