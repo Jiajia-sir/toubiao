@@ -314,6 +314,13 @@ export default function DataPage() {
   useEffect(() => {
     if (searchParams.get("action") === "upload") {
       setUploadVisible(true);
+      // 清除 URL 参数，避免关闭弹窗后再次打开
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete("action");
+      history.replace({
+        pathname: location.pathname,
+        search: newSearchParams.toString(),
+      });
     }
   }, [searchParams]);
 

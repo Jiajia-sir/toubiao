@@ -1,11 +1,33 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useIntl, FormattedMessage, useAccess, history } from '@umijs/max';
 import { DataNode } from 'antd/es/tree';
 import { Button, message, Modal, Dropdown, FormInstance, Space, Switch } from 'antd';
-import { ActionType, FooterToolbar, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ExclamationCircleOutlined, DownOutlined } from '@ant-design/icons';
-import { getRoleList, removeRole, addRole, updateRole, exportRole, changeRoleStatus, updateRoleDataScope, getDeptTreeSelect, getRole, assignRoleMenu } from '@/services/system/role';
+import {
+  ActionType,
+  FooterToolbar,
+  PageContainer,
+  ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  ExclamationCircleOutlined,
+  DownOutlined,
+} from '@ant-design/icons';
+import {
+  getRoleList,
+  removeRole,
+  addRole,
+  updateRole,
+  exportRole,
+  changeRoleStatus,
+  updateRoleDataScope,
+  getDeptTreeSelect,
+  getRole,
+  assignRoleMenu,
+} from '@/services/system/role';
 import UpdateForm from './edit';
 import { getDictValueEnum } from '@/services/system/dict';
 import { formatTreeData } from '@/utils/tree';
@@ -130,9 +152,7 @@ const handleExport = async () => {
   }
 };
 
-
 const RoleTableList: React.FC = () => {
-
   const [messageApi, contextHolder] = message.useMessage();
   const formTableRef = useRef<FormInstance>();
 
@@ -165,12 +185,12 @@ const RoleTableList: React.FC = () => {
   }, []);
 
   const showChangeStatusConfirm = (record: API.System.Role) => {
-    let text = record.status === "1" ? "启用" : "停用";
+    let text = record.status === '1' ? '启用' : '停用';
     const newStatus = record.status === '0' ? '1' : '0';
     confirm({
       title: `确认要${text}${record.roleName}角色吗？`,
       onOk() {
-        changeRoleStatus(record.roleId, newStatus).then(resp => {
+        changeRoleStatus(record.roleId, newStatus).then((resp) => {
           if (resp.code === 200) {
             messageApi.open({
               type: 'success',
@@ -224,7 +244,8 @@ const RoleTableList: React.FC = () => {
             unCheckedChildren="停用"
             defaultChecked
             onClick={() => showChangeStatusConfirm(record)}
-          />)
+          />
+        );
       },
     },
     {
@@ -232,7 +253,7 @@ const RoleTableList: React.FC = () => {
       dataIndex: 'createTime',
       valueType: 'dateRange',
       render: (_, record) => {
-        return (<span>{record.createTime.toString()} </span>);
+        return <span>{record.createTime.toString()} </span>;
       },
       search: {
         transform: (value) => {
@@ -314,23 +335,22 @@ const RoleTableList: React.FC = () => {
             ],
             onClick: ({ key }: any) => {
               if (key === 'datascope') {
-                getRole(record.roleId).then(resp => {
-                  if(resp.code === 200) {
+                getRole(record.roleId).then((resp) => {
+                  if (resp.code === 200) {
                     setCurrentRow(resp.data);
                     setMenuIds((resp.deptIds || []).map((item: number) => `${item}`));
                     setDataScopeModalOpen(true);
                   }
-                })
-                getDeptTreeSelect(record.roleId).then(resp => {
+                });
+                getDeptTreeSelect(record.roleId).then((resp) => {
                   if (resp.code === 200) {
                     setMenuTree(formatTreeData(resp.data || []));
                   }
-                })
-              }
-              else if (key === 'authUser') {
+                });
+              } else if (key === 'authUser') {
                 history.push(`/system/role-auth/user/${record.roleId}`);
               }
-            }
+            },
           }}
         >
           <a onClick={(e) => e.preventDefault()}>
@@ -398,7 +418,7 @@ const RoleTableList: React.FC = () => {
                       actionRef.current?.reloadAndRest?.();
                     }
                   },
-                  onCancel() { },
+                  onCancel() {},
                 });
               }}
             >
@@ -515,6 +535,11 @@ const RoleTableList: React.FC = () => {
         deptTree={menuTree || []}
         deptCheckedKeys={menuIds || []}
       />
+      <style>{`
+        .ant-pro-page-container .ant-pro-page-container-warp-page-header {
+          background: #fff;
+        }
+      `}</style>
     </PageContainer>
   );
 };
