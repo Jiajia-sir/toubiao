@@ -5,7 +5,7 @@ import {
   ProFormSelect,
   ProFormRadio,
   ProFormTextArea,
-  ProFormTreeSelect,
+  ProFormCascader,
 } from '@ant-design/pro-components';
 import { Form, Modal } from 'antd';
 import { useIntl, FormattedMessage } from '@umijs/max';
@@ -36,6 +36,23 @@ export type UserFormProps = {
   depts: DataNode[];
 };
 
+const findDeptPath = (options: DataNode[], targetValue?: React.Key): React.Key[] | undefined => {
+  if (typeof targetValue === 'undefined' || targetValue === null) {
+    return undefined;
+  }
+  for (const option of options) {
+    const value = (option as any).value ?? option.key ?? (option as any).id;
+    if (`${value}` === `${targetValue}`) {
+      return [value];
+    }
+    const childPath = findDeptPath((option.children || []) as DataNode[], targetValue);
+    if (childPath) {
+      return [value, ...childPath];
+    }
+  }
+  return undefined;
+};
+
 const UserForm: React.FC<UserFormProps> = (props) => {
   const [form] = Form.useForm();
   const userId = Form.useWatch('userId', form);
@@ -46,16 +63,16 @@ const UserForm: React.FC<UserFormProps> = (props) => {
     form.resetFields();
     form.setFieldsValue({
       userId: props.values.userId,
-      deptId: props.values.deptId,
+      deptId: findDeptPath(depts, props.values.deptId),
       postIds: props.postIds,
       roleIds: props.roleIds,
-      userName: props.values.userName,
+      username: (props.values as any).username ?? props.values.userName,
       nickName: props.values.nickName,
       email: props.values.email,
       phonenumber: props.values.phonenumber,
-      sex: typeof props.values.sex === 'undefined' ? '0' : props.values.sex,
+      sex: typeof props.values.sex === 'undefined' ? '1' : String(props.values.sex),
       avatar: props.values.avatar,
-      status: typeof props.values.status === 'undefined' ? '0' : props.values.status,
+      status: typeof props.values.status === 'undefined' ? '0' : String(props.values.status),
       delFlag: props.values.delFlag,
       loginIp: props.values.loginIp,
       loginDate: props.values.loginDate,
@@ -71,7 +88,11 @@ const UserForm: React.FC<UserFormProps> = (props) => {
     props.onCancel();
   };
   const handleFinish = async (values: Record<string, any>) => {
-    props.onSubmit(values as UserFormData);
+    const deptPath = values.deptId;
+    props.onSubmit({
+      ...values,
+      deptId: Array.isArray(deptPath) ? deptPath[deptPath.length - 1] : deptPath,
+    } as UserFormData);
   };
 
   return (
@@ -92,6 +113,7 @@ const UserForm: React.FC<UserFormProps> = (props) => {
         layout="horizontal"
         submitter={false}
         onFinish={handleFinish}>
+        <ProFormText name="userId" hidden />
         <ProFormText
           name="nickName"
           label={intl.formatMessage({
@@ -109,14 +131,15 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             },
           ]}
         />
-        <ProFormTreeSelect
+        <ProFormCascader
           name="deptId"
           label={intl.formatMessage({
             id: 'system.user.dept_name',
             defaultMessage: '部门',
           })}
-          request={async () => {
-            return depts;
+          fieldProps={{
+            options: depts as any[],
+            changeOnSelect: true,
           }}
           placeholder="请输入用户部门"
           colProps={{ md: 12, xl: 12 }}
@@ -164,12 +187,11 @@ const UserForm: React.FC<UserFormProps> = (props) => {
           ]}
         />
         <ProFormText
-          name="userName"
+          name="username"
           label={intl.formatMessage({
             id: 'system.user.user_name',
             defaultMessage: '用户账号',
           })}
-          hidden={userId}
           placeholder="请输入用户账号"
           colProps={{ md: 12, xl: 12 }}
           rules={[
@@ -184,7 +206,6 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             id: 'system.user.password',
             defaultMessage: '密码',
           })}
-          hidden={userId}
           placeholder="请输入密码"
           colProps={{ md: 12, xl: 12 }}
           rules={[
@@ -195,13 +216,20 @@ const UserForm: React.FC<UserFormProps> = (props) => {
           ]}
         />
         <ProFormSelect
-          valueEnum={sexOptions}
+          valueEnum={
+            Object.keys(sexOptions || {}).length > 0
+              ? sexOptions
+              : {
+                  1: { text: '男' },
+                  2: { text: '女' },
+                }
+          }
           name="sex"
           label={intl.formatMessage({
             id: 'system.user.sex',
             defaultMessage: '用户性别',
           })}
-          initialValue={'0'}
+          initialValue={'1'}
           placeholder="请输入用户性别"
           colProps={{ md: 12, xl: 12 }}
           rules={[

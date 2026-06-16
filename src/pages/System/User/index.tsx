@@ -30,7 +30,6 @@ import {
   getAuthRole,
 } from '@/services/system/user';
 import UpdateForm from './edit';
-import { getDictValueEnum } from '@/services/system/dict';
 import { DataNode } from 'antd/es/tree';
 import { getDeptTree } from '@/services/system/user';
 import DeptTree from './components/DeptTree';
@@ -40,6 +39,8 @@ import { getRoleSimpleList } from '@/services/system/role';
 import AuthRoleForm from './components/AuthRole';
 
 const { confirm } = Modal;
+
+const isSuccess = (resp?: API.Result) => ['0', '200'].includes(String(resp?.code));
 
 /* *
  *
@@ -56,10 +57,14 @@ const { confirm } = Modal;
 const handleAdd = async (fields: API.System.User) => {
   const hide = message.loading('正在添加');
   try {
-    await addUser({ ...fields });
+    const resp = await addUser({ ...fields });
     hide();
-    message.success('添加成功');
-    return true;
+    if (isSuccess(resp)) {
+      message.success('添加成功');
+      return true;
+    }
+    message.error(resp.msg || '添加失败请重试！');
+    return false;
   } catch (error) {
     hide();
     message.error('添加失败请重试！');
@@ -75,10 +80,14 @@ const handleAdd = async (fields: API.System.User) => {
 const handleUpdate = async (fields: API.System.User) => {
   const hide = message.loading('正在配置');
   try {
-    await updateUser(fields);
+    const resp = await updateUser(fields);
     hide();
-    message.success('配置成功');
-    return true;
+    if (isSuccess(resp)) {
+      message.success('配置成功');
+      return true;
+    }
+    message.error(resp.msg || '配置失败请重试！');
+    return false;
   } catch (error) {
     hide();
     message.error('配置失败请重试！');
@@ -170,23 +179,26 @@ const UserTableList: React.FC = () => {
   const intl = useIntl();
 
   useEffect(() => {
-    getDictValueEnum('sys_user_sex').then((data) => {
-      setSexOptions(data);
+    setSexOptions({
+      1: { text: '男' },
+      2: { text: '女' },
     });
-    getDictValueEnum('common_status').then((data) => {
-      if (Object.keys(data || {}).length > 0) {
-        setStatusOptions(data);
-        return;
-      }
-      getDictValueEnum('sys_normal_disable').then((fallbackData) => {
-        setStatusOptions(fallbackData);
-      });
+    setStatusOptions({
+      0: { text: '启用' },
+      1: { text: '停用' },
     });
   }, []);
 
+  useEffect(() => {
+    if (typeof selectDept?.id !== 'undefined' && selectDept?.id !== null && actionRef.current) {
+      actionRef.current.reload();
+    }
+  }, [selectDept?.id]);
+
   const showChangeStatusConfirm = (record: API.System.User) => {
-    let text = record.status === '1' ? '启用' : '停用';
-    const newStatus = record.status === '0' ? '1' : '0';
+    const status = String(record.status);
+    let text = status === '1' ? '启用' : '停用';
+    const newStatus = status === '0' ? '1' : '0';
     confirm({
       title: `确认要${text}${record.userName}用户吗？`,
       onOk() {
@@ -208,26 +220,62 @@ const UserTableList: React.FC = () => {
     });
   };
 
+  const normalizeUser = (user: any): API.System.User => {
+    return {
+      ...user,
+      userId: user.userId ?? user.id,
+      deptId: user.deptId,
+      username: user.username ?? user.userName,
+      userName: user.userName ?? user.username,
+      nickName: user.nickName ?? user.nickname,
+      phonenumber: user.phonenumber ?? user.mobile,
+      sex: typeof user.sex === 'undefined' || user.sex === null ? user.sex : String(user.sex),
+      status:
+        typeof user.status === 'undefined' || user.status === null ? user.status : String(user.status),
+    };
+  };
+
+  const toPostOptions = (posts: any[] = []) => {
+    return posts.map((item: any) => {
+      return {
+        value: item.postId ?? item.id,
+        label: item.postName ?? item.name,
+      };
+    });
+  };
+
+  const toRoleOptions = (roles: any[] = []) => {
+    return roles.map((item: any) => {
+      return {
+        value: item.roleId ?? item.id,
+        label: item.roleName ?? item.name,
+      };
+    });
+  };
+
   const fetchUserInfo = async (userId: number) => {
-    const res = await getUser(userId);
-    setPostIds(res.postIds || []);
+    const [userResp, postResp, roleResp] = await Promise.all([
+      getUser(userId),
+      getPostSimpleList(),
+      getRoleSimpleList(),
+    ]);
+    const userData = (userResp as any).data || {};
+    setPostIds((userResp as any).postIds || userData.postIds || []);
     setPostList(
-      (res.posts || []).map((item: any) => {
-        return {
-          value: item.postId,
-          label: item.postName,
-        };
-      }),
+      postResp.code === 200
+        ? toPostOptions(postResp.data || [])
+        : toPostOptions((userResp as any).posts || userData.posts || []),
     );
-    setRoleIds(res.roleIds || []);
+    setRoleIds((userResp as any).roleIds || userData.roleIds || []);
     setRoleList(
-      (res.roles || []).map((item: any) => {
-        return {
-          value: item.roleId,
-          label: item.roleName,
-        };
-      }),
+      roleResp.code === 200
+        ? toRoleOptions(roleResp.data || [])
+        : toRoleOptions((userResp as any).roles || userData.roles || []),
     );
+    return {
+      ...userResp,
+      data: normalizeUser(userData),
+    };
   };
 
   const fetchAuthRoleInfo = async (userId: number) => {
@@ -286,7 +334,7 @@ const UserTableList: React.FC = () => {
       render: (_, record) => {
         return (
           <Switch
-            checked={record.status === '0'}
+            checked={String(record.status) === '0'}
             checkedChildren="正常"
             unCheckedChildren="停用"
             defaultChecked
@@ -308,11 +356,13 @@ const UserTableList: React.FC = () => {
           icon=<EditOutlined />
           hidden={!access.hasPerms('system:user:edit')}
           onClick={async () => {
-            fetchUserInfo(record.userId);
-            const treeData = await getDeptTree({});
+            const [userInfo, treeData] = await Promise.all([
+              fetchUserInfo(record.userId),
+              getDeptTree({}),
+            ]);
             setDeptTree(treeData);
             setModalVisible(true);
-            setCurrentRow(record);
+            setCurrentRow(userInfo.data || record);
           }}
         >
           编辑
@@ -387,19 +437,16 @@ const UserTableList: React.FC = () => {
     <PageContainer>
       {contextHolder}
       <Row gutter={[16, 24]}>
-        <Col lg={6} md={24}>
-          <Card>
+        <Col lg={4} md={24}>
+          <Card style={{ minHeight: '68vh' }}>
             <DeptTree
               onSelect={async (value: any) => {
                 setSelectDept(value);
-                if (actionRef.current) {
-                  formTableRef?.current?.submit();
-                }
               }}
             />
           </Card>
         </Col>
-        <Col lg={18} md={24}>
+        <Col lg={20} md={24}>
           <ProTable<API.System.User>
             headerTitle={intl.formatMessage({
               id: 'pages.searchTable.title',
@@ -444,7 +491,9 @@ const UserTableList: React.FC = () => {
                       }),
                     );
                   }
-                  setCurrentRow(undefined);
+                  setCurrentRow({
+                    deptId: selectDept?.id ?? selectDept?.value,
+                  } as API.System.User);
                   setModalVisible(true);
                 }}
               >
@@ -545,7 +594,7 @@ const UserTableList: React.FC = () => {
       <UpdateForm
         onSubmit={async (values) => {
           let success = false;
-          if (values.userId) {
+          if (typeof values.userId !== 'undefined' && values.userId !== null) {
             success = await handleUpdate({ ...values } as API.System.User);
           } else {
             success = await handleAdd({ ...values } as API.System.User);

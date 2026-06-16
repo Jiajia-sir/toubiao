@@ -59,6 +59,7 @@ const UpdateForm: React.FC<UpdateFormProps> = (props) => {
         grid={true}
         form={form}
         layout="horizontal"
+        submitter={false}
         onFinish={handleFinish}
         initialValues={{
           password: '',
