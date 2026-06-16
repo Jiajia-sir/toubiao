@@ -1,11 +1,23 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useIntl, FormattedMessage, useAccess } from '@umijs/max';
 import type { FormInstance } from 'antd';
 import { Button, message, Modal } from 'antd';
-import { ActionType, FooterToolbar, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
+import {
+  ActionType,
+  FooterToolbar,
+  PageContainer,
+  ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { getOperlogList, removeOperlog, addOperlog, updateOperlog, cleanAllOperlog, exportOperlog } from '@/services/monitor/operlog';
+import {
+  getOperlogList,
+  removeOperlog,
+  addOperlog,
+  updateOperlog,
+  cleanAllOperlog,
+  exportOperlog,
+} from '@/services/monitor/operlog';
 import UpdateForm from './detail';
 import { getDictValueEnum } from '@/services/system/dict';
 import DictTag from '@/components/DictTag';
@@ -102,7 +114,6 @@ const handleCleanAll = async () => {
   }
 };
 
-
 /**
  * 导出数据
  *
@@ -121,7 +132,6 @@ const handleExport = async () => {
     return false;
   }
 };
-
 
 const OperlogTableList: React.FC = () => {
   const formTableRef = useRef<FormInstance>();
@@ -171,7 +181,7 @@ const OperlogTableList: React.FC = () => {
       valueType: 'select',
       valueEnum: businessTypeOptions,
       render: (_, record) => {
-        return (<DictTag enums={businessTypeOptions} value={record.businessType} />);
+        return <DictTag enums={businessTypeOptions} value={record.businessType} />;
       },
     },
     {
@@ -185,7 +195,7 @@ const OperlogTableList: React.FC = () => {
       valueType: 'select',
       valueEnum: operatorTypeOptions,
       render: (_, record) => {
-        return (<DictTag enums={operatorTypeOptions} value={record.operatorType} />);
+        return <DictTag enums={operatorTypeOptions} value={record.operatorType} />;
       },
     },
     {
@@ -209,7 +219,7 @@ const OperlogTableList: React.FC = () => {
       valueType: 'select',
       valueEnum: statusOptions,
       render: (_, record) => {
-        return (<DictTag key="status" enums={statusOptions} value={record.status} />);
+        return <DictTag key="status" enums={statusOptions} value={record.status} />;
       },
     },
     {
@@ -283,7 +293,7 @@ const OperlogTableList: React.FC = () => {
                       actionRef.current?.reloadAndRest?.();
                     }
                   },
-                  onCancel() { },
+                  onCancel() {},
                 });
               }}
             >
@@ -307,7 +317,7 @@ const OperlogTableList: React.FC = () => {
                       actionRef.current?.reloadAndRest?.();
                     }
                   },
-                  onCancel() { },
+                  onCancel() {},
                 });
               }}
             >
@@ -404,6 +414,11 @@ const OperlogTableList: React.FC = () => {
         operatorTypeOptions={operatorTypeOptions}
         statusOptions={statusOptions}
       />
+      <style>{`
+        .ant-pro-page-container .ant-pro-page-container-warp-page-header {
+          background: #fff;
+        }
+      `}</style>
     </PageContainer>
   );
 };

@@ -1,11 +1,34 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useIntl, FormattedMessage, useAccess } from '@umijs/max';
 import { Card, Col, Dropdown, FormInstance, Row, Space, Switch } from 'antd';
 import { Button, message, Modal } from 'antd';
-import { ActionType, FooterToolbar, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
-import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, DownOutlined, EditOutlined } from '@ant-design/icons';
-import { getUserList, removeUser, addUser, updateUser, exportUser, getUser, changeUserStatus, updateAuthRole, resetUserPwd, getAuthRole } from '@/services/system/user';
+import {
+  ActionType,
+  FooterToolbar,
+  PageContainer,
+  ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  ExclamationCircleOutlined,
+  DownOutlined,
+  EditOutlined,
+  DownloadOutlined,
+} from '@ant-design/icons';
+import {
+  getUserList,
+  removeUser,
+  addUser,
+  updateUser,
+  exportUser,
+  getUser,
+  changeUserStatus,
+  updateAuthRole,
+  resetUserPwd,
+  getAuthRole,
+} from '@/services/system/user';
 import UpdateForm from './edit';
 import { getDictValueEnum } from '@/services/system/dict';
 import { DataNode } from 'antd/es/tree';
@@ -162,12 +185,12 @@ const UserTableList: React.FC = () => {
   }, []);
 
   const showChangeStatusConfirm = (record: API.System.User) => {
-    let text = record.status === "1" ? "启用" : "停用";
+    let text = record.status === '1' ? '启用' : '停用';
     const newStatus = record.status === '0' ? '1' : '0';
     confirm({
       title: `确认要${text}${record.userName}用户吗？`,
       onOk() {
-        changeUserStatus(record.userId, newStatus).then(resp => {
+        changeUserStatus(record.userId, newStatus).then((resp) => {
           if (resp.code === 200) {
             messageApi.open({
               type: 'success',
@@ -248,7 +271,7 @@ const UserTableList: React.FC = () => {
       title: <FormattedMessage id="system.user.dept_name" defaultMessage="部门" />,
       dataIndex: 'deptName',
       valueType: 'text',
-      hideInSearch: true
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.user.phonenumber" defaultMessage="手机号码" />,
@@ -268,7 +291,8 @@ const UserTableList: React.FC = () => {
             unCheckedChildren="停用"
             defaultChecked
             onClick={() => showChangeStatusConfirm(record)}
-          />)
+          />
+        );
       },
     },
     {
@@ -324,7 +348,9 @@ const UserTableList: React.FC = () => {
           menu={{
             items: [
               {
-                label: <FormattedMessage id="system.user.reset.password" defaultMessage="密码重置" />,
+                label: (
+                  <FormattedMessage id="system.user.reset.password" defaultMessage="密码重置" />
+                ),
                 key: 'reset',
                 disabled: !access.hasPerms('system:user:edit'),
               },
@@ -338,13 +364,12 @@ const UserTableList: React.FC = () => {
               if (key === 'reset') {
                 setResetPwdModalVisible(true);
                 setCurrentRow(record);
-              }
-              else if (key === 'authRole') {
+              } else if (key === 'authRole') {
                 fetchAuthRoleInfo(record.userId);
                 setAuthRoleModalVisible(true);
                 setCurrentRow(record);
               }
-            }
+            },
           }}
         >
           <a onClick={(e) => e.preventDefault()}>
@@ -396,7 +421,7 @@ const UserTableList: React.FC = () => {
                   const treeData = await getDeptTree({});
                   setDeptTree(treeData);
 
-                  const postResp = await getPostSimpleList()
+                  const postResp = await getPostSimpleList();
                   if (postResp.code === 200) {
                     setPostList(
                       (postResp.data || []).map((item: any) => {
@@ -408,7 +433,7 @@ const UserTableList: React.FC = () => {
                     );
                   }
 
-                  const roleResp = await getRoleSimpleList()
+                  const roleResp = await getRoleSimpleList();
                   if (roleResp.code === 200) {
                     setRoleList(
                       (roleResp.data || []).map((item: any) => {
@@ -423,7 +448,8 @@ const UserTableList: React.FC = () => {
                   setModalVisible(true);
                 }}
               >
-                <PlusOutlined /> <FormattedMessage id="pages.searchTable.new" defaultMessage="新建" />
+                <PlusOutlined />{' '}
+                <FormattedMessage id="pages.searchTable.new" defaultMessage="新建" />
               </Button>,
               <Button
                 type="primary"
@@ -442,7 +468,7 @@ const UserTableList: React.FC = () => {
                         actionRef.current?.reloadAndRest?.();
                       }
                     },
-                    onCancel() { },
+                    onCancel() {},
                   });
                 }}
               >
@@ -457,19 +483,21 @@ const UserTableList: React.FC = () => {
                   handleExport();
                 }}
               >
-                <PlusOutlined />
+                <DownloadOutlined />
                 <FormattedMessage id="pages.searchTable.export" defaultMessage="导出" />
               </Button>,
             ]}
             request={(params) =>
-              getUserList({ ...params, deptId: selectDept.id } as API.System.UserListParams).then((res) => {
-                const result = {
-                  data: res.rows,
-                  total: res.total,
-                  success: true,
-                };
-                return result;
-              })
+              getUserList({ ...params, deptId: selectDept.id } as API.System.UserListParams).then(
+                (res) => {
+                  const result = {
+                    data: res.rows,
+                    total: res.total,
+                    success: true,
+                  };
+                  return result;
+                },
+              )
             }
             columns={columns}
             rowSelection={{
@@ -584,6 +612,11 @@ const UserTableList: React.FC = () => {
         roles={roleList || []}
         roleIds={roleIds || []}
       />
+      <style>{`
+        .ant-pro-page-container .ant-pro-page-container-warp-page-header {
+          background: #fff;
+        }
+      `}</style>
     </PageContainer>
   );
 };

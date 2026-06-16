@@ -2,9 +2,26 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useIntl, FormattedMessage, useAccess } from '@umijs/max';
 import type { FormInstance } from 'antd';
 import { Button, message, Modal } from 'antd';
-import { ActionType, FooterToolbar, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
-import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined, UnlockOutlined } from '@ant-design/icons';
-import { getLogininforList, removeLogininfor, exportLogininfor, unlockLogininfor, cleanLogininfor } from '@/services/monitor/logininfor';
+import {
+  ActionType,
+  FooterToolbar,
+  PageContainer,
+  ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  ExclamationCircleOutlined,
+  UnlockOutlined,
+} from '@ant-design/icons';
+import {
+  getLogininforList,
+  removeLogininfor,
+  exportLogininfor,
+  unlockLogininfor,
+  cleanLogininfor,
+} from '@/services/monitor/logininfor';
 import DictTag from '@/components/DictTag';
 import { getDictValueEnum } from '@/services/system/dict';
 
@@ -336,6 +353,11 @@ const LogininforTableList: React.FC = () => {
           </Button>
         </FooterToolbar>
       )}
+      <style>{`
+        .ant-pro-page-container .ant-pro-page-container-warp-page-header {
+          background: #fff;
+        }
+      `}</style>
     </PageContainer>
   );
 };

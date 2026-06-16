@@ -1,11 +1,22 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useIntl, FormattedMessage, useAccess } from '@umijs/max';
 import type { FormInstance } from 'antd';
 import { Button, message, Modal } from 'antd';
-import { ActionType, FooterToolbar, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
+import {
+  ActionType,
+  FooterToolbar,
+  PageContainer,
+  ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { getDeptList, removeDept, addDept, updateDept, getDeptListExcludeChild } from '@/services/system/dept';
+import {
+  getDeptList,
+  removeDept,
+  addDept,
+  updateDept,
+  getDeptListExcludeChild,
+} from '@/services/system/dept';
 import UpdateForm from './edit';
 import { getDictValueEnum } from '@/services/system/dict';
 import { buildTreeData } from '@/utils/tree';
@@ -101,7 +112,6 @@ const handleRemoveOne = async (selectedRow: API.System.Dept) => {
   }
 };
 
-
 const DeptTableList: React.FC = () => {
   const formTableRef = useRef<FormInstance>();
 
@@ -148,7 +158,7 @@ const DeptTableList: React.FC = () => {
       valueType: 'select',
       valueEnum: statusOptions,
       render: (_, record) => {
-        return (<DictTag enums={statusOptions} value={record.status} />);
+        return <DictTag enums={statusOptions} value={record.status} />;
       },
     },
     {
@@ -166,7 +176,7 @@ const DeptTableList: React.FC = () => {
             getDeptListExcludeChild(record.deptId).then((res) => {
               if (res.code === 200) {
                 let depts = buildTreeData(res.data, 'deptId', 'deptName', '', '', '');
-                if(depts.length === 0) {
+                if (depts.length === 0) {
                   depts = [{ id: 0, title: '无上级', children: undefined, key: 0, value: 0 }];
                 }
                 setDeptTree(depts);
@@ -345,6 +355,11 @@ const DeptTableList: React.FC = () => {
         deptTree={deptTree}
         statusOptions={statusOptions}
       />
+      <style>{`
+        .ant-pro-page-container .ant-pro-page-container-warp-page-header {
+          background: #fff;
+        }
+      `}</style>
     </PageContainer>
   );
 };

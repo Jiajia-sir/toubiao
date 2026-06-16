@@ -1,8 +1,13 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useIntl, FormattedMessage, useAccess } from '@umijs/max';
 import { Button, message, Modal } from 'antd';
-import { ActionType, FooterToolbar, PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
+import {
+  ActionType,
+  FooterToolbar,
+  PageContainer,
+  ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
 import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { getMenuList, removeMenu, addMenu, updateMenu } from '@/services/system/menu';
 import UpdateForm from './edit';
@@ -98,9 +103,7 @@ const handleRemoveOne = async (selectedRow: API.System.Menu) => {
   }
 };
 
-
 const MenuTableList: React.FC = () => {
-
   const [modalVisible, setModalVisible] = useState<boolean>(false);
 
   const actionRef = useRef<ActionType>();
@@ -165,7 +168,7 @@ const MenuTableList: React.FC = () => {
       valueType: 'select',
       valueEnum: statusOptions,
       render: (_, record) => {
-        return (<DictTag enums={statusOptions} value={record.status} />);
+        return <DictTag enums={statusOptions} value={record.status} />;
       },
     },
     {
@@ -349,6 +352,11 @@ const MenuTableList: React.FC = () => {
         statusOptions={statusOptions}
         menuTree={menuTree}
       />
+      <style>{`
+        .ant-pro-page-container .ant-pro-page-container-warp-page-header {
+          background: #fff;
+        }
+      `}</style>
     </PageContainer>
   );
 };
