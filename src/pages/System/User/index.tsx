@@ -231,7 +231,9 @@ const UserTableList: React.FC = () => {
       phonenumber: user.phonenumber ?? user.mobile,
       sex: typeof user.sex === 'undefined' || user.sex === null ? user.sex : String(user.sex),
       status:
-        typeof user.status === 'undefined' || user.status === null ? user.status : String(user.status),
+        typeof user.status === 'undefined' || user.status === null
+          ? user.status
+          : String(user.status),
     };
   };
 
@@ -266,7 +268,11 @@ const UserTableList: React.FC = () => {
         ? toPostOptions(postResp.data || [])
         : toPostOptions((userResp as any).posts || userData.posts || []),
     );
-    setRoleIds((userResp as any).roleIds || userData.roleIds || []);
+    setRoleIds(
+      (userResp as any).roleIds ||
+        userData.roleIds ||
+        ((userResp as any).roles || userData.roles || []).map((item: any) => item.roleId ?? item.id),
+    );
     setRoleList(
       roleResp.code === 200
         ? toRoleOptions(roleResp.data || [])
@@ -304,6 +310,7 @@ const UserTableList: React.FC = () => {
       title: <FormattedMessage id="system.user.user_id" defaultMessage="用户编号" />,
       dataIndex: 'userId',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.user.user_name" defaultMessage="用户账号" />,
@@ -314,6 +321,7 @@ const UserTableList: React.FC = () => {
       title: <FormattedMessage id="system.user.nick_name" defaultMessage="用户昵称" />,
       dataIndex: 'nickName',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.user.dept_name" defaultMessage="部门" />,
@@ -321,10 +329,18 @@ const UserTableList: React.FC = () => {
       valueType: 'text',
       hideInSearch: true,
     },
+
     {
-      title: <FormattedMessage id="system.user.phonenumber" defaultMessage="手机号码" />,
-      dataIndex: 'phonenumber',
+      title: <FormattedMessage id="system.user.loginIp" defaultMessage="登录ip" />,
+      dataIndex: 'loginIp',
       valueType: 'text',
+      hideInSearch: true,
+    },
+
+    {
+      title: <FormattedMessage id="system.user.createTime" defaultMessage="创建时间" />,
+      dataIndex: 'createTime',
+      valueType: 'dateTime',
     },
     {
       title: <FormattedMessage id="system.user.status" defaultMessage="帐号状态" />,
@@ -342,6 +358,11 @@ const UserTableList: React.FC = () => {
           />
         );
       },
+    },
+    {
+      title: <FormattedMessage id="system.user.phonenumber" defaultMessage="手机号码" />,
+      dataIndex: 'phonenumber',
+      valueType: 'text',
     },
     {
       title: <FormattedMessage id="pages.searchTable.titleOption" defaultMessage="操作" />,
