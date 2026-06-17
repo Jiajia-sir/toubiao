@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   Button,
@@ -20,6 +20,8 @@ import {
   Divider,
   Dropdown,
   Radio,
+  Switch,
+  ColorPicker,
 } from "antd";
 import {
   SearchOutlined,
@@ -41,6 +43,8 @@ import {
   ClockCircleOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
+import { addEntityType, updateEntityType, removeEntityType, getEntityTypePage } from "@/services/biz/entity-type";
+import dayjs from "dayjs";
 
 interface EntityTypeItem {
   id: string;
@@ -49,7 +53,11 @@ interface EntityTypeItem {
   attributeCount: number;
   entityCount: number;
   status: "enabled" | "disabled";
-  updateTime: string;
+  createTime?: string;
+  icon?: string;
+  color?: string;
+  bgColor?: string;
+  isSystem?: boolean;
 }
 
 interface EntityAttribute {
@@ -68,6 +76,28 @@ const fieldTypeOptions = [
   { label: "布尔值", value: "boolean" },
   { label: "枚举", value: "enum" },
 ];
+
+const iconOptions = [
+  { label: <span><DatabaseOutlined /> 数据库</span>, value: "DatabaseOutlined" },
+  { label: <span><MedicineBoxOutlined /> 医疗</span>, value: "MedicineBoxOutlined" },
+  { label: <span><ExperimentOutlined /> 实验</span>, value: "ExperimentOutlined" },
+  { label: <span><FireOutlined /> 热门</span>, value: "FireOutlined" },
+  { label: <span><BankOutlined /> 机构</span>, value: "BankOutlined" },
+  { label: <span><CheckCircleOutlined /> 校验</span>, value: "CheckCircleOutlined" },
+  { label: <span><ClockCircleOutlined /> 时间</span>, value: "ClockCircleOutlined" },
+  { label: <span><SettingOutlined /> 设置</span>, value: "SettingOutlined" },
+];
+
+const iconMap: Record<string, React.ReactNode> = {
+  DatabaseOutlined: <DatabaseOutlined />,
+  MedicineBoxOutlined: <MedicineBoxOutlined />,
+  ExperimentOutlined: <ExperimentOutlined />,
+  FireOutlined: <FireOutlined />,
+  BankOutlined: <BankOutlined />,
+  CheckCircleOutlined: <CheckCircleOutlined />,
+  ClockCircleOutlined: <ClockCircleOutlined />,
+  SettingOutlined: <SettingOutlined />,
+};
 
 const initialData: EntityTypeItem[] = [
   {
@@ -155,10 +185,12 @@ const entityTypeConfig: Record<
 };
 
 export default function EntityTypePage() {
-  const [entityTypes, setEntityTypes] = useState<EntityTypeItem[]>(initialData);
+  const [entityTypes, setEntityTypes] = useState<EntityTypeItem[]>([]);
   const [searchName, setSearchName] = useState("");
   const [searchStatus, setSearchStatus] = useState("全部");
   const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
   const pageSize = 10;
 
   const [importModalVisible, setImportModalVisible] = useState(false);
@@ -174,25 +206,35 @@ export default function EntityTypePage() {
     description: "",
     attributes: [] as EntityAttribute[],
     status: "disabled",
+    icon: "",
+    color: "",
+    bgColor: "",
+    isSystem: false,
   });
 
-  const filteredEntityTypes = entityTypes.filter((item) => {
-    if (
-      searchName &&
-      !item.name.toLowerCase().includes(searchName.toLowerCase())
-    ) {
-      return false;
+  const fetchData = async (current = page, name = searchName, status = searchStatus) => {
+    setLoading(true);
+    try {
+      const res = await getEntityTypePage({
+        pageNo: current,
+        pageSize,
+        name: name || undefined,
+        enabled: status === "全部" ? undefined : (status === "enabled" ? "1" : "0"),
+      });
+      const list = res?.rows || res?.data?.records || res?.data?.list || res?.list || res?.data || [];
+      const totalCount = res?.total || res?.data?.total || 0;
+      setEntityTypes(list);
+      setTotal(totalCount);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
-    if (searchStatus !== "全部" && item.status !== searchStatus) {
-      return false;
-    }
-    return true;
-  });
+  };
 
-  const paginatedEntityTypes = filteredEntityTypes.slice(
-    (page - 1) * pageSize,
-    page * pageSize,
-  );
+  useEffect(() => {
+    fetchData(page, searchName, searchStatus);
+  }, [page]);
 
   const columns = [
     {
@@ -200,12 +242,16 @@ export default function EntityTypePage() {
       dataIndex: "name",
       key: "name",
       width: 180,
-      render: (_: string, record: EntityTypeItem) => {
-        const config = entityTypeConfig[record.name] || {
+      render: (_: string, record: EntityTypeItem & { enabled?: string | number }) => {
+        const fallbackConfig = entityTypeConfig[record.name] || {
           icon: <DatabaseOutlined />,
           color: "#1890ff",
           bgColor: "#e6f7ff",
         };
+        const displayIcon = record.icon && iconMap[record.icon] ? iconMap[record.icon] : fallbackConfig.icon;
+        const displayColor = record.color || fallbackConfig.color;
+        const displayBgColor = record.bgColor || fallbackConfig.bgColor;
+        
         return (
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div
@@ -215,14 +261,14 @@ export default function EntityTypePage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: config.bgColor,
+                background: displayBgColor,
                 borderRadius: 8,
-                border: `1px solid ${config.color}50`,
+                border: `1px solid ${displayColor}50`,
               }}
             >
-              {config.icon && (
-                <span style={{ fontSize: 18, color: config.color }}>
-                  {config.icon}
+              {displayIcon && (
+                <span style={{ fontSize: 18, color: displayColor }}>
+                  {displayIcon}
                 </span>
               )}
             </div>
@@ -269,12 +315,10 @@ export default function EntityTypePage() {
       dataIndex: "status",
       key: "status",
       width: 100,
-      render: (status: string) => {
-        const config = {
-          enabled: { color: "#52c41a", text: "已启用" },
-          disabled: { color: "#8c8c8c", text: "已禁用" },
-        };
-        const c = config[status as keyof typeof config];
+      render: (status: string, record: any) => {
+        const isEnabled = record.enabled === '1' || record.enabled === 1 || status === 'enabled';
+        const c = isEnabled ? { color: "#52c41a", text: "已启用" } : { color: "#8c8c8c", text: "已禁用" };
+        
         return (
           <Tag
             style={{
@@ -299,10 +343,11 @@ export default function EntityTypePage() {
       },
     },
     {
-      title: "更新时间",
-      dataIndex: "updateTime",
-      key: "updateTime",
+      title: "创建时间",
+      dataIndex: "createTime",
+      key: "createTime",
       width: 160,
+      render: (text: string | number) => text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '--',
     },
     {
       title: "操作",
@@ -340,9 +385,19 @@ export default function EntityTypePage() {
     },
   ];
 
-  const handleDelete = (id: string) => {
-    setEntityTypes(entityTypes.filter((item) => item.id !== id));
-    message.success("删除成功");
+  const handleDelete = async (id: string) => {
+    try {
+      await removeEntityType(id);
+      message.success("删除成功");
+      if (entityTypes.length === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        fetchData(page, searchName, searchStatus);
+      }
+    } catch (error) {
+      console.error(error);
+      message.error("删除失败");
+    }
   };
 
   const handleBatchDelete = () => {
@@ -357,11 +412,23 @@ export default function EntityTypePage() {
     message.success(`成功删除 ${selectedRowKeys.length} 项`);
   };
 
+  const handleSearch = () => {
+    if (page === 1) {
+      fetchData(1, searchName, searchStatus);
+    } else {
+      setPage(1);
+    }
+  };
+
   const handleReset = () => {
-    setEntityTypes(initialData);
     setSearchName("");
     setSearchStatus("全部");
     setSelectedRowKeys([]);
+    if (page === 1) {
+      fetchData(1, "", "全部");
+    } else {
+      setPage(1);
+    }
     message.success("已刷新");
   };
 
@@ -388,6 +455,10 @@ export default function EntityTypePage() {
           { key: "3", name: "标准编码", code: "code", dataType: "string" },
         ],
         status: record.status,
+        icon: record.icon || "",
+        color: record.color || "",
+        bgColor: record.bgColor || "",
+        isSystem: record.isSystem || false,
       });
     } else {
       setModalTitle("新建实体类型");
@@ -401,6 +472,10 @@ export default function EntityTypePage() {
           { key: "3", name: "标准编码", code: "code", dataType: "string" },
         ],
         status: "disabled",
+        icon: "",
+        color: "",
+        bgColor: "",
+        isSystem: false,
       });
     }
     setModalVisible(true);
@@ -414,6 +489,10 @@ export default function EntityTypePage() {
       description: "",
       attributes: [],
       status: "disabled",
+      icon: "",
+      color: "",
+      bgColor: "",
+      isSystem: false,
     });
   };
 
@@ -452,7 +531,7 @@ export default function EntityTypePage() {
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.name.trim()) {
       message.error("请输入实体类型名称");
       return;
@@ -485,35 +564,46 @@ export default function EntityTypePage() {
       message.error("属性编码不可重复");
       return;
     }
-    if (editingRecord) {
-      setEntityTypes(
-        entityTypes.map((item) =>
-          item.id === editingRecord.id
-            ? {
-                ...item,
-                name: formData.name,
-                description: formData.description,
-                attributeCount: formData.attributes.length,
-                status: formData.status as "enabled" | "disabled",
-              }
-            : item,
-        ),
-      );
-      message.success("修改成功");
-    } else {
-      const newEntity: EntityTypeItem = {
-        id: Date.now().toString(),
-        name: formData.name,
-        description: formData.description,
-        attributeCount: formData.attributes.length,
-        entityCount: 0,
-        status: formData.status as "enabled" | "disabled",
-        updateTime: new Date().toLocaleString("zh-CN"),
-      };
-      setEntityTypes([...entityTypes, newEntity]);
-      message.success("创建成功");
+    
+    try {
+      if (editingRecord) {
+        await updateEntityType({
+          id: editingRecord.id,
+          name: formData.name,
+          description: formData.description,
+          enabled: formData.status === 'enabled' ? '1' : '0',
+          icon: formData.icon,
+          color: formData.color,
+          bgColor: formData.bgColor,
+          entityCount: editingRecord.entityCount || 0,
+          isSystem: formData.isSystem,
+        });
+
+        fetchData(page, searchName, searchStatus);
+        message.success("修改成功");
+      } else {
+        await addEntityType({
+          name: formData.name,
+          description: formData.description,
+          enabled: formData.status === 'enabled' ? '1' : '0',
+          icon: formData.icon,
+          color: formData.color,
+          bgColor: formData.bgColor,
+          entityCount: 0,
+          isSystem: formData.isSystem,
+        });
+
+        if (page !== 1) {
+          setPage(1);
+        } else {
+          fetchData(1, searchName, searchStatus);
+        }
+        message.success("创建成功");
+      }
+      closeModal();
+    } catch (error) {
+      console.error(error);
     }
-    closeModal();
   };
 
   return (
@@ -854,14 +944,9 @@ export default function EntityTypePage() {
               </Col>
               <Col>
                 <Space>
-                  <Button type="primary">搜索</Button>
+                  <Button type="primary" onClick={handleSearch}>搜索</Button>
 
-                  <Button
-                    onClick={() => {
-                      setSearchName("");
-                      setSearchStatus("全部");
-                    }}
-                  >
+                  <Button onClick={handleReset}>
                     重置
                   </Button>
                 </Space>
@@ -870,7 +955,8 @@ export default function EntityTypePage() {
           </div>
 
           <Table
-            dataSource={paginatedEntityTypes}
+            dataSource={entityTypes}
+            loading={loading}
             columns={columns}
             rowKey="id"
             pagination={false}
@@ -892,7 +978,7 @@ export default function EntityTypePage() {
             <Pagination
               current={page}
               pageSize={pageSize}
-              total={filteredEntityTypes.length}
+              total={total}
               onChange={setPage}
               showTotal={(total) => `共 ${total} 条记录`}
             />
@@ -1029,6 +1115,52 @@ export default function EntityTypePage() {
               rows={3}
               maxLength={200}
               showCount
+            />
+          </div>
+
+          <Row gutter={16} style={{ marginTop: 16 }}>
+            <Col span={8}>
+              <div style={{ marginBottom: 6 }}>图标</div>
+              <Select
+                placeholder="请选择图标"
+                value={formData.icon || undefined}
+                onChange={(value) =>
+                  setFormData({ ...formData, icon: value })
+                }
+                options={iconOptions}
+                style={{ width: "100%" }}
+                allowClear
+              />
+            </Col>
+            <Col span={8}>
+              <div style={{ marginBottom: 6 }}>字体颜色</div>
+              <ColorPicker
+                value={formData.color}
+                onChange={(color) =>
+                  setFormData({ ...formData, color: color.toHexString() })
+                }
+                showText
+              />
+            </Col>
+            <Col span={8}>
+              <div style={{ marginBottom: 6 }}>背景颜色</div>
+              <ColorPicker
+                value={formData.bgColor}
+                onChange={(color) =>
+                  setFormData({ ...formData, bgColor: color.toHexString() })
+                }
+                showText
+              />
+            </Col>
+          </Row>
+
+          <div style={{ marginTop: 16 }}>
+            <div style={{ marginBottom: 6 }}>系统内置</div>
+            <Switch
+              checked={formData.isSystem}
+              onChange={(checked) =>
+                setFormData({ ...formData, isSystem: checked })
+              }
             />
           </div>
         </div>
