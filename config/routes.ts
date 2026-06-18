@@ -107,9 +107,14 @@ export default [
         component: './ConfigCenter/EntityType',
       },
       {
-        name: '知识抽取配置',
+        name: '知识抽取管理',
         path: '/config-center/knowledge-extract',
         component: './ConfigCenter/KnowledgeExtractConfig',
+      },
+      {
+        name: '知识抽取配置',
+        path: '/config-center/knowledge-extract/config',
+        component: './ConfigCenter/KnowledgeExtractConfig/config',
       },
       {
         name: '消融配置',
@@ -194,7 +199,7 @@ export default [
         path: '/system/role-auth/user/:id',
         component: './System/Role/authUser',
       },
-    ]
+    ],
   },
   {
     name: 'monitor',
@@ -205,7 +210,7 @@ export default [
         path: '/monitor/job-log/index/:id',
         component: './Monitor/JobLog',
       },
-    ]
+    ],
   },
   {
     name: 'tool',
@@ -221,6 +226,6 @@ export default [
         path: '/tool/gen/edit',
         component: './Tool/Gen/edit',
       },
-    ]
+    ],
   },
 ];
