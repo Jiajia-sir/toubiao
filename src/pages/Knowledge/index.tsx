@@ -32,6 +32,7 @@ import {
   updateKnowledgeBase,
   removeKnowledgeBase,
   KnowledgeBaseItem,
+  KnowledgeBasePageResult,
 } from "@/services/biz/knowledge-base";
 
 const colorPalettes = [
@@ -77,7 +78,7 @@ export default function KnowledgePage() {
   const pageSize = 12;
   const [form] = Form.useForm();
 
-  const { data, loading, refresh } = useRequest(
+  const { data, loading, refresh } = useRequest<KnowledgeBasePageResult>(
     () =>
       getKnowledgeBasePage({
         pageNo,
@@ -89,7 +90,8 @@ export default function KnowledgePage() {
     },
   );
 
-  const knowledgeList = data?.list || [];
+  const knowledgePageData = data as KnowledgeBasePageResult | undefined;
+  const knowledgeList: KnowledgeBaseItem[] = knowledgePageData?.list || [];
 
   const handleAdd = () => {
     setEditRecord(null);

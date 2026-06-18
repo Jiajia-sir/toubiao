@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { history, useParams } from "@umijs/max";
+import { useState } from "react";
+import { history, useParams, useRequest } from "@umijs/max";
 import {
   Card,
   Button,
@@ -23,6 +23,7 @@ import {
   Select,
   Popconfirm,
   Alert,
+  Spin,
 } from "antd";
 import {
   ArrowLeftOutlined,
@@ -47,6 +48,11 @@ import {
 } from "@ant-design/icons";
 import { fileTypeConfig } from "@/config/fileTypes";
 import { statusConfig } from "@/config/status";
+import {
+  getKnowledgeBaseList,
+  KnowledgeBaseItem,
+  KnowledgeBasePageResult,
+} from "@/services/biz/knowledge-base";
 
 interface KnowledgeBase {
   id: string;
@@ -179,11 +185,23 @@ const initialDocuments: DocumentItem[] = [
   },
 ];
 
+function normalizeKnowledgeBase(item: KnowledgeBaseItem): KnowledgeBase {
+  return {
+    id: String(item.id),
+    name: item.name,
+    description: item.description || "",
+    documentCount: item.documentCount ?? 0,
+    entityCount: item.entityCount ?? 0,
+    status: String(item.enabled) === "0" ? "disabled" : "active",
+    createTime: item.createTime || "",
+    color: item.color || "#1890ff",
+  };
+}
+
 export default function KnowledgeDetailPage({
 }: {}) {
   const params = useParams<{ id: string }>();
   const knowledgeId = params.id || "";
-  const [knowledge, setKnowledge] = useState<KnowledgeBase | null>(null);
   const [searchText, setSearchText] = useState("");
   const [activeTab, setActiveTab] = useState("documents");
   const [fileTypeFilter, setFileTypeFilter] = useState<string>("全部");
@@ -205,6 +223,22 @@ export default function KnowledgeDetailPage({
   const [moveModalVisible, setMoveModalVisible] = useState(false);
   const [targetKnowledgeBase, setTargetKnowledgeBase] = useState<string>("");
   const [moveConfirmVisible, setMoveConfirmVisible] = useState(false);
+
+  const { data: knowledgeBasePage, loading: knowledgeLoading } =
+    useRequest<KnowledgeBasePageResult>(
+    () => getKnowledgeBaseList({ pageNo: 1, pageSize: 1000 }),
+    {
+      ready: Boolean(knowledgeId),
+    },
+    );
+
+  const knowledgeBasePageData =
+    knowledgeBasePage as KnowledgeBasePageResult | undefined;
+  const knowledgeBaseList: KnowledgeBase[] = (
+    knowledgeBasePageData?.list || []
+  ).map((item: KnowledgeBaseItem) => normalizeKnowledgeBase(item));
+  const knowledge =
+    knowledgeBaseList.find((item) => item.id === String(knowledgeId)) || null;
 
   const fileTypeOptions = [
     "全部",
@@ -229,13 +263,6 @@ export default function KnowledgeDetailPage({
     { label: "财务文档", value: "财务文档" },
     { label: "其他", value: "其他" },
   ];
-
-  useEffect(() => {
-    const found = initialData.find((item) => item.id === knowledgeId);
-    if (found) {
-      setKnowledge(found);
-    }
-  }, [knowledgeId]);
 
   const handleUpload = () => {
     if (!knowledge) return;
@@ -290,7 +317,9 @@ export default function KnowledgeDetailPage({
       message.warning("请选择目标知识库");
       return;
     }
-    const targetKB = initialData.find((kb) => kb.id === targetKnowledgeBase);
+    const targetKB = knowledgeBaseList.find(
+      (kb: KnowledgeBase) => kb.id === targetKnowledgeBase,
+    );
     if (!targetKB) {
       message.error("目标知识库不存在");
       return;
@@ -300,7 +329,9 @@ export default function KnowledgeDetailPage({
 
   const handleExecuteMove = () => {
     if (!targetKnowledgeBase) return;
-    const targetKB = initialData.find((kb) => kb.id === targetKnowledgeBase);
+    const targetKB = knowledgeBaseList.find(
+      (kb: KnowledgeBase) => kb.id === targetKnowledgeBase,
+    );
     if (!targetKB) {
       message.error("目标知识库不存在");
       return;
@@ -500,6 +531,14 @@ export default function KnowledgeDetailPage({
       },
     },
   ];
+
+  if (knowledgeLoading) {
+    return (
+      <div style={{ padding: 48, textAlign: "center" }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
 
   if (!knowledge) {
     return (
@@ -1361,9 +1400,9 @@ export default function KnowledgeDetailPage({
             value={targetKnowledgeBase}
             onChange={setTargetKnowledgeBase}
             style={{ width: "100%" }}
-            options={initialData
-              .filter((kb) => kb.id !== knowledgeId)
-              .map((kb) => ({
+            options={knowledgeBaseList
+              .filter((kb: KnowledgeBase) => kb.id !== knowledgeId)
+              .map((kb: KnowledgeBase) => ({
                 label: kb.name,
                 value: kb.id,
               }))}
@@ -1403,7 +1442,11 @@ export default function KnowledgeDetailPage({
             <div style={{ marginBottom: 8, fontSize: 14, color: "#262626" }}>
               <span style={{ color: "#8c8c8c" }}>目标知识库：</span>
               <span style={{ fontWeight: 600 }}>
-                {initialData.find((kb) => kb.id === targetKnowledgeBase)?.name}
+                {
+                  knowledgeBaseList.find(
+                    (kb: KnowledgeBase) => kb.id === targetKnowledgeBase,
+                  )?.name
+                }
               </span>
             </div>
             <div style={{ fontSize: 14, color: "#262626" }}>

@@ -58,3 +58,11 @@ export async function getKnowledgeBasePage(params: KnowledgeBasePageParams) {
     params,
   });
 }
+
+export async function getKnowledgeBaseList(params?: Partial<KnowledgeBasePageParams>) {
+  return getKnowledgeBasePage({
+    pageNo: params?.pageNo ?? 1,
+    pageSize: params?.pageSize ?? 1000,
+    name: params?.name,
+  });
+}

@@ -1,50 +1,50 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Card,
   Button,
-  Space,
-  Input,
-  Table,
-  Tag,
-  Row,
+  Card,
   Col,
+  ColorPicker,
+  Empty,
+  Input,
   Modal,
-  Form,
-  message,
   Pagination,
   Popconfirm,
+  Row,
   Select,
+  Space,
   Statistic,
-  Divider,
-  Dropdown,
-  Radio,
   Switch,
-  ColorPicker,
+  Table,
+  Tag,
+  message,
 } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import {
-  SearchOutlined,
-  PlusOutlined,
-  EyeOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  ReloadOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  MoreOutlined,
-  UploadOutlined,
-  DatabaseOutlined,
-  MedicineBoxOutlined,
-  ExperimentOutlined,
-  FireOutlined,
-  BankOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { addEntityType, updateEntityType, removeEntityType, getEntityTypePage } from "@/services/biz/entity-type";
 import dayjs from "dayjs";
+import {
+  addEntityType,
+  addEntityTypeAttribute,
+  getEntityTypeAttributePage,
+  getEntityTypePage,
+  removeEntityType,
+  removeEntityTypeAttribute,
+  updateEntityType,
+  updateEntityTypeAttribute,
+} from "@/services/biz/entity-type";
+
+type StatusValue = "enabled" | "disabled";
 
 interface EntityTypeItem {
   id: string;
@@ -52,20 +52,36 @@ interface EntityTypeItem {
   description: string;
   attributeCount: number;
   entityCount: number;
-  status: "enabled" | "disabled";
+  status: StatusValue;
+  enabled?: string | number;
   createTime?: string;
+  updateTime?: string;
   icon?: string;
   color?: string;
   bgColor?: string;
   isSystem?: boolean;
 }
 
-interface EntityAttribute {
-  key: string;
+interface EntityAttributeItem {
+  id: string;
+  entityTypeConfigId: string;
+  entityTypeName: string;
   name: string;
   code: string;
   dataType: string;
+  description: string;
+  createTime?: string;
+  updateTime?: string;
 }
+
+const pageSize = 10;
+const attributePageSize = 10;
+
+const statusOptions = [
+  { label: "全部状态", value: "all" },
+  { label: "已启用", value: "enabled" },
+  { label: "已停用", value: "disabled" },
+];
 
 const fieldTypeOptions = [
   { label: "字符串", value: "string" },
@@ -78,303 +94,460 @@ const fieldTypeOptions = [
 ];
 
 const iconOptions = [
-  { label: <span><DatabaseOutlined /> 数据库</span>, value: "DatabaseOutlined" },
-  { label: <span><MedicineBoxOutlined /> 医疗</span>, value: "MedicineBoxOutlined" },
-  { label: <span><ExperimentOutlined /> 实验</span>, value: "ExperimentOutlined" },
-  { label: <span><FireOutlined /> 热门</span>, value: "FireOutlined" },
-  { label: <span><BankOutlined /> 机构</span>, value: "BankOutlined" },
-  { label: <span><CheckCircleOutlined /> 校验</span>, value: "CheckCircleOutlined" },
-  { label: <span><ClockCircleOutlined /> 时间</span>, value: "ClockCircleOutlined" },
-  { label: <span><SettingOutlined /> 设置</span>, value: "SettingOutlined" },
+  { label: "数据库", value: "DatabaseOutlined" },
+  { label: "业务对象", value: "SettingOutlined" },
+  { label: "校验对象", value: "CheckCircleOutlined" },
 ];
 
 const iconMap: Record<string, React.ReactNode> = {
   DatabaseOutlined: <DatabaseOutlined />,
-  MedicineBoxOutlined: <MedicineBoxOutlined />,
-  ExperimentOutlined: <ExperimentOutlined />,
-  FireOutlined: <FireOutlined />,
-  BankOutlined: <BankOutlined />,
-  CheckCircleOutlined: <CheckCircleOutlined />,
-  ClockCircleOutlined: <ClockCircleOutlined />,
   SettingOutlined: <SettingOutlined />,
+  CheckCircleOutlined: <CheckCircleOutlined />,
 };
 
-const initialData: EntityTypeItem[] = [
-  {
-    id: "1",
-    name: "疾病实体",
-    description: "描述各类疾病名称及分类",
-    attributeCount: 1,
-    entityCount: 3245,
-    status: "enabled",
-    updateTime: "2026-04-25 14:32",
-  },
-  {
-    id: "2",
-    name: "药品实体",
-    description: "描述药品名称、成分、规格等",
-    attributeCount: 4,
-    entityCount: 5128,
-    status: "enabled",
-    updateTime: "2026-04-24 09:17",
-  },
-  {
-    id: "3",
-    name: "检查项目",
-    description: "描述各类医学检查项目",
-    attributeCount: 7,
-    entityCount: 1872,
-    status: "enabled",
-    updateTime: "2026-04-23 16:45",
-  },
-  {
-    id: "4",
-    name: "症状实体",
-    description: "描述各类症状及表现",
-    attributeCount: 3,
-    entityCount: 2241,
-    status: "disabled",
-    updateTime: "2026-04-22 11:28",
-  },
-  {
-    id: "5",
-    name: "公司实体",
-    description: "描述企业、公司、机构名称",
-    attributeCount: 4,
-    entityCount: 8742,
-    status: "enabled",
-    updateTime: "2026-04-21 08:53",
-  },
-];
+function normalizeEntityType(item: any): EntityTypeItem {
+  return {
+    id: String(item?.id ?? item?.entityTypeConfigId ?? ""),
+    name: item?.name ?? "",
+    description: item?.description ?? "",
+    attributeCount: Number(item?.attributeCount ?? 0),
+    entityCount: Number(item?.entityCount ?? 0),
+    status:
+      String(item?.enabled) === "0" || item?.status === "disabled"
+        ? "disabled"
+        : "enabled",
+    enabled: item?.enabled,
+    createTime: item?.createTime,
+    updateTime: item?.updateTime,
+    icon: item?.icon,
+    color: item?.color || "#1890ff",
+    bgColor: item?.bgColor || "#e6f4ff",
+    isSystem: Boolean(item?.isSystem),
+  };
+}
 
-const statusOptions = [
-  { label: "全部", value: "全部" },
-  { label: "已启用", value: "enabled" },
-  { label: "已禁用", value: "disabled" },
-];
+function normalizeEntityAttribute(
+  item: any,
+  entityTypes: EntityTypeItem[],
+): EntityAttributeItem {
+  const entityTypeId = String(item?.entityTypeConfigId ?? item?.entityTypeId ?? "");
+  const entityType = entityTypes.find((entry) => entry.id === entityTypeId);
 
-const entityTypeConfig: Record<
-  string,
-  { icon: React.ReactNode; color: string; bgColor: string }
-> = {
-  疾病实体: {
-    icon: <MedicineBoxOutlined />,
-    color: "#1890ff",
-    bgColor: "#e6f7ff",
-  },
-  药品实体: {
-    icon: <MedicineBoxOutlined />,
-    color: "#52c41a",
-    bgColor: "#f6ffed",
-  },
-  检查项目: {
-    icon: <ExperimentOutlined />,
-    color: "#722ed1",
-    bgColor: "#f9f0ff",
-  },
-  症状实体: {
-    icon: <FireOutlined />,
-    color: "#fa541c",
-    bgColor: "#fff7e6",
-  },
-  公司实体: {
-    icon: <BankOutlined />,
-    color: "#13c2c2",
-    bgColor: "#e6fffb",
-  },
-};
+  return {
+    id: String(item?.id ?? ""),
+    entityTypeConfigId: entityTypeId,
+    entityTypeName:
+      item?.entityTypeName || entityType?.name || `类型 ${entityTypeId || "-"}`,
+    name: item?.name ?? "",
+    code: item?.code ?? "",
+    dataType: item?.dataType ?? "string",
+    description: item?.description ?? "",
+    createTime: item?.createTime,
+    updateTime: item?.updateTime,
+  };
+}
+
+function extractPageList(payload: any): any[] {
+  return (
+    payload?.rows ||
+    payload?.data?.records ||
+    payload?.data?.list ||
+    payload?.list ||
+    payload?.data ||
+    []
+  );
+}
+
+function extractPageTotal(payload: any): number {
+  return Number(payload?.total ?? payload?.data?.total ?? 0);
+}
 
 export default function EntityTypePage() {
   const [entityTypes, setEntityTypes] = useState<EntityTypeItem[]>([]);
-  const [searchName, setSearchName] = useState("");
-  const [searchStatus, setSearchStatus] = useState("全部");
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const pageSize = 10;
+  const [entityPage, setEntityPage] = useState(1);
+  const [entityTotal, setEntityTotal] = useState(0);
+  const [entityLoading, setEntityLoading] = useState(false);
+  const [entitySearchName, setEntitySearchName] = useState("");
+  const [entitySearchStatus, setEntitySearchStatus] = useState("all");
+  const [selectedEntityTypeId, setSelectedEntityTypeId] = useState<string>("");
+  const [selectedEntityRowKeys, setSelectedEntityRowKeys] = useState<string[]>([]);
 
-  const [importModalVisible, setImportModalVisible] = useState(false);
-  const [importFile, setImportFile] = useState<string>("");
-  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [modalTitle, setModalTitle] = useState("新建实体类型");
-  const [editingRecord, setEditingRecord] = useState<EntityTypeItem | null>(
-    null,
-  );
-  const [formData, setFormData] = useState({
+  const [attributeList, setAttributeList] = useState<EntityAttributeItem[]>([]);
+  const [attributePage, setAttributePage] = useState(1);
+  const [attributeTotal, setAttributeTotal] = useState(0);
+  const [attributeLoading, setAttributeLoading] = useState(false);
+  const [attributeSearchName, setAttributeSearchName] = useState("");
+
+  const [entityModalVisible, setEntityModalVisible] = useState(false);
+  const [editingEntity, setEditingEntity] = useState<EntityTypeItem | null>(null);
+  const [entityForm, setEntityForm] = useState({
     name: "",
     description: "",
-    attributes: [] as EntityAttribute[],
-    status: "disabled",
-    icon: "",
-    color: "",
-    bgColor: "",
+    status: "enabled" as StatusValue,
+    icon: "DatabaseOutlined",
+    color: "#1890ff",
+    bgColor: "#e6f4ff",
     isSystem: false,
   });
 
-  const fetchData = async (current = page, name = searchName, status = searchStatus) => {
-    setLoading(true);
+  const [attributeModalVisible, setAttributeModalVisible] = useState(false);
+  const [editingAttribute, setEditingAttribute] =
+    useState<EntityAttributeItem | null>(null);
+  const [attributeForm, setAttributeForm] = useState({
+    name: "",
+    code: "",
+    dataType: "string",
+    description: "",
+  });
+
+  const selectedEntityType = useMemo(
+    () => entityTypes.find((item) => item.id === selectedEntityTypeId) || null,
+    [entityTypes, selectedEntityTypeId],
+  );
+
+  const enabledEntityCount = useMemo(
+    () => entityTypes.filter((item) => item.status === "enabled").length,
+    [entityTypes],
+  );
+
+  const totalAttributeCount = useMemo(
+    () => entityTypes.reduce((sum, item) => sum + item.attributeCount, 0),
+    [entityTypes],
+  );
+
+  const entityTypeOptions = useMemo(
+    () => entityTypes.map((item) => ({ label: item.name, value: item.id })),
+    [entityTypes],
+  );
+
+  const fetchEntityTypes = async (
+    targetPage = entityPage,
+    name = entitySearchName,
+    status = entitySearchStatus,
+  ) => {
+    setEntityLoading(true);
     try {
-      const res = await getEntityTypePage({
-        pageNo: current,
+      const response = await getEntityTypePage({
+        pageNo: targetPage,
         pageSize,
         name: name || undefined,
-        enabled: status === "全部" ? undefined : (status === "enabled" ? "1" : "0"),
+        enabled:
+          status === "all" ? undefined : status === "enabled" ? "1" : "0",
       });
-      const list = res?.rows || res?.data?.records || res?.data?.list || res?.list || res?.data || [];
-      const totalCount = res?.total || res?.data?.total || 0;
-      setEntityTypes(list);
-      setTotal(totalCount);
+      const nextList = extractPageList(response).map(normalizeEntityType);
+      setEntityTypes(nextList);
+      setEntityTotal(extractPageTotal(response));
+
+      if (!nextList.length) {
+        setSelectedEntityTypeId("");
+        setAttributeList([]);
+        setAttributeTotal(0);
+        return;
+      }
+
+      setSelectedEntityTypeId((current) => {
+        if (current && nextList.some((item) => item.id === current)) {
+          return current;
+        }
+        return nextList[0].id;
+      });
     } catch (error) {
       console.error(error);
+      message.error("加载实体类型失败");
     } finally {
-      setLoading(false);
+      setEntityLoading(false);
+    }
+  };
+
+  const fetchAttributes = async (
+    entityTypeId = selectedEntityTypeId,
+    targetPage = attributePage,
+    keyword = attributeSearchName,
+  ) => {
+    if (!entityTypeId) {
+      setAttributeList([]);
+      setAttributeTotal(0);
+      return;
+    }
+
+    setAttributeLoading(true);
+    try {
+      const response = await getEntityTypeAttributePage({
+        pageNo: targetPage,
+        pageSize: attributePageSize,
+        entityTypeConfigId: entityTypeId,
+        name: keyword || undefined,
+      });
+      const nextList = extractPageList(response).map((item: any) =>
+        normalizeEntityAttribute(item, entityTypes),
+      );
+      setAttributeList(nextList);
+      setAttributeTotal(extractPageTotal(response));
+    } catch (error) {
+      console.error(error);
+      message.error("加载实体属性失败");
+    } finally {
+      setAttributeLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData(page, searchName, searchStatus);
-  }, [page]);
+    fetchEntityTypes(entityPage, entitySearchName, entitySearchStatus);
+  }, [entityPage]);
 
-  const columns = [
+  useEffect(() => {
+    setAttributePage(1);
+  }, [selectedEntityTypeId]);
+
+  useEffect(() => {
+    fetchAttributes(selectedEntityTypeId, attributePage, attributeSearchName);
+  }, [selectedEntityTypeId, attributePage]);
+
+  const openEntityModal = (record?: EntityTypeItem) => {
+    setEditingEntity(record || null);
+    setEntityForm({
+      name: record?.name || "",
+      description: record?.description || "",
+      status: record?.status || "enabled",
+      icon: record?.icon || "DatabaseOutlined",
+      color: record?.color || "#1890ff",
+      bgColor: record?.bgColor || "#e6f4ff",
+      isSystem: Boolean(record?.isSystem),
+    });
+    setEntityModalVisible(true);
+  };
+
+  const closeEntityModal = () => {
+    setEntityModalVisible(false);
+    setEditingEntity(null);
+  };
+
+  const submitEntity = async () => {
+    if (!entityForm.name.trim()) {
+      message.error("请填写实体类型名称");
+      return;
+    }
+
+    const payload = {
+      id: editingEntity?.id,
+      name: entityForm.name.trim(),
+      description: entityForm.description.trim(),
+      enabled: entityForm.status === "enabled" ? "1" : "0",
+      icon: entityForm.icon,
+      color: entityForm.color,
+      bgColor: entityForm.bgColor,
+      entityCount: editingEntity?.entityCount || 0,
+      isSystem: entityForm.isSystem,
+    };
+
+    try {
+      if (editingEntity) {
+        await updateEntityType(payload);
+        message.success("实体类型已更新");
+      } else {
+        await addEntityType(payload);
+        message.success("实体类型已创建");
+        if (entityPage !== 1) {
+          setEntityPage(1);
+        }
+      }
+      fetchEntityTypes(editingEntity ? entityPage : 1, entitySearchName, entitySearchStatus);
+      closeEntityModal();
+    } catch (error) {
+      console.error(error);
+      message.error(editingEntity ? "更新实体类型失败" : "创建实体类型失败");
+    }
+  };
+
+  const deleteEntity = async (id: string) => {
+    try {
+      await removeEntityType(id);
+      message.success("实体类型已删除");
+      const nextPage = entityTypes.length === 1 && entityPage > 1 ? entityPage - 1 : entityPage;
+      if (nextPage !== entityPage) {
+        setEntityPage(nextPage);
+      } else {
+        fetchEntityTypes(nextPage, entitySearchName, entitySearchStatus);
+      }
+    } catch (error) {
+      console.error(error);
+      message.error("删除实体类型失败");
+    }
+  };
+
+  const batchDeleteEntity = async () => {
+    if (!selectedEntityRowKeys.length) {
+      message.warning("请先选择实体类型");
+      return;
+    }
+
+    try {
+      await Promise.all(selectedEntityRowKeys.map((id) => removeEntityType(id)));
+      message.success(`已删除 ${selectedEntityRowKeys.length} 个实体类型`);
+      setSelectedEntityRowKeys([]);
+      fetchEntityTypes(entityPage, entitySearchName, entitySearchStatus);
+    } catch (error) {
+      console.error(error);
+      message.error("批量删除实体类型失败");
+    }
+  };
+
+  const openAttributeModal = (record?: EntityAttributeItem) => {
+    if (!selectedEntityType) {
+      message.warning("请先选择实体类型");
+      return;
+    }
+    setEditingAttribute(record || null);
+    setAttributeForm({
+      name: record?.name || "",
+      code: record?.code || "",
+      dataType: record?.dataType || "string",
+      description: record?.description || "",
+    });
+    setAttributeModalVisible(true);
+  };
+
+  const closeAttributeModal = () => {
+    setAttributeModalVisible(false);
+    setEditingAttribute(null);
+  };
+
+  const submitAttribute = async () => {
+    if (!selectedEntityType) {
+      message.error("当前未选择实体类型");
+      return;
+    }
+    if (!attributeForm.name.trim() || !attributeForm.code.trim()) {
+      message.error("请填写属性名称和属性编码");
+      return;
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(attributeForm.code.trim())) {
+      message.error("属性编码需以小写字母开头，仅支持字母、数字和下划线");
+      return;
+    }
+
+    const payload = {
+      id: editingAttribute?.id,
+      entityTypeConfigId: selectedEntityType.id,
+      name: attributeForm.name.trim(),
+      code: attributeForm.code.trim(),
+      dataType: attributeForm.dataType,
+      description: attributeForm.description.trim(),
+    };
+
+    try {
+      if (editingAttribute) {
+        await updateEntityTypeAttribute(payload);
+        message.success("实体属性已更新");
+      } else {
+        await addEntityTypeAttribute(payload);
+        message.success("实体属性已创建");
+        if (attributePage !== 1) {
+          setAttributePage(1);
+        }
+      }
+      fetchAttributes(selectedEntityType.id, editingAttribute ? attributePage : 1, attributeSearchName);
+      fetchEntityTypes(entityPage, entitySearchName, entitySearchStatus);
+      closeAttributeModal();
+    } catch (error) {
+      console.error(error);
+      message.error(editingAttribute ? "更新实体属性失败" : "创建实体属性失败");
+    }
+  };
+
+  const deleteAttribute = async (id: string) => {
+    try {
+      await removeEntityTypeAttribute(id);
+      message.success("实体属性已删除");
+      fetchAttributes(selectedEntityTypeId, attributePage, attributeSearchName);
+      fetchEntityTypes(entityPage, entitySearchName, entitySearchStatus);
+    } catch (error) {
+      console.error(error);
+      message.error("删除实体属性失败");
+    }
+  };
+
+  const entityColumns: ColumnsType<EntityTypeItem> = [
     {
-      title: "实体类型名称",
+      title: "实体类型",
       dataIndex: "name",
       key: "name",
-      width: 180,
-      render: (_: string, record: EntityTypeItem & { enabled?: string | number }) => {
-        const fallbackConfig = entityTypeConfig[record.name] || {
-          icon: <DatabaseOutlined />,
-          color: "#1890ff",
-          bgColor: "#e6f7ff",
-        };
-        const displayIcon = record.icon && iconMap[record.icon] ? iconMap[record.icon] : fallbackConfig.icon;
-        const displayColor = record.color || fallbackConfig.color;
-        const displayBgColor = record.bgColor || fallbackConfig.bgColor;
-        
+      width: 260,
+      render: (_value, record) => {
+        const icon = iconMap[record.icon || "DatabaseOutlined"] || <DatabaseOutlined />;
         return (
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Space align="start" size={12}>
             <div
               style={{
                 width: 40,
                 height: 40,
+                borderRadius: 10,
+                background: record.bgColor || "#e6f4ff",
+                color: record.color || "#1890ff",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                background: displayBgColor,
-                borderRadius: 8,
-                border: `1px solid ${displayColor}50`,
+                fontSize: 18,
               }}
             >
-              {displayIcon && (
-                <span style={{ fontSize: 18, color: displayColor }}>
-                  {displayIcon}
-                </span>
-              )}
+              {icon}
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, color: "#262626" }}>
-                {record.name}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "#8c8c8c",
-                  marginTop: 2,
-                }}
-              >
-                {record.description}
+            <div>
+              <div style={{ fontWeight: 600, color: "#262626" }}>{record.name}</div>
+              <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 2 }}>
+                {record.description || "暂无描述"}
               </div>
             </div>
-          </div>
+          </Space>
         );
       },
     },
     {
-      title: "属性数量",
+      title: "属性数",
       dataIndex: "attributeCount",
       key: "attributeCount",
       width: 100,
-      render: (count: number) => (
-        <span style={{ color: "#595959" }}>{count}</span>
-      ),
     },
     {
-      title: "实体数量",
+      title: "实体量",
       dataIndex: "entityCount",
       key: "entityCount",
       width: 120,
-      render: (count: number) => (
-        <span style={{ color: "#1890ff", fontWeight: 500 }}>
-          {count.toLocaleString()}
-        </span>
-      ),
+      render: (value) => Number(value || 0).toLocaleString(),
     },
     {
       title: "状态",
       dataIndex: "status",
       key: "status",
       width: 100,
-      render: (status: string, record: any) => {
-        const isEnabled = record.enabled === '1' || record.enabled === 1 || status === 'enabled';
-        const c = isEnabled ? { color: "#52c41a", text: "已启用" } : { color: "#8c8c8c", text: "已禁用" };
-        
-        return (
-          <Tag
-            style={{
-              color: c.color,
-              background: `${c.color}15`,
-              border: `1px solid ${c.color}30`,
-            }}
-          >
-            <span
-              style={{
-                display: "inline-block",
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                backgroundColor: c.color,
-                marginRight: 4,
-              }}
-            />
-            {c.text}
-          </Tag>
-        );
-      },
+      render: (value: StatusValue) => (
+        <Tag color={value === "enabled" ? "success" : "default"}>
+          {value === "enabled" ? "启用" : "停用"}
+        </Tag>
+      ),
     },
     {
       title: "创建时间",
       dataIndex: "createTime",
       key: "createTime",
-      width: 160,
-      render: (text: string | number) => text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '--',
+      width: 180,
+      render: (value) =>
+        value ? dayjs(value).format("YYYY-MM-DD HH:mm:ss") : "--",
     },
     {
       title: "操作",
       key: "action",
-      width: 200,
-      render: (_: any, record: EntityTypeItem) => (
+      width: 220,
+      render: (_value, record) => (
         <Space size={4}>
-          {/* <Button type="link" size="small" icon={<EyeOutlined />}>
-            查看
-          </Button> */}
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => openModal(record)}
-          >
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEntityModal(record)}>
             编辑
           </Button>
-
-          <Button type="link" size="small" icon={<UploadOutlined />}>
-            导出
-          </Button>
           <Popconfirm
-            title="确认删除?"
-            onConfirm={() => handleDelete(record.id)}
+            title="确认删除该实体类型？"
             okText="确认"
             cancelText="取消"
+            onConfirm={() => deleteEntity(record.id)}
           >
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>
               删除
@@ -385,941 +558,489 @@ export default function EntityTypePage() {
     },
   ];
 
-  const handleDelete = async (id: string) => {
-    try {
-      await removeEntityType(id);
-      message.success("删除成功");
-      if (entityTypes.length === 1 && page > 1) {
-        setPage(page - 1);
-      } else {
-        fetchData(page, searchName, searchStatus);
-      }
-    } catch (error) {
-      console.error(error);
-      message.error("删除失败");
-    }
-  };
-
-  const handleBatchDelete = () => {
-    if (selectedRowKeys.length === 0) {
-      message.warning("请先选择要删除的项");
-      return;
-    }
-    setEntityTypes(
-      entityTypes.filter((item) => !selectedRowKeys.includes(item.id)),
-    );
-    setSelectedRowKeys([]);
-    message.success(`成功删除 ${selectedRowKeys.length} 项`);
-  };
-
-  const handleSearch = () => {
-    if (page === 1) {
-      fetchData(1, searchName, searchStatus);
-    } else {
-      setPage(1);
-    }
-  };
-
-  const handleReset = () => {
-    setSearchName("");
-    setSearchStatus("全部");
-    setSelectedRowKeys([]);
-    if (page === 1) {
-      fetchData(1, "", "全部");
-    } else {
-      setPage(1);
-    }
-    message.success("已刷新");
-  };
-
-  const handleImport = () => {
-    if (!importFile) {
-      message.warning("请输入文件路径或选择文件");
-      return;
-    }
-    message.success("导入成功");
-    setImportModalVisible(false);
-    setImportFile("");
-  };
-
-  const openModal = (record?: EntityTypeItem) => {
-    if (record) {
-      setModalTitle("编辑实体类型");
-      setEditingRecord(record);
-      setFormData({
-        name: record.name,
-        description: record.description,
-        attributes: [
-          { key: "1", name: "实体名称", code: "name", dataType: "string" },
-          { key: "2", name: "实体描述", code: "description", dataType: "text" },
-          { key: "3", name: "标准编码", code: "code", dataType: "string" },
-        ],
-        status: record.status,
-        icon: record.icon || "",
-        color: record.color || "",
-        bgColor: record.bgColor || "",
-        isSystem: record.isSystem || false,
-      });
-    } else {
-      setModalTitle("新建实体类型");
-      setEditingRecord(null);
-      setFormData({
-        name: "",
-        description: "",
-        attributes: [
-          { key: "1", name: "实体名称", code: "name", dataType: "string" },
-          { key: "2", name: "实体描述", code: "description", dataType: "text" },
-          { key: "3", name: "标准编码", code: "code", dataType: "string" },
-        ],
-        status: "disabled",
-        icon: "",
-        color: "",
-        bgColor: "",
-        isSystem: false,
-      });
-    }
-    setModalVisible(true);
-  };
-
-  const closeModal = () => {
-    setModalVisible(false);
-    setEditingRecord(null);
-    setFormData({
-      name: "",
-      description: "",
-      attributes: [],
-      status: "disabled",
-      icon: "",
-      color: "",
-      bgColor: "",
-      isSystem: false,
-    });
-  };
-
-  const addAttribute = () => {
-    const newKey = Date.now().toString();
-    setFormData({
-      ...formData,
-      attributes: [
-        ...formData.attributes,
-        { key: newKey, name: "", code: "", dataType: "string" },
-      ],
-    });
-  };
-
-  const removeAttribute = (key: string) => {
-    if (formData.attributes.length <= 1) {
-      message.warning("至少保留一个属性");
-      return;
-    }
-    setFormData({
-      ...formData,
-      attributes: formData.attributes.filter((attr) => attr.key !== key),
-    });
-  };
-
-  const updateAttribute = (
-    key: string,
-    field: keyof EntityAttribute,
-    value: string,
-  ) => {
-    setFormData({
-      ...formData,
-      attributes: formData.attributes.map((attr) =>
-        attr.key === key ? { ...attr, [field]: value } : attr,
+  const attributeColumns: ColumnsType<EntityAttributeItem> = [
+    {
+      title: "属性",
+      dataIndex: "name",
+      key: "name",
+      width: 240,
+      render: (_value, record) => (
+        <div>
+          <div style={{ fontWeight: 600, color: "#262626" }}>{record.name}</div>
+          <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 2 }}>{record.code}</div>
+        </div>
       ),
-    });
-  };
-
-  const handleSubmit = async () => {
-    if (!formData.name.trim()) {
-      message.error("请输入实体类型名称");
-      return;
-    }
-    if (formData.name.length < 2 || formData.name.length > 30) {
-      message.error("名称长度需在2-30字符之间");
-      return;
-    }
-    const exists = entityTypes.some(
-      (item) =>
-        item.name === formData.name &&
-        (!editingRecord || item.id !== editingRecord.id),
-    );
-    if (exists) {
-      message.error("实体类型名称已存在");
-      return;
-    }
-    for (const attr of formData.attributes) {
-      if (!attr.name.trim() || !attr.code.trim()) {
-        message.error("请完善属性信息");
-        return;
-      }
-      if (!/^[a-z][a-z0-9_]*$/.test(attr.code)) {
-        message.error("属性编码需以小写字母开头，仅包含字母、数字和下划线");
-        return;
-      }
-    }
-    const codeSet = new Set(formData.attributes.map((a) => a.code));
-    if (codeSet.size !== formData.attributes.length) {
-      message.error("属性编码不可重复");
-      return;
-    }
-    
-    try {
-      if (editingRecord) {
-        await updateEntityType({
-          id: editingRecord.id,
-          name: formData.name,
-          description: formData.description,
-          enabled: formData.status === 'enabled' ? '1' : '0',
-          icon: formData.icon,
-          color: formData.color,
-          bgColor: formData.bgColor,
-          entityCount: editingRecord.entityCount || 0,
-          isSystem: formData.isSystem,
-        });
-
-        fetchData(page, searchName, searchStatus);
-        message.success("修改成功");
-      } else {
-        await addEntityType({
-          name: formData.name,
-          description: formData.description,
-          enabled: formData.status === 'enabled' ? '1' : '0',
-          icon: formData.icon,
-          color: formData.color,
-          bgColor: formData.bgColor,
-          entityCount: 0,
-          isSystem: formData.isSystem,
-        });
-
-        if (page !== 1) {
-          setPage(1);
-        } else {
-          fetchData(1, searchName, searchStatus);
-        }
-        message.success("创建成功");
-      }
-      closeModal();
-    } catch (error) {
-      console.error(error);
-    }
-  };
+    },
+    {
+      title: "数据类型",
+      dataIndex: "dataType",
+      key: "dataType",
+      width: 120,
+      render: (value) => (
+        <Tag>{fieldTypeOptions.find((item) => item.value === value)?.label || value}</Tag>
+      ),
+    },
+    {
+      title: "说明",
+      dataIndex: "description",
+      key: "description",
+      render: (value) => value || "--",
+    },
+    {
+      title: "创建时间",
+      dataIndex: "createTime",
+      key: "createTime",
+      width: 180,
+      render: (value) =>
+        value ? dayjs(value).format("YYYY-MM-DD HH:mm:ss") : "--",
+    },
+    {
+      title: "操作",
+      key: "action",
+      width: 180,
+      render: (_value, record) => (
+        <Space size={4}>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openAttributeModal(record)}>
+            编辑
+          </Button>
+          <Popconfirm
+            title="确认删除该属性？"
+            okText="确认"
+            cancelText="取消"
+            onConfirm={() => deleteAttribute(record.id)}
+          >
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <>
-      <div style={{ background: "#f5f7fa", minHeight: "calc(100vh - 300px)" }}>
-        <Card styles={{ body: { flex: 1, minHeight: "86vh" } }}>
-          <div style={{ padding: 24 }}>
-            <div style={{ marginBottom: 8 }}>
-              <div
-                style={{
-                  fontSize: 24,
-                  fontWeight: 600,
-                  color: "#262626",
-                  marginBottom: 4,
-                }}
-              >
-                实体类型配置
+      <div style={{ background: "#f5f7fa", minHeight: "calc(100vh - 140px)" }}>
+        <Card
+          bordered={false}
+          styles={{ body: { padding: 20, minHeight: "calc(100vh - 160px)" } }}
+          style={{ borderRadius: 14, boxShadow: "0 1px 3px rgba(15, 23, 42, 0.06)" }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 16,
+              marginBottom: 18,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 600, color: "#1f1f1f" }}>
+                实体类型与属性配置
               </div>
-              <div style={{ fontSize: 14, color: "#8c8c8c" }}>
-                配置专业领域关键实体类型，支持自定义实体属性和抽取规则
+              <div style={{ fontSize: 13, color: "#8c8c8c", marginTop: 4 }}>
+                左侧维护实体类型，右侧只处理当前选中类型的属性。
               </div>
             </div>
-
-            <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-              <Col span={6}>
-                <Card
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid #e8e8e8",
-                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
-                  }}
-                  bodyStyle={{ padding: 20 }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 16 }}
-                  >
-                    <div
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 12,
-                        background:
-                          "linear-gradient(135deg, #1890ff 0%, #40a9ff 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: "2px solid rgba(24, 144, 255, 0.3)",
-                      }}
-                    >
-                      <DatabaseOutlined
-                        style={{ fontSize: 28, color: "#fff" }}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#8c8c8c",
-                          marginBottom: 4,
-                        }}
-                      >
-                        实体类型总数
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 24,
-                          fontWeight: 600,
-                          color: "#262626",
-                        }}
-                      >
-                        42
-                      </div>
-                      <div style={{ fontSize: 12, color: "#52c41a" }}>
-                        <ArrowUpOutlined /> 较上月新增 5 种
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid #e8e8e8",
-                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
-                  }}
-                  bodyStyle={{ padding: 20 }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 16 }}
-                  >
-                    <div
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 12,
-                        background:
-                          "linear-gradient(135deg, #52c41a 0%, #73d13d 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: "2px solid rgba(82, 196, 26, 0.3)",
-                      }}
-                    >
-                      <CheckCircleOutlined
-                        style={{ fontSize: 28, color: "#fff" }}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#8c8c8c",
-                          marginBottom: 4,
-                        }}
-                      >
-                        启用实体总数
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 24,
-                          fontWeight: 600,
-                          color: "#262626",
-                        }}
-                      >
-                        38
-                      </div>
-                      <div style={{ fontSize: 12, color: "#52c41a" }}>
-                        <ArrowUpOutlined /> 启用率 90.5%
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid #e8e8e8",
-                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
-                  }}
-                  bodyStyle={{ padding: 20 }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 16 }}
-                  >
-                    <div
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 12,
-                        background:
-                          "linear-gradient(135deg, #722ed1 0%, #9254de 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: "2px solid rgba(114, 46, 209, 0.3)",
-                      }}
-                    >
-                      <DatabaseOutlined
-                        style={{ fontSize: 28, color: "#fff" }}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#8c8c8c",
-                          marginBottom: 4,
-                        }}
-                      >
-                        已配置实体数量
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 24,
-                          fontWeight: 600,
-                          color: "#262626",
-                        }}
-                      >
-                        12,487
-                      </div>
-                      <div style={{ fontSize: 12, color: "#52c41a" }}>
-                        <ArrowUpOutlined /> 较上月新增 3,200
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </Col>
-              <Col span={6}>
-                <Card
-                  style={{
-                    borderRadius: 12,
-                    border: "1px solid #e8e8e8",
-                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.06)",
-                  }}
-                  bodyStyle={{ padding: 20 }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 16 }}
-                  >
-                    <div
-                      style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 12,
-                        background:
-                          "linear-gradient(135deg, #fa541c 0%, #ff7a45 100%)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: "2px solid rgba(250, 84, 28, 0.3)",
-                      }}
-                    >
-                      <ClockCircleOutlined
-                        style={{ fontSize: 28, color: "#fff" }}
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#8c8c8c",
-                          marginBottom: 4,
-                        }}
-                      >
-                        实体抽取准确率
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 24,
-                          fontWeight: 600,
-                          color: "#fa541c",
-                        }}
-                      >
-                        92.8%
-                      </div>
-                      <div style={{ fontSize: 12, color: "#52c41a" }}>
-                        <ArrowUpOutlined /> 较上月提升 3.2%
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </Col>
-            </Row>
+            <Space size={8} wrap>
+              <Tag color="blue">类型 {entityTotal}</Tag>
+              <Tag color="green">启用 {enabledEntityCount}</Tag>
+              <Tag color="gold">属性 {totalAttributeCount}</Tag>
+            </Space>
           </div>
 
-          <Divider style={{ margin: 0 }} />
+          <Row gutter={16} align="stretch" style={{ minHeight: "calc(100vh - 280px)" }}>
+            <Col xs={24} xl={11}>
+              <Card
+                title="实体类型"
+                bordered={false}
+                style={{
+                  height: "100%",
+                  minHeight: "calc(100vh - 280px)",
+                  borderRadius: 12,
+                  background: "#fafafa",
+                  border: "1px solid #f0f0f0",
+                }}
+                styles={{ body: { padding: 16 } }}
+                extra={
+                  <Space size={8}>
+                    <Button
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={() =>
+                        fetchEntityTypes(entityPage, entitySearchName, entitySearchStatus)
+                      }
+                    >
+                      刷新
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      disabled={!selectedEntityRowKeys.length}
+                      onClick={batchDeleteEntity}
+                    >
+                      删除
+                    </Button>
+                    <Button
+                      size="small"
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => openEntityModal()}
+                    >
+                      新增
+                    </Button>
+                  </Space>
+                }
+              >
+                <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+                  <Col flex="auto">
+                    <Input
+                      placeholder="搜索实体类型"
+                      allowClear
+                      value={entitySearchName}
+                      onChange={(event) => setEntitySearchName(event.target.value)}
+                      onPressEnter={() =>
+                        fetchEntityTypes(1, entitySearchName, entitySearchStatus)
+                      }
+                      prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
+                    />
+                  </Col>
+                  <Col>
+                    <Select
+                      value={entitySearchStatus}
+                      onChange={setEntitySearchStatus}
+                      style={{ width: 120 }}
+                      options={statusOptions}
+                    />
+                  </Col>
+                  <Col>
+                    <Button
+                      type="primary"
+                      onClick={() =>
+                        fetchEntityTypes(1, entitySearchName, entitySearchStatus)
+                      }
+                    >
+                      查询
+                    </Button>
+                  </Col>
+                </Row>
 
-          <div
-            style={{
-              padding: "16px 24px",
-              borderBottom: "1px solid #f0f0f0",
-              background: "linear-gradient(180deg, #f7f9fc 0%, #fff 100%)",
-            }}
-          >
-            <Row justify="space-between" align="middle">
-              <Col>
-                <span
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: "#262626",
+                <Table
+                  dataSource={entityTypes}
+                  columns={entityColumns}
+                  rowKey="id"
+                  size="small"
+                  loading={entityLoading}
+                  pagination={false}
+                  scroll={{ x: 920 }}
+                  rowSelection={{
+                    selectedRowKeys: selectedEntityRowKeys,
+                    onChange: (keys) => setSelectedEntityRowKeys(keys as string[]),
                   }}
-                >
-                  实体类型列表
-                </span>
-                <span
-                  style={{
-                    fontSize: 12,
-                    color: "#8c8c8c",
-                    marginLeft: 12,
-                  }}
-                >
-                  管理所有专业领域关键实体类型及配置
-                </span>
-              </Col>
-              <Col>
-                <Space>
-                  <Button icon={<ReloadOutlined />} onClick={handleReset}>
-                    刷新
-                  </Button>
+                  onRow={(record) => ({
+                    onClick: () => setSelectedEntityTypeId(record.id),
+                    style: {
+                      cursor: "pointer",
+                      background: record.id === selectedEntityTypeId ? "#edf5ff" : "#fff",
+                    },
+                  })}
+                />
 
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                  <Pagination
+                    current={entityPage}
+                    pageSize={pageSize}
+                    total={entityTotal}
+                    onChange={setEntityPage}
+                    showSizeChanger={false}
+                    showTotal={(value) => `共 ${value} 条`}
+                    size="small"
+                  />
+                </div>
+              </Card>
+            </Col>
+
+            <Col xs={24} xl={13}>
+              <Card
+                title="实体属性"
+                bordered={false}
+                style={{
+                  height: "100%",
+                  minHeight: "calc(100vh - 280px)",
+                  borderRadius: 12,
+                  background: "#fafafa",
+                  border: "1px solid #f0f0f0",
+                }}
+                styles={{ body: { padding: 16 } }}
+                extra={
                   <Button
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={handleBatchDelete}
-                    disabled={selectedRowKeys.length === 0}
-                  >
-                    批量删除{" "}
-                    {selectedRowKeys.length > 0
-                      ? `(${selectedRowKeys.length})`
-                      : ""}
-                  </Button>
-                  <Button
-                    icon={<UploadOutlined />}
-                    onClick={() => setImportModalVisible(true)}
-                  >
-                    导入实体类型
-                  </Button>
-                  <Button
+                    size="small"
                     type="primary"
                     icon={<PlusOutlined />}
-                    onClick={() => openModal()}
+                    disabled={!selectedEntityType}
+                    onClick={() => openAttributeModal()}
                   >
-                    新增实体类型
+                    新增属性
                   </Button>
-                </Space>
-              </Col>
-            </Row>
-          </div>
+                }
+              >
+                {selectedEntityType ? (
+                  <>
+                    <div
+                      style={{
+                        marginBottom: 12,
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        background: "#fff",
+                        border: "1px solid #e8f1ff",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 12,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 15, fontWeight: 600, color: "#262626" }}>
+                            {selectedEntityType.name}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 2 }}>
+                            {selectedEntityType.description || "该实体类型暂未填写描述。"}
+                          </div>
+                        </div>
+                        <Space size={6} wrap>
+                          <Tag color={selectedEntityType.status === "enabled" ? "success" : "default"}>
+                            {selectedEntityType.status === "enabled" ? "启用" : "停用"}
+                          </Tag>
+                          <Tag color="blue">属性 {selectedEntityType.attributeCount}</Tag>
+                          <Tag color="geekblue">实体 {selectedEntityType.entityCount}</Tag>
+                        </Space>
+                      </div>
+                    </div>
 
-          <div
-            style={{
-              padding: "16px 24px",
-              borderBottom: "1px solid #f0f0f0",
-            }}
-          >
-            <Row gutter={[16, 12]}>
-              <Col>
-                <Input
-                  placeholder="请输入实体类型名称"
-                  allowClear
-                  value={searchName}
-                  onChange={(e) => setSearchName(e.target.value)}
-                  style={{ width: 200 }}
-                  prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
-                />
-              </Col>
-              <Col>
-                <Select
-                  placeholder="请选择状态"
-                  value={searchStatus}
-                  onChange={setSearchStatus}
-                  style={{ width: 120 }}
-                  options={statusOptions}
-                />
-              </Col>
-              <Col>
-                <Space>
-                  <Button type="primary" onClick={handleSearch}>搜索</Button>
+                    <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+                      <Col flex="auto">
+                        <Input
+                          placeholder="搜索当前类型下的属性名称或编码"
+                          allowClear
+                          value={attributeSearchName}
+                          onChange={(event) => setAttributeSearchName(event.target.value)}
+                          onPressEnter={() =>
+                            fetchAttributes(selectedEntityType.id, 1, attributeSearchName)
+                          }
+                          prefix={<SearchOutlined style={{ color: "#bfbfbf" }} />}
+                        />
+                      </Col>
+                      <Col>
+                        <Button
+                          type="primary"
+                          onClick={() =>
+                            fetchAttributes(selectedEntityType.id, 1, attributeSearchName)
+                          }
+                        >
+                          查询
+                        </Button>
+                      </Col>
+                    </Row>
 
-                  <Button onClick={handleReset}>
-                    重置
-                  </Button>
-                </Space>
-              </Col>
-            </Row>
-          </div>
+                    <Table
+                      dataSource={attributeList}
+                      columns={attributeColumns}
+                      rowKey="id"
+                      size="small"
+                      loading={attributeLoading}
+                      pagination={false}
+                      scroll={{ x: 760 }}
+                      locale={{ emptyText: <Empty description="当前实体类型下暂无属性" /> }}
+                    />
 
-          <Table
-            dataSource={entityTypes}
-            loading={loading}
-            columns={columns}
-            rowKey="id"
-            pagination={false}
-            rowSelection={{
-              selectedRowKeys: selectedRowKeys,
-              onChange: (keys: React.Key[]) =>
-                setSelectedRowKeys(keys as string[]),
-            }}
-          />
-
-          <div
-            style={{
-              padding: 16,
-              display: "flex",
-              justifyContent: "flex-end",
-              borderTop: "1px solid #f0f0f0",
-            }}
-          >
-            <Pagination
-              current={page}
-              pageSize={pageSize}
-              total={total}
-              onChange={setPage}
-              showTotal={(total) => `共 ${total} 条记录`}
-            />
-          </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                      <Pagination
+                        current={attributePage}
+                        pageSize={attributePageSize}
+                        total={attributeTotal}
+                        onChange={setAttributePage}
+                        showSizeChanger={false}
+                        showTotal={(value) => `共 ${value} 条`}
+                        size="small"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div
+                    style={{
+                      minHeight: "calc(100vh - 420px)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Empty description="先在左侧选择一个实体类型" />
+                  </div>
+                )}
+              </Card>
+            </Col>
+          </Row>
         </Card>
       </div>
 
       <Modal
-        title="导入实体类型"
-        open={importModalVisible}
-        onCancel={() => {
-          setImportModalVisible(false);
-          setImportFile("");
-        }}
-        width={500}
-        footer={[
-          <Button key="cancel" onClick={() => setImportModalVisible(false)}>
-            取消
-          </Button>,
-          <Button key="submit" type="primary" onClick={handleImport}>
-            确定导入
-          </Button>,
-        ]}
+        title={editingEntity ? "编辑实体类型" : "新增实体类型"}
+        open={entityModalVisible}
+        onCancel={closeEntityModal}
+        onOk={submitEntity}
+        okText="保存"
+        cancelText="取消"
+        width={720}
       >
-        <div
-          style={{
-            border: "2px dashed #d9d9d9",
-            borderRadius: 8,
-            padding: 40,
-            textAlign: "center",
-            background: "#fafafa",
-          }}
-        >
-          <UploadOutlined style={{ fontSize: 40, color: "#8c8c8c" }} />
-          <div style={{ marginTop: 8, color: "#595959" }}>
-            点击上传文件或拖拽文件到此处
-          </div>
-          <div style={{ marginTop: 4, fontSize: 12, color: "#8c8c8c" }}>
-            支持 JSON、XML、TXT 格式文件
-          </div>
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <div style={{ marginBottom: 8, color: "#595959" }}>
-            或输入文件路径：
-          </div>
-          <Input
-            placeholder="请输入文件路径"
-            value={importFile}
-            onChange={(e) => setImportFile(e.target.value)}
-            style={{ width: "100%" }}
-          />
-        </div>
-
-        <div
-          style={{
-            marginTop: 16,
-            padding: 12,
-            background: "#f6f9ff",
-            borderRadius: 4,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              color: "#1890ff",
-              fontWeight: 500,
-              marginBottom: 4,
-            }}
-          >
-            导入说明：
-          </div>
-          <ul
-            style={{
-              margin: 0,
-              paddingLeft: 16,
-              fontSize: 12,
-              color: "#8c8c8c",
-            }}
-          >
-            <li>支持 JSON 格式文件，每行一个实体类型定义</li>
-            <li>支持 XML 格式文件，符合实体类型schema规范</li>
-            <li>导入将覆盖同名实体类型，请谨慎操作</li>
-          </ul>
-        </div>
+        <Row gutter={[16, 16]}>
+          <Col span={12}>
+            <div style={{ marginBottom: 6 }}>实体类型名称</div>
+            <Input
+              value={entityForm.name}
+              onChange={(event) =>
+                setEntityForm({ ...entityForm, name: event.target.value })
+              }
+              placeholder="例如：疾病实体"
+              disabled={Boolean(editingEntity)}
+            />
+          </Col>
+          <Col span={12}>
+            <div style={{ marginBottom: 6 }}>状态</div>
+            <Select
+              value={entityForm.status}
+              onChange={(value: StatusValue) =>
+                setEntityForm({ ...entityForm, status: value })
+              }
+              options={[
+                { label: "启用", value: "enabled" },
+                { label: "停用", value: "disabled" },
+              ]}
+              style={{ width: "100%" }}
+            />
+          </Col>
+          <Col span={24}>
+            <div style={{ marginBottom: 6 }}>描述</div>
+            <Input.TextArea
+              rows={3}
+              value={entityForm.description}
+              onChange={(event) =>
+                setEntityForm({ ...entityForm, description: event.target.value })
+              }
+              placeholder="说明该实体类型的业务范围和抽取用途"
+            />
+          </Col>
+          <Col span={8}>
+            <div style={{ marginBottom: 6 }}>图标</div>
+            <Select
+              value={entityForm.icon}
+              onChange={(value) => setEntityForm({ ...entityForm, icon: value })}
+              options={iconOptions}
+              style={{ width: "100%" }}
+            />
+          </Col>
+          <Col span={8}>
+            <div style={{ marginBottom: 6 }}>主色</div>
+            <ColorPicker
+              value={entityForm.color}
+              onChange={(color) =>
+                setEntityForm({ ...entityForm, color: color.toHexString() })
+              }
+              showText
+            />
+          </Col>
+          <Col span={8}>
+            <div style={{ marginBottom: 6 }}>背景色</div>
+            <ColorPicker
+              value={entityForm.bgColor}
+              onChange={(color) =>
+                setEntityForm({ ...entityForm, bgColor: color.toHexString() })
+              }
+              showText
+            />
+          </Col>
+          <Col span={24}>
+            <div style={{ marginBottom: 6 }}>系统内置</div>
+            <Switch
+              checked={entityForm.isSystem}
+              onChange={(checked) =>
+                setEntityForm({ ...entityForm, isSystem: checked })
+              }
+            />
+          </Col>
+        </Row>
       </Modal>
 
       <Modal
-        title={modalTitle}
-        open={modalVisible}
-        onCancel={closeModal}
-        width={700}
-        footer={[
-          <Button key="cancel" onClick={closeModal}>
-            取消
-          </Button>,
-          <Button key="submit" type="primary" onClick={handleSubmit}>
-            {editingRecord ? "保存修改" : "创建实体类型"}
-          </Button>,
-        ]}
+        title={editingAttribute ? "编辑实体属性" : "新增实体属性"}
+        open={attributeModalVisible}
+        onCancel={closeAttributeModal}
+        onOk={submitAttribute}
+        okText="保存"
+        cancelText="取消"
+        width={720}
       >
-        <div
-          style={{
-            padding: 16,
-            marginBottom: 16,
-          }}
-        >
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 6 }}>
-              <span style={{ color: "#f5222d" }}>* </span>
-              实体类型名称
-            </div>
+        <Row gutter={[16, 16]}>
+          <Col span={12}>
+            <div style={{ marginBottom: 6 }}>所属实体类型</div>
+            <Select
+              value={selectedEntityType?.id}
+              options={entityTypeOptions}
+              disabled
+              style={{ width: "100%" }}
+            />
+          </Col>
+          <Col span={12}>
+            <div style={{ marginBottom: 6 }}>数据类型</div>
+            <Select
+              value={attributeForm.dataType}
+              onChange={(value) =>
+                setAttributeForm({ ...attributeForm, dataType: value })
+              }
+              options={fieldTypeOptions}
+              style={{ width: "100%" }}
+            />
+          </Col>
+          <Col span={12}>
+            <div style={{ marginBottom: 6 }}>属性名称</div>
             <Input
-              placeholder="请输入实体类型名称"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
+              value={attributeForm.name}
+              onChange={(event) =>
+                setAttributeForm({ ...attributeForm, name: event.target.value })
               }
-              disabled={!!editingRecord}
+              placeholder="例如：实体名称"
             />
-            <div style={{ fontSize: 12, color: "#8c8c8c", marginTop: 4 }}>
-              建议使用清晰易懂的中文名称，如"疾病实体"、"药品实体"
-            </div>
-          </div>
-
-          <div>
-            <div style={{ marginBottom: 6 }}>实体描述</div>
+          </Col>
+          <Col span={12}>
+            <div style={{ marginBottom: 6 }}>属性编码</div>
+            <Input
+              value={attributeForm.code}
+              onChange={(event) =>
+                setAttributeForm({ ...attributeForm, code: event.target.value })
+              }
+              placeholder="例如：entity_name"
+            />
+          </Col>
+          <Col span={24}>
+            <div style={{ marginBottom: 6 }}>描述</div>
             <Input.TextArea
-              placeholder="请描述该实体类型的用途和包含范围"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
               rows={3}
-              maxLength={200}
-              showCount
-            />
-          </div>
-
-          <Row gutter={16} style={{ marginTop: 16 }}>
-            <Col span={8}>
-              <div style={{ marginBottom: 6 }}>图标</div>
-              <Select
-                placeholder="请选择图标"
-                value={formData.icon || undefined}
-                onChange={(value) =>
-                  setFormData({ ...formData, icon: value })
-                }
-                options={iconOptions}
-                style={{ width: "100%" }}
-                allowClear
-              />
-            </Col>
-            <Col span={8}>
-              <div style={{ marginBottom: 6 }}>字体颜色</div>
-              <ColorPicker
-                value={formData.color}
-                onChange={(color) =>
-                  setFormData({ ...formData, color: color.toHexString() })
-                }
-                showText
-              />
-            </Col>
-            <Col span={8}>
-              <div style={{ marginBottom: 6 }}>背景颜色</div>
-              <ColorPicker
-                value={formData.bgColor}
-                onChange={(color) =>
-                  setFormData({ ...formData, bgColor: color.toHexString() })
-                }
-                showText
-              />
-            </Col>
-          </Row>
-
-          <div style={{ marginTop: 16 }}>
-            <div style={{ marginBottom: 6 }}>系统内置</div>
-            <Switch
-              checked={formData.isSystem}
-              onChange={(checked) =>
-                setFormData({ ...formData, isSystem: checked })
+              value={attributeForm.description}
+              onChange={(event) =>
+                setAttributeForm({
+                  ...attributeForm,
+                  description: event.target.value,
+                })
               }
+              placeholder="说明该属性的业务含义"
             />
-          </div>
-        </div>
-
-        <div
-          style={{
-            border: "1px solid #e8e8e8",
-            borderRadius: 8,
-            background: "#f6f9ff",
-            padding: 16,
-            marginBottom: 16,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 500,
-              color: "#1890ff",
-              marginBottom: 12,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <SettingOutlined />
-            实体属性配置
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "#8c8c8c",
-              marginBottom: 12,
-            }}
-          >
-            用于定义该实体类型包含哪些属性字段，每个属性对应一个抽取维度。
-          </div>
-
-          <Table
-            dataSource={formData.attributes}
-            pagination={false}
-            size="small"
-            columns={[
-              {
-                title: "属性名称",
-                dataIndex: "name",
-                key: "name",
-                width: 150,
-                render: (text: string, record: EntityAttribute) => (
-                  <Input
-                    placeholder="请输入属性名称"
-                    value={text}
-                    onChange={(e) =>
-                      updateAttribute(record.key, "name", e.target.value)
-                    }
-                  />
-                ),
-              },
-              {
-                title: "属性编码",
-                dataIndex: "code",
-                key: "code",
-                width: 150,
-                render: (text: string, record: EntityAttribute) => (
-                  <Input
-                    placeholder="请输入属性编码"
-                    value={text}
-                    onChange={(e) =>
-                      updateAttribute(record.key, "code", e.target.value)
-                    }
-                  />
-                ),
-              },
-              {
-                title: "数据类型",
-                dataIndex: "dataType",
-                key: "dataType",
-                width: 120,
-                render: (text: string, record: EntityAttribute) => (
-                  <Select
-                    placeholder="请选择类型"
-                    value={text}
-                    onChange={(value) =>
-                      updateAttribute(record.key, "dataType", value)
-                    }
-                    options={fieldTypeOptions}
-                    style={{ width: 100 }}
-                  />
-                ),
-              },
-              {
-                title: "操作",
-                key: "action",
-                width: 60,
-                render: (_: any, record: EntityAttribute) => (
-                  <Button
-                    type="link"
-                    size="small"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => removeAttribute(record.key)}
-                  />
-                ),
-              },
-            ]}
-            rowKey="key"
-          />
-
-          <Button
-            type="dashed"
-            onClick={addAttribute}
-            style={{ width: "100%", marginTop: 8 }}
-            icon={<PlusOutlined />}
-          >
-            添加属性
-          </Button>
-        </div>
-
-        <div
-          style={{
-            border: "1px solid #e8e8e8",
-            borderRadius: 8,
-            background: "#f6f9ff",
-            padding: 16,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 500,
-              color: "#1890ff",
-              marginBottom: 12,
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <CheckCircleOutlined />
-            状态设置
-          </div>
-
-          <Radio.Group
-            value={formData.status}
-            onChange={(e) =>
-              setFormData({ ...formData, status: e.target.value })
-            }
-          >
-            <Radio value="enabled">立即启用</Radio>
-            <Radio value="disabled">暂不启用</Radio>
-          </Radio.Group>
-          <div
-            style={{
-              fontSize: 12,
-              color: "#8c8c8c",
-              marginTop: 8,
-            }}
-          >
-            立即启用的实体类型将参与抽取任务，请确认属性配置完整后再启用。
-          </div>
-        </div>
+          </Col>
+        </Row>
       </Modal>
     </>
   );
