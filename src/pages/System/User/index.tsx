@@ -255,32 +255,46 @@ const UserTableList: React.FC = () => {
     });
   };
 
-  const fetchUserInfo = async (userId: number) => {
+  const toRoleIds = (roles: any[] = []) => {
+    return roles
+      .map((item: any) => item.roleId ?? item.id)
+      .filter((id) => typeof id !== 'undefined');
+  };
+
+  const fetchUserInfo = async (userId: number, listRecord?: API.System.User) => {
     const [userResp, postResp, roleResp] = await Promise.all([
       getUser(userId),
       getPostSimpleList(),
       getRoleSimpleList(),
     ]);
     const userData = (userResp as any).data || {};
-    setPostIds((userResp as any).postIds || userData.postIds || []);
+    const userInfo = userData.user || userData.userInfo || userData;
+    const responseRoles =
+      (Array.isArray((userResp as any).roles) && (userResp as any).roles) ||
+      (Array.isArray(userData.roles) && userData.roles) ||
+      (Array.isArray(userInfo.roles) && userInfo.roles) ||
+      (Array.isArray((listRecord as any)?.roles) && (listRecord as any).roles) ||
+      [];
+    const responseRoleIds =
+      (Array.isArray((userResp as any).roleIds) && (userResp as any).roleIds) ||
+      (Array.isArray(userData.roleIds) && userData.roleIds) ||
+      (Array.isArray(userInfo.roleIds) && userInfo.roleIds) ||
+      (Array.isArray((listRecord as any)?.roleIds) && (listRecord as any).roleIds) ||
+      [];
+
+    setPostIds((userResp as any).postIds || userData.postIds || userInfo.postIds || []);
     setPostList(
       postResp.code === 200
         ? toPostOptions(postResp.data || [])
-        : toPostOptions((userResp as any).posts || userData.posts || []),
+        : toPostOptions((userResp as any).posts || userData.posts || userInfo.posts || []),
     );
-    setRoleIds(
-      (userResp as any).roleIds ||
-        userData.roleIds ||
-        ((userResp as any).roles || userData.roles || []).map((item: any) => item.roleId ?? item.id),
-    );
+    setRoleIds(responseRoleIds.length > 0 ? responseRoleIds : toRoleIds(responseRoles));
     setRoleList(
-      roleResp.code === 200
-        ? toRoleOptions(roleResp.data || [])
-        : toRoleOptions((userResp as any).roles || userData.roles || []),
+      roleResp.code === 200 ? toRoleOptions(roleResp.data || []) : toRoleOptions(responseRoles),
     );
     return {
       ...userResp,
-      data: normalizeUser(userData),
+      data: normalizeUser(userInfo),
     };
   };
 
@@ -378,7 +392,7 @@ const UserTableList: React.FC = () => {
           hidden={!access.hasPerms('system:user:edit')}
           onClick={async () => {
             const [userInfo, treeData] = await Promise.all([
-              fetchUserInfo(record.userId),
+              fetchUserInfo(record.userId, record),
               getDeptTree({}),
             ]);
             setDeptTree(treeData);
@@ -512,6 +526,8 @@ const UserTableList: React.FC = () => {
                       }),
                     );
                   }
+                  setPostIds([]);
+                  setRoleIds([]);
                   setCurrentRow({
                     deptId: selectDept?.id ?? selectDept?.value,
                   } as API.System.User);

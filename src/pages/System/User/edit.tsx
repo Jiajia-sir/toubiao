@@ -210,7 +210,7 @@ const UserForm: React.FC<UserFormProps> = (props) => {
           colProps={{ md: 12, xl: 12 }}
           rules={[
             {
-              required: false,
+              required: true,
               message: <FormattedMessage id="请输入密码！" defaultMessage="请输入密码！" />,
             },
           ]}
@@ -270,7 +270,7 @@ const UserForm: React.FC<UserFormProps> = (props) => {
           options={posts}
           placeholder="请选择岗位"
           colProps={{ md: 12, xl: 12 }}
-          rules={[{ required: true, message: '请选择岗位!' }]}
+          rules={[{ required: false, message: '请选择岗位!' }]}
         />
         <ProFormSelect
           name="roleIds"
