@@ -148,8 +148,23 @@ const DeptTableList: React.FC = () => {
       valueType: 'text',
     },
     {
+      title: <FormattedMessage id="system.dept.id" defaultMessage="部门编号" />,
+      dataIndex: 'id',
+      valueType: 'text',
+    },
+    {
       title: <FormattedMessage id="system.dept.order_num" defaultMessage="显示顺序" />,
       dataIndex: 'orderNum',
+      valueType: 'text',
+    },
+    {
+      title: <FormattedMessage id="system.dept.email" defaultMessage="邮箱" />,
+      dataIndex: 'email',
+      valueType: 'text',
+    },
+    {
+      title: <FormattedMessage id="system.dept.phone" defaultMessage="联系电话" />,
+      dataIndex: 'phone',
       valueType: 'text',
     },
     {

@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useIntl, FormattedMessage, useAccess } from '@umijs/max';
-import { Card, Col, Dropdown, FormInstance, Row, Space, Switch } from 'antd';
+import { Card, Checkbox, Col, Dropdown, FormInstance, Row, Space, Switch, TreeSelect, Upload } from 'antd';
 import { Button, message, Modal } from 'antd';
 import {
   ActionType,
-  FooterToolbar,
   PageContainer,
   ProColumns,
   ProTable,
@@ -16,6 +15,8 @@ import {
   DownOutlined,
   EditOutlined,
   DownloadOutlined,
+  UploadOutlined,
+  SwapOutlined,
 } from '@ant-design/icons';
 import {
   getUserList,
@@ -28,6 +29,9 @@ import {
   updateAuthRole,
   resetUserPwd,
   getAuthRole,
+  getUserImportTemplate,
+  importUser,
+  moveUserDeptBatch,
 } from '@/services/system/user';
 import UpdateForm from './edit';
 import { DataNode } from 'antd/es/tree';
@@ -104,10 +108,14 @@ const handleRemove = async (selectedRows: API.System.User[]) => {
   const hide = message.loading('正在删除');
   if (!selectedRows) return true;
   try {
-    await removeUser(selectedRows.map((row) => row.userId).join(','));
+    const resp = await removeUser(selectedRows.map((row) => row.userId).join(','));
     hide();
-    message.success('删除成功，即将刷新');
-    return true;
+    if (isSuccess(resp)) {
+      message.success('删除成功，即将刷新');
+      return true;
+    }
+    message.error(resp.msg || '删除失败，请重试');
+    return false;
   } catch (error) {
     hide();
     message.error('删除失败，请重试');
@@ -120,10 +128,14 @@ const handleRemoveOne = async (selectedRow: API.System.User) => {
   if (!selectedRow) return true;
   try {
     const params = [selectedRow.userId];
-    await removeUser(params.join(','));
+    const resp = await removeUser(params.join(','));
     hide();
-    message.success('删除成功，即将刷新');
-    return true;
+    if (isSuccess(resp)) {
+      message.success('删除成功，即将刷新');
+      return true;
+    }
+    message.error(resp.msg || '删除失败，请重试');
+    return false;
   } catch (error) {
     hide();
     message.error('删除失败，请重试');
@@ -150,6 +162,61 @@ const handleExport = async () => {
   }
 };
 
+const isExcelFile = (file: File) => {
+  const fileName = file.name.toLowerCase();
+  return fileName.endsWith('.xls') || fileName.endsWith('.xlsx');
+};
+
+type ImportResultPayload = string[] | Record<string, string> | undefined;
+type ImportResultItem = {
+  username: string;
+  detail?: string;
+};
+
+const toImportResultItems = (value: ImportResultPayload): ImportResultItem[] => {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean).map((username) => ({
+      username,
+    }));
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.entries(value)
+      .filter(([username]) => Boolean(username))
+      .map(([username, detail]) => ({
+        username,
+        detail,
+      }));
+  }
+
+  return [];
+};
+
+const renderImportResultGroup = (
+  title: string,
+  items: ReturnType<typeof toImportResultItems>,
+  type: 'created' | 'updated' | 'failed',
+) => (
+  <div className={`user-import-result-group user-import-result-group-${type}`}>
+    <div className="user-import-result-title">
+      <span>{title}</span>
+      <span className="user-import-result-count">{items.length}</span>
+    </div>
+    {items.length ? (
+      <div className="user-import-result-list">
+        {items.map((item) => (
+          <div className="user-import-result-item" key={`${type}-${item.username}`}>
+            <span className="user-import-result-name">{item.username}</span>
+            {item.detail ? <span className="user-import-result-detail">{item.detail}</span> : null}
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="user-import-result-empty">无</div>
+    )}
+  </div>
+);
+
 const UserTableList: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
 
@@ -158,6 +225,13 @@ const UserTableList: React.FC = () => {
   const [modalVisible, setModalVisible] = useState<boolean>(false);
   const [resetPwdModalVisible, setResetPwdModalVisible] = useState<boolean>(false);
   const [authRoleModalVisible, setAuthRoleModalVisible] = useState<boolean>(false);
+  const [importModalVisible, setImportModalVisible] = useState<boolean>(false);
+  const [importFile, setImportFile] = useState<File>();
+  const [importUpdateSupport, setImportUpdateSupport] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [moveDeptModalVisible, setMoveDeptModalVisible] = useState(false);
+  const [moveDeptId, setMoveDeptId] = useState<number>();
+  const [movingDept, setMovingDept] = useState(false);
 
   const actionRef = useRef<ActionType>();
   const [currentRow, setCurrentRow] = useState<API.System.User>();
@@ -317,6 +391,110 @@ const UserTableList: React.FC = () => {
     } else {
       setRoleIds([]);
     }
+  };
+
+  const closeImportModal = () => {
+    setImportModalVisible(false);
+    setImportFile(undefined);
+    setImportUpdateSupport(false);
+    setImporting(false);
+  };
+
+  const handleDownloadImportTemplate = async () => {
+    try {
+      await getUserImportTemplate();
+    } catch (error) {
+      message.error('下载导入模板失败');
+    }
+  };
+
+  const handleImportUser = async () => {
+    if (!importFile) {
+      message.warning('请选择要导入的 Excel 文件');
+      return;
+    }
+    setImporting(true);
+    try {
+      const resp = await importUser(importFile, importUpdateSupport);
+      if (Number(resp.code) !== 200) {
+        message.error(resp.msg || '导入失败');
+        return;
+      }
+
+      const createUsernames = toImportResultItems(resp.data?.createUsernames);
+      const updateUsernames = toImportResultItems(resp.data?.updateUsernames);
+      const failureUsernames = toImportResultItems(resp.data?.failureUsernames);
+
+      Modal.info({
+        title: '导入结果',
+        width: 640,
+        className: 'user-import-result-modal',
+        content: (
+          <div className="user-import-result">
+            <div className="user-import-result-summary">导入完成，以下为本次导入明细</div>
+            {renderImportResultGroup('新增用户', createUsernames, 'created')}
+            {renderImportResultGroup('更新用户', updateUsernames, 'updated')}
+            {renderImportResultGroup('失败用户', failureUsernames, 'failed')}
+          </div>
+        ),
+      });
+
+      closeImportModal();
+      actionRef.current?.reload();
+    } catch (error) {
+      message.error('导入失败');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const closeMoveDeptModal = () => {
+    setMoveDeptModalVisible(false);
+    setMoveDeptId(undefined);
+    setMovingDept(false);
+  };
+
+  const handleMoveDeptBatch = async () => {
+    if (!selectedRows.length) {
+      message.warning('请选择要移动的用户');
+      return;
+    }
+    if (typeof moveDeptId === 'undefined') {
+      message.warning('请选择目标部门');
+      return;
+    }
+
+    setMovingDept(true);
+    try {
+      const resp = await moveUserDeptBatch(
+        selectedRows.map((row) => row.userId),
+        moveDeptId,
+      );
+      if (isSuccess(resp)) {
+        message.success('批量移动部门成功');
+        closeMoveDeptModal();
+        setSelectedRows([]);
+        actionRef.current?.reloadAndRest?.();
+        return;
+      }
+      message.error(resp.msg || '批量移动部门失败');
+    } catch (error) {
+      message.error('批量移动部门失败');
+    } finally {
+      setMovingDept(false);
+    }
+  };
+
+  const openMoveDeptModal = async () => {
+    if (!selectedRows.length) {
+      message.warning('请选择要移动的用户');
+      return;
+    }
+    if (!deptTree?.length) {
+      const treeData = await getDeptTree({});
+      setDeptTree(treeData);
+    }
+    setMoveDeptModalVisible(true);
   };
 
   const columns: ProColumns<API.System.User>[] = [
@@ -541,7 +719,7 @@ const UserTableList: React.FC = () => {
                 type="primary"
                 key="remove"
                 danger
-                hidden={selectedRows?.length === 0 || !access.hasPerms('system:user:remove')}
+                disabled={selectedRows?.length === 0}
                 onClick={async () => {
                   Modal.confirm({
                     title: '是否确认删除所选数据项?',
@@ -559,7 +737,26 @@ const UserTableList: React.FC = () => {
                 }}
               >
                 <DeleteOutlined />
-                <FormattedMessage id="pages.searchTable.delete" defaultMessage="删除" />
+                批量删除用户
+              </Button>,
+              <Button
+                type="primary"
+                key="moveDept"
+                icon={<SwapOutlined />}
+                disabled={selectedRows?.length === 0}
+                onClick={openMoveDeptModal}
+              >
+                批量移动部门
+              </Button>,
+              <Button
+                type="primary"
+                key="import"
+                icon={<UploadOutlined />}
+                onClick={() => {
+                  setImportModalVisible(true);
+                }}
+              >
+                导入
               </Button>,
               <Button
                 type="primary"
@@ -594,40 +791,7 @@ const UserTableList: React.FC = () => {
           />
         </Col>
       </Row>
-      {selectedRows?.length > 0 && (
-        <FooterToolbar
-          extra={
-            <div>
-              <FormattedMessage id="pages.searchTable.chosen" defaultMessage="已选择" />
-              <a style={{ fontWeight: 600 }}>{selectedRows.length}</a>
-              <FormattedMessage id="pages.searchTable.item" defaultMessage="项" />
-            </div>
-          }
-        >
-          <Button
-            key="remove"
-            danger
-            hidden={!access.hasPerms('system:user:del')}
-            onClick={async () => {
-              Modal.confirm({
-                title: '删除',
-                content: '确定删除该项吗？',
-                okText: '确认',
-                cancelText: '取消',
-                onOk: async () => {
-                  const success = await handleRemove(selectedRows);
-                  if (success) {
-                    setSelectedRows([]);
-                    actionRef.current?.reloadAndRest?.();
-                  }
-                },
-              });
-            }}
-          >
-            <FormattedMessage id="pages.searchTable.batchDeletion" defaultMessage="批量删除" />
-          </Button>
-        </FooterToolbar>
-      )}
+
       <UpdateForm
         onSubmit={async (values) => {
           let success = false;
@@ -687,6 +851,7 @@ const UserTableList: React.FC = () => {
             setSelectedRows([]);
             setCurrentRow(undefined);
             message.success('配置成功。');
+            actionRef.current?.reload();
           }
         }}
         onCancel={() => {
@@ -698,9 +863,222 @@ const UserTableList: React.FC = () => {
         roles={roleList || []}
         roleIds={roleIds || []}
       />
+      <Modal
+        title="批量移动部门"
+        open={moveDeptModalVisible}
+        onCancel={closeMoveDeptModal}
+        onOk={handleMoveDeptBatch}
+        confirmLoading={movingDept}
+        okText="确认移动"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <div className="user-batch-move-tip">已选择 {selectedRows.length} 个用户，请选择目标部门。</div>
+          <TreeSelect
+            value={moveDeptId}
+            treeData={deptTree || []}
+            placeholder="请选择目标部门"
+            treeDefaultExpandAll
+            showSearch
+            allowClear
+            style={{ width: '100%' }}
+            treeNodeFilterProp="title"
+            onChange={(value) => {
+              setMoveDeptId(typeof value === 'undefined' ? undefined : Number(value));
+            }}
+          />
+        </Space>
+      </Modal>
+      <Modal
+        title="导入用户"
+        open={importModalVisible}
+        className="user-import-modal"
+        onCancel={closeImportModal}
+        onOk={handleImportUser}
+        confirmLoading={importing}
+        okText="导入"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <div className="user-import-panel">
+          <div className="user-import-step">
+            <div className="user-import-step-index">1</div>
+            <div className="user-import-step-content">
+              <div className="user-import-step-title">下载模板</div>
+              <div className="user-import-step-desc">请使用模板填写用户信息后再导入。</div>
+              <Button icon={<DownloadOutlined />} onClick={handleDownloadImportTemplate}>
+                下载导入用户模板
+              </Button>
+            </div>
+          </div>
+          <div className="user-import-step">
+            <div className="user-import-step-index">2</div>
+            <div className="user-import-step-content">
+              <div className="user-import-step-title">上传文件</div>
+              <div className="user-import-step-desc">仅支持 .xls、.xlsx 格式。</div>
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Upload
+                  accept=".xls,.xlsx"
+                  maxCount={1}
+                  beforeUpload={(file) => {
+                    if (!isExcelFile(file)) {
+                      message.error('只能上传 Excel 文件');
+                      return Upload.LIST_IGNORE;
+                    }
+                    setImportFile(file);
+                    return false;
+                  }}
+                  onRemove={() => {
+                    setImportFile(undefined);
+                  }}
+                  fileList={
+                    importFile
+                      ? [
+                          {
+                            uid: importFile.name,
+                            name: importFile.name,
+                            status: 'done' as const,
+                          },
+                        ]
+                      : []
+                  }
+                >
+                  <Button type="primary" icon={<UploadOutlined />}>
+                    选择 Excel 文件
+                  </Button>
+                </Upload>
+                <Checkbox
+                  checked={importUpdateSupport}
+                  onChange={(e) => setImportUpdateSupport(e.target.checked)}
+                >
+                  支持更新已有用户
+                </Checkbox>
+              </Space>
+            </div>
+          </div>
+        </div>
+      </Modal>
       <style>{`
         .ant-pro-page-container .ant-pro-page-container-warp-page-header {
           background: #fff;
+        }
+        .user-batch-move-tip {
+          padding: 10px 12px;
+          border: 1px solid #dbe9ff;
+          border-radius: 8px;
+          color: #1f2d3d;
+          background: #f4f8ff;
+        }
+        .user-import-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .user-import-step {
+          display: flex;
+          gap: 14px;
+          padding: 16px;
+          border: 1px solid #e5edf8;
+          border-radius: 8px;
+          background: linear-gradient(180deg, #fbfdff 0%, #f6f9fd 100%);
+        }
+        .user-import-step-index {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 28px;
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          color: #1677ff;
+          font-weight: 600;
+          background: #eaf3ff;
+          box-shadow: inset 0 0 0 1px #cfe2ff;
+        }
+        .user-import-step-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .user-import-step-title {
+          margin-bottom: 4px;
+          color: #1f2d3d;
+          font-weight: 600;
+        }
+        .user-import-step-desc {
+          margin-bottom: 12px;
+          color: #6b778c;
+          font-size: 13px;
+        }
+        .user-import-result {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-top: 8px;
+        }
+        .user-import-result-summary {
+          padding: 10px 12px;
+          border-radius: 8px;
+          color: #1f2d3d;
+          background: #f4f8ff;
+          border: 1px solid #dbe9ff;
+        }
+        .user-import-result-group {
+          border: 1px solid #edf1f7;
+          border-radius: 8px;
+          overflow: hidden;
+          background: #fff;
+        }
+        .user-import-result-title {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 12px;
+          font-weight: 600;
+          background: #f8fafc;
+        }
+        .user-import-result-count {
+          min-width: 26px;
+          height: 22px;
+          padding: 0 8px;
+          border-radius: 11px;
+          color: #1677ff;
+          font-size: 12px;
+          line-height: 22px;
+          text-align: center;
+          background: #eaf3ff;
+        }
+        .user-import-result-group-failed .user-import-result-count {
+          color: #cf1322;
+          background: #fff1f0;
+        }
+        .user-import-result-list {
+          max-height: 180px;
+          overflow: auto;
+        }
+        .user-import-result-item {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          justify-content: space-between;
+          padding: 9px 12px;
+          border-top: 1px solid #f0f2f5;
+        }
+        .user-import-result-name {
+          flex: 0 0 160px;
+          color: #1f2d3d;
+          font-weight: 500;
+          word-break: break-all;
+        }
+        .user-import-result-detail {
+          flex: 1;
+          color: #5f6b7a;
+          text-align: right;
+          word-break: break-all;
+        }
+        .user-import-result-empty {
+          padding: 12px;
+          color: #8c8c8c;
         }
       `}</style>
     </PageContainer>

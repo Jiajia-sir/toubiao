@@ -3,7 +3,6 @@ import {
   ProForm,
   ProFormText,
   ProFormSelect,
-  ProFormRadio,
   ProFormTextArea,
   ProFormCascader,
 } from '@ant-design/pro-components';
@@ -56,7 +55,7 @@ const findDeptPath = (options: DataNode[], targetValue?: React.Key): React.Key[]
 const UserForm: React.FC<UserFormProps> = (props) => {
   const [form] = Form.useForm();
   const userId = Form.useWatch('userId', form);
-  const { sexOptions, statusOptions, } = props;
+  const { sexOptions } = props;
   const { roles, posts, depts } = props;
 
   useEffect(() => {
@@ -72,7 +71,6 @@ const UserForm: React.FC<UserFormProps> = (props) => {
       phonenumber: props.values.phonenumber,
       sex: typeof props.values.sex === 'undefined' ? '1' : String(props.values.sex),
       avatar: props.values.avatar,
-      status: typeof props.values.status === 'undefined' ? '0' : String(props.values.status),
       delFlag: props.values.delFlag,
       loginIp: props.values.loginIp,
       loginDate: props.values.loginDate,
@@ -237,25 +235,6 @@ const UserForm: React.FC<UserFormProps> = (props) => {
               required: false,
               message: (
                 <FormattedMessage id="请输入用户性别！" defaultMessage="请输入用户性别！" />
-              ),
-            },
-          ]}
-        />
-        <ProFormRadio.Group
-          valueEnum={statusOptions}
-          name="status"
-          label={intl.formatMessage({
-            id: 'system.user.status',
-            defaultMessage: '帐号状态',
-          })}
-          initialValue={'0'}
-          placeholder="请输入帐号状态"
-          colProps={{ md: 12, xl: 12 }}
-          rules={[
-            {
-              required: false,
-              message: (
-                <FormattedMessage id="请输入帐号状态！" defaultMessage="请输入帐号状态！" />
               ),
             },
           ]}

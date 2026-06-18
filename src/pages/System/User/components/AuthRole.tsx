@@ -56,11 +56,8 @@ const AuthRoleForm: React.FC<AuthRoleFormProps> = (props) => {
                 form={form}
                 grid={true}
                 layout="horizontal"
+                submitter={false}
                 onFinish={handleFinish}
-                initialValues={{
-                    login_password: '',
-                    confirm_password: '',
-                }}
             >
                 <ProFormSelect
                     name="roleIds"

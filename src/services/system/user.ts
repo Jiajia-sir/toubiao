@@ -1,7 +1,7 @@
 import { handleTree } from '@/utils/tree';
 import { request } from '@umijs/max';
 import { DataNode } from 'antd/es/tree';
-import { downLoadXlsx } from '@/utils/downloadfile';
+import { downLoadXlsx, resolveBlob } from '@/utils/downloadfile';
 import { API_PREFIX } from '@/constants';
 
 function transformUserPayload(params: API.System.User) {
@@ -31,14 +31,6 @@ function transformUserListParams(params?: API.System.UserListParams) {
     nickname: params.nickName,
     mobile: params.phonenumber,
   };
-}
-
-async function deleteUserById(id: string, options?: { [key: string]: any }) {
-  return request<API.Result>(`${API_PREFIX}/system/user/delete`, {
-    method: 'DELETE',
-    params: { id },
-    ...(options || {}),
-  });
 }
 
 // 查询用户信息列表
@@ -88,14 +80,62 @@ export async function updateUser(params: API.System.User, options?: { [key: stri
 
 // 删除用户信息
 export async function removeUser(ids: string, options?: { [key: string]: any }) {
-  const idList = ids.split(',').map((item) => item.trim()).filter(Boolean);
-  const responses = await Promise.all(idList.map((id) => deleteUserById(id, options)));
-  return responses[responses.length - 1];
+  const idList = ids
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => !Number.isNaN(item));
+  return request<API.Result>(`${API_PREFIX}/system/user/deleteBatch`, {
+    method: 'POST',
+    data: {
+      ids: idList,
+    },
+    ...(options || {}),
+  });
+}
+
+export function moveUserDeptBatch(userIds: number[], deptId: number) {
+  return request<API.Result>(`${API_PREFIX}/system/user/moveDeptBatch`, {
+    method: 'POST',
+    data: {
+      userIds,
+      deptId,
+    },
+  });
 }
 
 // 导出用户信息
 export function exportUser(params?: API.System.UserListParams, options?: { [key: string]: any }) {
   return downLoadXlsx(`${API_PREFIX}/system/user/export`, { params }, `user_${new Date().getTime()}.xlsx`);
+}
+
+export function getUserImportTemplate() {
+  return request(`${API_PREFIX}/system/user/get-import-template`, {
+    method: 'GET',
+    responseType: 'blob',
+    getResponse: true,
+  }).then((res) => {
+    resolveBlob(res, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  });
+}
+
+export interface ImportUserResult {
+  code: number;
+  data?: {
+    createUsernames?: string[] | Record<string, string>;
+    updateUsernames?: string[] | Record<string, string>;
+    failureUsernames?: string[] | Record<string, string>;
+  };
+  msg?: string;
+}
+
+export function importUser(file: File, updateSupport = false) {
+  const data = new FormData();
+  data.append('file', file);
+  data.append('updateSupport', String(updateSupport));
+  return request<ImportUserResult>(`${API_PREFIX}/system/user/import`, {
+    method: 'POST',
+    data,
+  });
 }
 
 // 用户状态修改
