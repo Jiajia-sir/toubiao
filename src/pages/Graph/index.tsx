@@ -426,6 +426,10 @@ export default function GraphPage() {
 
   function handleNodeClick(node: EntityGraphNode) {
     setSelectedNodeId(node.id);
+  }
+
+  function handleNodeExpand(node: EntityGraphNode) {
+    setSelectedNodeId(node.id);
     if (expandedNodeIds.has(node.id)) return;
 
     const result = expandGraphWithEntity(graphData, node.id);
@@ -1032,6 +1036,7 @@ export default function GraphPage() {
               showNodes={showNodes}
               showLinks={showLinks}
               onNodeClick={handleNodeClick}
+              onNodeDoubleClick={handleNodeExpand}
             />
           ) : (
             <Empty description="当前筛选条件下暂无图谱数据" style={{ marginTop: 220 }} />
@@ -1310,7 +1315,7 @@ export default function GraphPage() {
                 icon={selectedNode?.id === graphData.centerId ? <FolderOpenOutlined /> : undefined}
                 onClick={() =>
                   selectedNode?.id === graphData.centerId
-                    ? selectedNode && handleNodeClick(selectedNode)
+                    ? selectedNode && handleNodeExpand(selectedNode)
                     : handleDeleteEntity()
                 }
               >

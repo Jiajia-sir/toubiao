@@ -38,6 +38,7 @@ interface EntityRelationGraphProps {
   labelMaxLength?: number;
   maxVisibleLabels?: number;
   onNodeClick?: (node: EntityGraphNode) => void;
+  onNodeDoubleClick?: (node: EntityGraphNode) => void;
   actionRef?: React.Ref<EntityRelationGraphRef>;
 }
 
@@ -275,6 +276,7 @@ const EntityRelationGraph = forwardRef<
     labelMaxLength,
     maxVisibleLabels,
     onNodeClick,
+    onNodeDoubleClick,
     actionRef,
   },
   ref,
@@ -444,9 +446,13 @@ const EntityRelationGraph = forwardRef<
   }, [data, nodeScale, linkWidth, showNodes, showLinks, showLabels, selectedNodeId, labelMaxLength, maxVisibleLabels]);
 
   const onNodeClickRef = useRef(onNodeClick);
+  const onNodeDoubleClickRef = useRef(onNodeDoubleClick);
   useEffect(() => {
     onNodeClickRef.current = onNodeClick;
   }, [onNodeClick]);
+  useEffect(() => {
+    onNodeDoubleClickRef.current = onNodeDoubleClick;
+  }, [onNodeDoubleClick]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -458,6 +464,8 @@ const EntityRelationGraph = forwardRef<
 
     const drawCurved = createDrawCurvedEdgeLabel(DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS);
     const sigma = new Sigma(graph, container, {
+      doubleClickZoomingRatio: 1,
+      doubleClickZoomingDuration: 0,
       renderEdgeLabels: true,
       defaultDrawEdgeLabel: (context, edgeData, sourceData, targetData, settings) => {
         if (edgeData.type === "curvedArrow") {
@@ -496,6 +504,13 @@ const EntityRelationGraph = forwardRef<
       const originalData = graph.getNodeAttribute(e.node, "originalData");
       if (originalData && onNodeClickRef.current) {
         onNodeClickRef.current(originalData);
+      }
+    });
+
+    sigma.on("doubleClickNode", (e) => {
+      const originalData = graph.getNodeAttribute(e.node, "originalData");
+      if (originalData && onNodeDoubleClickRef.current) {
+        onNodeDoubleClickRef.current(originalData);
       }
     });
 
