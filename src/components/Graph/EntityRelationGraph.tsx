@@ -300,7 +300,7 @@ const EntityRelationGraph = forwardRef<
   }));
 
   useEffect(() => {
-    const graph = new Graph();
+    const graph = new Graph({ multi: true });
     graphRef.current = graph;
 
     return () => {
