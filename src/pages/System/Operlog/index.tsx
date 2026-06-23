@@ -166,23 +166,25 @@ const OperlogTableList: React.FC = () => {
   const columns: ProColumns<API.Monitor.Operlog>[] = [
     {
       title: <FormattedMessage id="monitor.operlog.oper_id" defaultMessage="日志主键" />,
-      dataIndex: 'operId',
+      dataIndex: 'id',
       valueType: 'text',
       hideInSearch: true,
     },
     {
       title: <FormattedMessage id="monitor.operlog.title" defaultMessage="操作模块" />,
-      dataIndex: 'title',
+      dataIndex: 'type',
       valueType: 'text',
     },
     {
       title: <FormattedMessage id="monitor.operlog.business_type" defaultMessage="业务类型" />,
-      dataIndex: 'businessType',
-      valueType: 'select',
-      valueEnum: businessTypeOptions,
-      render: (_, record) => {
-        return <DictTag enums={businessTypeOptions} value={record.businessType} />;
-      },
+      dataIndex: 'subType',
+      valueType: 'text',
+    },
+    {
+      title: <FormattedMessage id="monitor.operlog.action" defaultMessage="详细操作" />,
+      dataIndex: 'action',
+      valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="monitor.operlog.request_method" defaultMessage="请求方式" />,
@@ -190,63 +192,49 @@ const OperlogTableList: React.FC = () => {
       valueType: 'text',
     },
     {
-      title: <FormattedMessage id="monitor.operlog.operator_type" defaultMessage="操作类别" />,
-      dataIndex: 'operatorType',
-      valueType: 'select',
-      valueEnum: operatorTypeOptions,
-      render: (_, record) => {
-        return <DictTag enums={operatorTypeOptions} value={record.operatorType} />;
-      },
-    },
-    {
       title: <FormattedMessage id="monitor.operlog.oper_name" defaultMessage="操作人员" />,
-      dataIndex: 'operName',
+      dataIndex: 'userName',
       valueType: 'text',
     },
     {
       title: <FormattedMessage id="monitor.operlog.oper_ip" defaultMessage="主机地址" />,
-      dataIndex: 'operIp',
-      valueType: 'text',
-    },
-    {
-      title: <FormattedMessage id="monitor.operlog.oper_location" defaultMessage="操作地点" />,
-      dataIndex: 'operLocation',
+      dataIndex: 'userIp',
       valueType: 'text',
     },
     {
       title: <FormattedMessage id="monitor.operlog.status" defaultMessage="操作状态" />,
-      dataIndex: 'status',
+      dataIndex: 'isFail',
       valueType: 'select',
-      valueEnum: statusOptions,
-      render: (_, record) => {
-        return <DictTag key="status" enums={statusOptions} value={record.status} />;
+      valueEnum: {
+        0: { text: '成功', status: 'Success' },
+        1: { text: '失败', status: 'Error' },
       },
     },
     {
       title: <FormattedMessage id="monitor.operlog.oper_time" defaultMessage="操作时间" />,
-      dataIndex: 'operTime',
+      dataIndex: 'createTime',
       valueType: 'dateTime',
     },
-    {
-      title: <FormattedMessage id="pages.searchTable.titleOption" defaultMessage="操作" />,
-      dataIndex: 'option',
-      width: '120px',
-      valueType: 'option',
-      render: (_, record) => [
-        <Button
-          type="link"
-          size="small"
-          key="edit"
-          hidden={!access.hasPerms('system:operlog:edit')}
-          onClick={() => {
-            setModalVisible(true);
-            setCurrentRow(record);
-          }}
-        >
-          详细
-        </Button>,
-      ],
-    },
+    // {
+    //   title: <FormattedMessage id="pages.searchTable.titleOption" defaultMessage="操作" />,
+    //   dataIndex: 'option',
+    //   width: '120px',
+    //   valueType: 'option',
+    //   render: (_, record) => [
+    //     <Button
+    //       type="link"
+    //       size="small"
+    //       key="edit"
+    //       hidden={!access.hasPerms('system:operlog:edit')}
+    //       onClick={() => {
+    //         setModalVisible(true);
+    //         setCurrentRow(record);
+    //       }}
+    //     >
+    //       详细
+    //     </Button>,
+    //   ],
+    // },
   ];
 
   return (
@@ -259,7 +247,7 @@ const OperlogTableList: React.FC = () => {
           })}
           actionRef={actionRef}
           formRef={formTableRef}
-          rowKey="operId"
+          rowKey="id"
           key="operlogList"
           search={{
             labelWidth: 120,
@@ -337,10 +325,10 @@ const OperlogTableList: React.FC = () => {
             </Button>,
           ]}
           request={(params) =>
-            getOperlogList({ ...params } as API.Monitor.OperlogListParams).then((res) => {
+            getOperlogList({ ...params } as API.Monitor.OperlogListParams).then((res: any) => {
               const result = {
-                data: res.rows,
-                total: res.total,
+                data: res.data?.list || [],
+                total: res.data?.total || 0,
                 success: true,
               };
               return result;
