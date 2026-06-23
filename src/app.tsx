@@ -6,9 +6,10 @@ import type { RunTimeLayoutConfig } from '@umijs/max';
 import { history, Link } from '@umijs/max';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
-import { clearSessionToken, getAccessToken, getRefreshToken, getTokenExpireTime } from './access';
+import { getAccessToken, getRefreshToken, getTokenExpireTime } from './access';
 import { ensureRemoteMenu, getRemoteMenu, getRoutersInfo, getUserInfo, patchRouteWithRemoteMenus, setRemoteMenu } from './services/session';
 import { PageEnum } from './enums/pagesEnums';
+import { handleAuthExpired } from './utils/authRedirect';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -44,8 +45,7 @@ export async function getInitialState(): Promise<{
       }
     } catch (error) {
       console.log(error);
-      clearSessionToken();
-      history.push(PageEnum.LOGIN);
+      handleAuthExpired();
     }
     return undefined;
   };
@@ -427,6 +427,7 @@ export const request = {
       console.log('request ====>:', url);
       const authHeader = headers['Authorization'];
       const isToken = headers['isToken'];
+      const isLoginPage = history.location.pathname === PageEnum.LOGIN;
       if (!authHeader && isToken !== false) {
         const expireTime = getTokenExpireTime();
         if (expireTime) {
@@ -434,7 +435,7 @@ export const request = {
           const refreshToken = getRefreshToken();
           if (left < checkRegion && refreshToken) {
             if (left < 0) {
-              clearSessionToken();
+              handleAuthExpired();
             }
           } else {
             const accessToken = getAccessToken();
@@ -443,7 +444,9 @@ export const request = {
             }
           }
         } else {
-          clearSessionToken();
+          if (!isLoginPage) {
+            handleAuthExpired();
+          }
         }
       }
       normalizeRequestParams(options);
@@ -455,6 +458,9 @@ export const request = {
       // 适配 yudao 框架的 CommonResult 响应格式
       // 后端成功响应 code 为 0，统一转换为 200 以兼容前端现有判断逻辑
       normalizeYudaoResult(response?.data);
+      if (response?.status === 401 || response?.data?.code === 401) {
+        handleAuthExpired();
+      }
       return response;
     },
   ],
