@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
@@ -27,8 +27,7 @@ import {
   Divider,
   Empty,
   Input,
-  message,
-  Modal,
+    Modal,
   Progress,
   Row,
   Slider,
@@ -117,7 +116,7 @@ export default function DataDetailPage() {
 
   const entityGraphData = useMemo<EntityGraphData>(() => {
     const centerNode = document.graph.nodes[0];
-    const centerId = centerNode?.name || "科技公司A";
+    const centerId = centerNode?.name || "绉戞妧鍏徃A";
     
     return {
       centerId,
@@ -145,7 +144,8 @@ export default function DataDetailPage() {
       entity: nodeName,
       docId: document.id,
     });
-    message.info(`当前项目暂未接入图谱详情页：${nodeName}`);
+    setGraphOpen(false);
+    history.push(`/graph?${query.toString()}`);
   };
 
   return (
@@ -220,17 +220,17 @@ export default function DataDetailPage() {
                   fontSize: 13,
                 }}
               >
-                <InlineMeta icon={<FilePdfOutlined style={{ color: "#ef4444" }} />} text={`${document.type} 文件`} />
+                <InlineMeta icon={<FilePdfOutlined style={{ color: "#ef4444" }} />} text={`${document.type} 鏂囦欢`} />
                 <InlineMeta icon={<AppstoreOutlined />} text={document.size} />
-                <InlineMeta icon={<ClockCircleOutlined />} text={`上传于 ${document.uploadedAt}`} />
-                <InlineMeta icon={<UserOutlined />} text={`上传者 ${document.uploader}`} />
+                <InlineMeta icon={<ClockCircleOutlined />} text={`涓婁紶浜?${document.uploadedAt}`} />
+                <InlineMeta icon={<UserOutlined />} text={`涓婁紶鑰?${document.uploader}`} />
               </div>
               {/* {(sourceLocation || fromEntity) 
               && (
                 <div style={{ marginTop: 8, color: "#94a3b8", fontSize: 12 }}>
-                  {sourceLocation ? `来源位置：${sourceLocation}` : ""}
-                  {sourceLocation && fromEntity ? " · " : ""}
-                  {fromEntity ? `来源实体：${fromEntity}` : ""}
+                  {sourceLocation ? `鏉ユ簮浣嶇疆锛?{sourceLocation}` : ""}
+                  {sourceLocation && fromEntity ? " 路 " : ""}
+                  {fromEntity ? `鏉ユ簮瀹炰綋锛?{fromEntity}` : ""}
                 </div>
               )} */}
             </div>
@@ -238,10 +238,10 @@ export default function DataDetailPage() {
 
           <Space wrap size={[8, 8]}>
             <Button icon={<CloudDownloadOutlined />} style={actionButtonStyle}>
-              下载解析结果
+              涓嬭浇瑙ｆ瀽缁撴灉
             </Button>
             <Button icon={<ReloadOutlined />} style={actionButtonStyle}>
-              重新解析
+              閲嶆柊瑙ｆ瀽
             </Button>
             <Button
               type="primary"
@@ -254,7 +254,7 @@ export default function DataDetailPage() {
                 boxShadow: "0 10px 18px rgba(37, 99, 235, 0.16)",
               }}
             >
-              保存到知识库
+              淇濆瓨鍒扮煡璇嗗簱
             </Button>
           </Space>
         </div>
@@ -263,12 +263,12 @@ export default function DataDetailPage() {
           <Col xs={24} xl={10} style={{ display: "flex" }}>
             <Card
               bordered={false}
-              title="解析进度"
+              title="瑙ｆ瀽杩涘害"
               style={{ ...surfaceCardStyle, width: "100%", height: "100%" }}
               styles={{ header: { minHeight: 44, padding: "0 14px" }, body: { padding: 12 } }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ color: "#334155", fontWeight: 600 }}>整体进度</span>
+                <span style={{ color: "#334155", fontWeight: 600 }}>鏁翠綋杩涘害</span>
                 <span style={{ color: "#16a34a", fontWeight: 700 }}>100%</span>
               </div>
               <Progress percent={100} showInfo={false} strokeColor="#16a34a" trailColor="#ebf7ef" />
@@ -309,7 +309,7 @@ export default function DataDetailPage() {
           <Col xs={24} xl={14} style={{ display: "flex" }}>
             <Card
               bordered={false}
-              title="文档统计"
+              title="鏂囨。缁熻"
               style={{ ...surfaceCardStyle, width: "100%", height: "100%" }}
               styles={{ header: { minHeight: 44, padding: "0 14px" }, body: { padding: 14, height: "100%" } }}
             >
@@ -321,8 +321,8 @@ export default function DataDetailPage() {
                 }}
               >
                 <StatPanel icon={<KeyOutlined />} color="#ef4444" label="关键词" value={document.keywords.length} />
-                <StatPanel icon={<ClusterOutlined />} color="#0891b2" label="实体数量" value={entityCount} />
-                <StatPanel icon={<TagOutlined />} color="#0ea5e9" label="标签数量" value={document.tags.length} />
+                <StatPanel icon={<ClusterOutlined />} color="#0891b2" label="瀹炰綋鏁伴噺" value={entityCount} />
+                <StatPanel icon={<TagOutlined />} color="#0ea5e9" label="鏍囩鏁伴噺" value={document.tags.length} />
               </div>
             </Card>
           </Col>
@@ -332,7 +332,7 @@ export default function DataDetailPage() {
           <Col xs={24} xl={16} style={{ display: "flex" }}>
             <Card
               bordered={false}
-              title="内容预览"
+              title="鍐呭棰勮"
               extra={
                 <Space size={8}>
                   <Button icon={<FileTextOutlined />} style={toolbarIconButtonStyle} />
@@ -341,7 +341,7 @@ export default function DataDetailPage() {
                     allowClear
                     value={previewKeyword}
                     onChange={(event) => setPreviewKeyword(event.target.value)}
-                    placeholder="搜索内容"
+                    placeholder="鎼滅储鍐呭"
                     prefix={<SearchOutlined style={{ color: "#94a3b8" }} />}
                     style={{ width: 220 }}
                   />
@@ -401,7 +401,7 @@ export default function DataDetailPage() {
               <Card
                 bordered={false}
                 title="提取关键词"
-                extra={<span style={{ color: "#94a3b8" }}>共{document.keywords.length}个</span>}
+                extra={<span style={{ color: "#94a3b8" }}>共 {document.keywords.length} 个</span>}
                 style={surfaceCardStyle}
                 styles={{ body: { padding: 14 } }}
               >
@@ -416,10 +416,10 @@ export default function DataDetailPage() {
 
               <Card
                 bordered={false}
-                title="提取实体"
+                title="鎻愬彇瀹炰綋"
                 extra={
                   <Space size={8}>
-                    <span style={{ color: "#94a3b8" }}>共{entityCount}个</span>
+                    <span style={{ color: "#94a3b8" }}>共 {entityCount} 个</span>
                     <Tooltip title="查看本文档知识图谱">
                       <Button
                         type="text"
@@ -484,7 +484,7 @@ export default function DataDetailPage() {
               <Card
                 bordered={false}
                 title="标签分类结果"
-                extra={<span style={{ color: "#94a3b8" }}>共{document.tags.length}个</span>}
+                extra={<span style={{ color: "#94a3b8" }}>共 {document.tags.length} 个</span>}
                 style={surfaceCardStyle}
                 styles={{ body: { padding: 14 } }}
               >
@@ -692,3 +692,4 @@ function PreviewBlock({
     </p>
   );
 }
+

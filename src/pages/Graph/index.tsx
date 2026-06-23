@@ -770,9 +770,7 @@ export default function GraphPage() {
           >
             开始检索
           </Button>
-
-          <SectionBlock title="实体类型">
-            <div style={{ display: "grid", gap: 10, marginBottom: 26 }}>
+          <div style={{ display: "grid", gap: 10, marginTop: 16, marginBottom: 26 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>工作区模式</div>
               <ModeSelectCard
                 title="自动上传"
@@ -820,6 +818,7 @@ export default function GraphPage() {
                 ) : null}
               </div>
             </div>
+          <SectionBlock title="实体类型">
             <Checkbox.Group
               style={{ display: "grid", gap: 12 }}
               value={checkedNodeTypes}
