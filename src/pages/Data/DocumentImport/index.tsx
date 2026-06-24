@@ -1,45 +1,44 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { history, useLocation } from '@umijs/max';
 import {
-  Table,
-  Button,
-  Space,
-  Tag,
-  Input,
-  Select,
-  Tabs,
-  Modal,
-  message,
-  Popconfirm,
   Alert,
+  Button,
   Card,
-  Row,
   Col,
-  Upload,
+  Input,
+  message,
+  Modal,
+  Popconfirm,
   Progress,
+  Row,
+  Select,
+  Space,
+  Table,
+  Tag,
   Tooltip,
+  Upload,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
+  CheckCircleFilled,
   CloudUploadOutlined,
   DeleteOutlined,
-  FolderOutlined,
-  SearchOutlined,
-  EyeOutlined,
-  ReloadOutlined,
   DownloadOutlined,
-  InboxOutlined,
-  FileTextOutlined,
+  EyeOutlined,
   FileExcelOutlined,
+  FileMarkdownOutlined,
   FilePdfOutlined,
   FilePptOutlined,
-  FileMarkdownOutlined,
+  FileTextOutlined,
+  FolderOutlined,
   Html5Outlined,
-  MailOutlined,
+  InboxOutlined,
   LoadingOutlined,
-  RightOutlined,
-  CheckCircleFilled,
+  MailOutlined,
+  ReloadOutlined,
+  SearchOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
 import { statusConfig } from '@/config/status';
@@ -51,6 +50,7 @@ import {
   type UploadStatus,
   UPLOADING_STATUS_LIST,
 } from '@/utils/chunkUpload';
+import { getChannelConfigPage } from '@/services/biz/channel-config';
 
 const { Dragger } = Upload;
 
@@ -67,6 +67,7 @@ interface DocumentRecord {
   entityCount: number;
   relationCount: number;
   catalog: string;
+  channelSource: string;
 }
 
 const initialData: DocumentRecord[] = [
@@ -83,20 +84,22 @@ const initialData: DocumentRecord[] = [
     entityCount: 156,
     relationCount: 89,
     catalog: '电子图书分类编目',
+    channelSource: '默认渠道',
   },
   {
     id: '2',
     name: '人工智能行业研究报告2024.pdf',
     type: 'PDF',
     size: '15.8MB',
-    knowledgeBase: '行业研发库',
-    status: 'running',
-    progress: 68,
+    knowledgeBase: '行业研究库',
+    status: 'completed',
+    progress: 100,
     tags: ['市场分析', '技术文档'],
     uploadTime: '2024-01-15 10:20:00',
     entityCount: 320,
     relationCount: 145,
     catalog: '电子图书分类编目',
+    channelSource: '默认渠道',
   },
   {
     id: '3',
@@ -110,117 +113,18 @@ const initialData: DocumentRecord[] = [
     uploadTime: '2024-01-14 16:45:00',
     entityCount: 78,
     relationCount: 34,
-    catalog: '视频资源元数据编目',
-  },
-  {
-    id: '4',
-    name: '技术架构设计文档.docx',
-    type: 'DOCX',
-    size: '1.2MB',
-    knowledgeBase: '市场分析库',
-    status: 'completed',
-    progress: 100,
-    tags: ['技术文档', '项目管理'],
-    uploadTime: '2024-01-14 11:30:00',
-    entityCount: 245,
-    relationCount: 167,
-    catalog: '视频资源元数据编目',
-  },
-  {
-    id: '5',
-    name: '市场调研数据.xlsx',
-    type: 'XLSX',
-    size: '3.5MB',
-    knowledgeBase: '市场分析库',
-    status: 'completed',
-    progress: 100,
-    tags: ['市场分析', '用户研究'],
-    uploadTime: '2024-01-13 15:20:00',
-    entityCount: 189,
-    relationCount: 92,
-    catalog: '音频资源分类编目',
-  },
-  {
-    id: '6',
-    name: '项目进度跟踪.md',
-    type: 'MD',
-    size: '0.5MB',
-    knowledgeBase: '市场分析库',
-    status: 'pending',
-    progress: 0,
-    tags: ['项目管理'],
-    uploadTime: '2024-01-13 09:15:00',
-    entityCount: 42,
-    relationCount: 18,
-    catalog: '音频资源分类编目',
-  },
-  {
-    id: '7',
-    name: '客户需求汇总.html',
-    type: 'HTML',
-    size: '0.8MB',
-    knowledgeBase: '项目管理库',
-    status: 'completed',
-    progress: 100,
-    tags: ['用户研究', '合同协议'],
-    uploadTime: '2024-01-12 14:00:00',
-    entityCount: 134,
-    relationCount: 67,
-    catalog: '图片资源元数据编目',
-  },
-  {
-    id: '8',
-    name: '会议纪要.eml',
-    type: 'EML',
-    size: '0.2MB',
-    knowledgeBase: '项目管理库',
-    status: 'failed',
-    progress: 30,
-    tags: ['HR文档', '项目管理'],
-    uploadTime: '2024-01-12 10:30:00',
-    entityCount: 28,
-    relationCount: 12,
-    catalog: '图片资源元数据编目',
+    catalog: '文档资源分类编目',
+    channelSource: '默认渠道',
   },
 ];
 
-const knowledgeBaseData = [
-  {
-    id: '1',
-    name: '产品研发库',
-    description: '公司2024年所有项目相关文档',
-    color: '#1890ff',
-  },
-  {
-    id: '2',
-    name: '行业研发库',
-    description: '行业研发相关文档',
-    color: '#52c41a',
-  },
-  {
-    id: '3',
-    name: '财务库',
-    description: '各行业研究报告和数据分析',
-    color: '#faad14',
-  },
-  {
-    id: '4',
-    name: '市场分析库',
-    description: '市场分析文档',
-    color: '#eb2f96',
-  },
-  {
-    id: '5',
-    name: '项目管理库',
-    description: '员工手册和HR项目管理文档',
-    color: '#13c2c2',
-  },
+const knowledgeBaseOptions = [
+  { label: '产品研发库', value: '产品研发库' },
+  { label: '行业研究库', value: '行业研究库' },
+  { label: '财务库', value: '财务库' },
+  { label: '市场分析库', value: '市场分析库' },
+  { label: '项目管理库', value: '项目管理库' },
 ];
-
-const knowledgeBaseOptions = knowledgeBaseData.map((kb) => ({
-  label: kb.name,
-  value: kb.name,
-}));
 
 const catalogOptions = [
   { label: '电子图书分类编目', value: '电子图书分类编目' },
@@ -234,49 +138,58 @@ const tagColorMap: Record<string, string> = {
   财务报告: '#faad14',
   市场分析: '#eb2f96',
   项目管理: '#13c2c2',
-  用户研究: '#722ed1',
-  合同协议: '#fa541c',
-  HR文档: '#2f54eb',
 };
 
 const typeIconMap: Record<string, React.ReactNode> = {
-  DOCX: <FileTextOutlined style={{ fontSize: '24px', color: fileTypeConfig.DOCX.color }} />,
-  PDF: <FilePdfOutlined style={{ fontSize: '24px', color: fileTypeConfig.PDF.color }} />,
-  XLSX: <FileExcelOutlined style={{ fontSize: '24px', color: fileTypeConfig.XLSX.color }} />,
-  PPTX: <FilePptOutlined style={{ fontSize: '24px', color: fileTypeConfig.PPTX.color }} />,
-  MD: <FileMarkdownOutlined style={{ fontSize: '24px', color: fileTypeConfig.Markdown.color }} />,
-  HTML: <Html5Outlined style={{ fontSize: '24px', color: fileTypeConfig.HTML.color }} />,
-  EML: <MailOutlined style={{ fontSize: '24px', color: fileTypeConfig.EML.color }} />,
-  TXT: <FileTextOutlined style={{ fontSize: '24px', color: fileTypeConfig.TXT.color }} />,
+  DOCX: <FileTextOutlined style={{ fontSize: 24, color: fileTypeConfig.DOCX.color }} />,
+  PDF: <FilePdfOutlined style={{ fontSize: 24, color: fileTypeConfig.PDF.color }} />,
+  XLSX: <FileExcelOutlined style={{ fontSize: 24, color: fileTypeConfig.XLSX.color }} />,
+  PPTX: <FilePptOutlined style={{ fontSize: 24, color: fileTypeConfig.PPTX.color }} />,
+  MD: <FileMarkdownOutlined style={{ fontSize: 24, color: fileTypeConfig.Markdown.color }} />,
+  HTML: <Html5Outlined style={{ fontSize: 24, color: fileTypeConfig.HTML.color }} />,
+  EML: <MailOutlined style={{ fontSize: 24, color: fileTypeConfig.EML.color }} />,
+  TXT: <FileTextOutlined style={{ fontSize: 24, color: fileTypeConfig.TXT.color }} />,
 };
 
-const typeOptions = ['DOCX', 'PDF', 'XLSX', 'PPTX', 'MD', 'TXT', 'HTML', 'EML'].map((t) => ({
-  label: t,
-  value: t,
+const typeOptions = ['DOCX', 'PDF', 'XLSX', 'PPTX', 'MD', 'TXT', 'HTML', 'EML'].map((item) => ({
+  label: item,
+  value: item,
 }));
+
 const statusOptions = Object.entries(statusConfig).map(([value, config]) => ({
   label: config.text,
   value,
 }));
+
+const extractPageList = (payload: any): any[] =>
+  payload?.data?.list || payload?.data?.records || payload?.list || payload?.rows || [];
+
 type StatusType = keyof typeof statusConfig;
 
-export default function DataPage() {
+export default function DocumentImportPage() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
+
   const [data, setData] = useState<DocumentRecord[]>(initialData);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
+
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewRecord, setPreviewRecord] = useState<DocumentRecord | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+
   const [uploadVisible, setUploadVisible] = useState(false);
   const [batchImportVisible, setBatchImportVisible] = useState(false);
   const [batchImportKnowledgeBase, setBatchImportKnowledgeBase] = useState<string>('');
+
   const [uploadKnowledgeBase, setUploadKnowledgeBase] = useState<string>('');
   const [uploadTags, setUploadTags] = useState<string>('');
   const [uploadCatalog, setUploadCatalog] = useState<string>('');
+  const [uploadChannelSource, setUploadChannelSource] = useState<string>('');
+  const [channelOptions, setChannelOptions] = useState<Array<{ label: string; value: string }>>([]);
+
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [fileList, setFileList] = useState<UploadFileItem[]>([]);
@@ -284,15 +197,42 @@ export default function DataPage() {
   useEffect(() => {
     if (searchParams.get('action') === 'upload') {
       setUploadVisible(true);
-      // 清除 URL 参数，避免关闭弹窗后再次打开
-      const newSearchParams = new URLSearchParams(searchParams);
-      newSearchParams.delete('action');
+      const nextSearchParams = new URLSearchParams(searchParams);
+      nextSearchParams.delete('action');
       history.replace({
         pathname: location.pathname,
-        search: newSearchParams.toString(),
+        search: nextSearchParams.toString(),
       });
     }
-  }, [searchParams]);
+  }, [location.pathname, searchParams]);
+
+  useEffect(() => {
+    const fetchChannelOptions = async () => {
+      try {
+        const res: any = await getChannelConfigPage({ pageNo: 1, pageSize: 1000 });
+        const options = extractPageList(res).map((item: any) => ({
+          label: item.name,
+          value: item.name,
+        }));
+        setChannelOptions(options);
+      } catch (error) {
+        console.error(error);
+        message.error('获取渠道来源失败');
+      }
+    };
+
+    fetchChannelOptions();
+  }, []);
+
+  const resetUploadState = () => {
+    setUploadVisible(false);
+    setUploadCatalog('');
+    setUploadChannelSource('');
+    setUploadKnowledgeBase('');
+    setUploadTags('');
+    setUploadProgress(0);
+    setFileList([]);
+  };
 
   const filteredData = data.filter((item) => {
     if (statusFilter && item.status !== statusFilter) return false;
@@ -307,19 +247,19 @@ export default function DataPage() {
   };
 
   const handleDownload = (record: DocumentRecord) => {
-    message.success(`开始下载: ${record.name}`);
+    message.success(`开始下载 ${record.name}`);
   };
 
   const handleRetry = (record: DocumentRecord) => {
     setRetryingId(record.id);
-    setData(
-      data.map((item) => (item.id === record.id ? { ...item, status: 'running' as const } : item)),
+    setData((prev) =>
+      prev.map((item) => (item.id === record.id ? { ...item, status: 'running', progress: 0 } : item)),
     );
     message.loading('正在重试处理...', 2);
     setTimeout(() => {
-      setData(
-        data.map((item) =>
-          item.id === record.id ? { ...item, status: 'completed' as const } : item,
+      setData((prev) =>
+        prev.map((item) =>
+          item.id === record.id ? { ...item, status: 'completed', progress: 100 } : item,
         ),
       );
       setRetryingId(null);
@@ -328,26 +268,34 @@ export default function DataPage() {
   };
 
   const handleUpload = () => {
-    // 暂时不做，等待后续接口
-    message.info('功能开发中...');
+    if (!uploadChannelSource) {
+      message.warning('请选择渠道来源');
+      return;
+    }
+    if (!uploadCatalog) {
+      message.warning('请选择编目分类');
+      return;
+    }
+    if (fileList.length === 0) {
+      message.warning('请先选择上传文件');
+      return;
+    }
+
+    message.info('上传流程待后端接口接入，当前已完成表单校验');
   };
 
-  // beforeUpload 处理新增文件
   const handleBeforeUpload = (file: any) => {
-    // 创建文件项
     const newFileItem: UploadFileItem = {
       uid: file.uid,
       name: file.name,
       size: file.size || 0,
-      file: file,
+      file,
       uploadStatus: '准备上传' as UploadStatus,
       percentage: 0,
     };
 
-    // 添加到文件列表
     setFileList((prev) => [...prev, newFileItem]);
 
-    // 状态更新回调
     const onStatusChange = (
       uid: string,
       status: UploadStatus,
@@ -359,22 +307,65 @@ export default function DataPage() {
           item.uid === uid ? { ...item, uploadStatus: status, percentage, errorMsg } : item,
         ),
       );
+      const nextPercent = Math.round(
+        prevAverage(
+          fileList.map((item) => (item.uid === uid ? percentage : item.percentage || 0)),
+        ),
+      );
+      setUploadProgress(nextPercent);
     };
 
-    // 立即触发分片上传
-    chunkUpload(file, onStatusChange, file.uid).catch(() => {
-      // 错误已在 onStatusChange 中处理
-    });
-
-    return false; // 阻止自动上传
+    chunkUpload(file, onStatusChange, file.uid).catch(() => undefined);
+    return false;
   };
 
-  const columns = [
+  const handleDelete = (id: string) => {
+    setData((prev) => prev.filter((item) => item.id !== id));
+    message.success('删除成功');
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请选择要删除的文档');
+      return;
+    }
+    setData((prev) => prev.filter((item) => !selectedRowKeys.includes(item.id)));
+    setSelectedRowKeys([]);
+    message.success('批量删除成功');
+  };
+
+  const handleBatchImport = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请选择要导入的文档');
+      return;
+    }
+    setBatchImportVisible(true);
+  };
+
+  const handleBatchImportConfirm = () => {
+    if (!batchImportKnowledgeBase) {
+      message.warning('请选择知识库');
+      return;
+    }
+    setData((prev) =>
+      prev.map((item) =>
+        selectedRowKeys.includes(item.id)
+          ? { ...item, knowledgeBase: batchImportKnowledgeBase }
+          : item,
+      ),
+    );
+    message.success(`已选择 ${selectedRowKeys.length} 个文档添加到 ${batchImportKnowledgeBase}`);
+    setBatchImportVisible(false);
+    setBatchImportKnowledgeBase('');
+    setSelectedRowKeys([]);
+  };
+
+  const columns: ColumnsType<DocumentRecord> = [
     {
       title: '文档名称',
       dataIndex: 'name',
       key: 'name',
-      render: (_: string, record: DocumentRecord) => (
+      render: (_, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div
             style={{
@@ -384,18 +375,13 @@ export default function DataPage() {
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor:
-                (fileTypeConfig as Record<string, { color: string; bgColor: string }>)[record.type]
-                  ?.bgColor || fileTypeConfig.default.bgColor,
+                (fileTypeConfig as Record<string, { bgColor: string }>)[record.type]?.bgColor ||
+                fileTypeConfig.default.bgColor,
               borderRadius: 8,
             }}
           >
             {typeIconMap[record.type] || (
-              <FileTextOutlined
-                style={{
-                  fontSize: '24px',
-                  color: fileTypeConfig.default.color,
-                }}
-              />
+              <FileTextOutlined style={{ fontSize: 24, color: fileTypeConfig.default.color }} />
             )}
           </div>
           <div style={{ flex: 1 }}>
@@ -411,7 +397,6 @@ export default function DataPage() {
       title: '类型',
       dataIndex: 'type',
       key: 'type',
-      // render: (type: string) => <Tag color="blue">{type}</Tag>,
     },
     {
       title: '大小',
@@ -422,58 +407,22 @@ export default function DataPage() {
       title: '所属知识库',
       dataIndex: 'knowledgeBase',
       key: 'knowledgeBase',
-      render: (knowledgeBase: string) => {
-        const kb = knowledgeBaseData.find((k) => k.name === knowledgeBase);
-        return (
-          <div
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              cursor: 'pointer',
-              padding: '4px 12px',
-              borderRadius: 4,
-              border: '1px solid #d9d9d9',
-              background: '#fafafa',
-              transition: 'all 0.2s',
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (kb) {
-                message.info(`当前项目暂未接入知识库详情页：${kb.name}`);
-              }
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#1890ff';
-              e.currentTarget.style.background = '#e6f7ff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = '#d9d9d9';
-              e.currentTarget.style.background = '#fafafa';
-            }}
-          >
-            <span style={{ fontWeight: 500, color: '#262626' }}>{knowledgeBase}</span>
-            <RightOutlined style={{ fontSize: 10, color: '#8c8c8c' }} />
-          </div>
-        );
-      },
+    },
+    {
+      title: '渠道来源',
+      dataIndex: 'channelSource',
+      key: 'channelSource',
+      render: (value) => value || '-',
     },
     {
       title: '解析状态',
       dataIndex: 'status',
       key: 'status',
-      render: (_: string, record: DocumentRecord) => {
+      render: (_, record) => {
         const config = statusConfig[record.status as StatusType];
         return (
           <div>
-            <span
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                marginBottom: 4,
-              }}
-            >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               {record.status === 'running' ? (
                 <LoadingOutlined spin style={{ color: config.color }} />
               ) : (
@@ -508,14 +457,14 @@ export default function DataPage() {
       render: (tags: string[]) => (
         <>
           {tags.map((tag) => {
-            const tagColor = tagColorMap[tag] || '#1890ff';
+            const color = tagColorMap[tag] || '#1890ff';
             return (
               <Tag
                 key={tag}
                 style={{
-                  color: tagColor,
-                  background: `${tagColor}15`,
-                  border: `1px solid ${tagColor}30`,
+                  color,
+                  background: `${color}15`,
+                  border: `1px solid ${color}30`,
                   marginBottom: 2,
                 }}
               >
@@ -539,17 +488,12 @@ export default function DataPage() {
     {
       title: '操作',
       key: 'action',
-      width: 180,
-      render: (_: any, record: DocumentRecord) => (
+      width: 220,
+      render: (_, record) => (
         <Space size="small">
-          {/* <Button
-            type="link"
-            size="small"
-            icon={<EyeOutlined />}
-            onClick={() => handlePreview(record)}
-          >
+          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(record)}>
             预览
-          </Button> */}
+          </Button>
           <Button
             type="link"
             size="small"
@@ -577,82 +521,12 @@ export default function DataPage() {
               重试
             </Button>
           )}
-          <Popconfirm
-            title="确认删除?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="确认"
-            cancelText="取消"
-          >
+          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record.id)} okText="确认" cancelText="取消">
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>
               删除
             </Button>
           </Popconfirm>
         </Space>
-      ),
-    },
-  ];
-
-  const handleDelete = (id: string) => {
-    setData(data.filter((item) => item.id !== id));
-    message.success('删除成功');
-  };
-
-  const handleBatchDelete = () => {
-    if (selectedRowKeys.length === 0) {
-      message.warning('请选择要删除的文档');
-      return;
-    }
-    setData(data.filter((item) => !selectedRowKeys.includes(item.id)));
-    setSelectedRowKeys([]);
-    message.success('批量删除成功');
-  };
-
-  const handleBatchImport = () => {
-    if (selectedRowKeys.length === 0) {
-      message.warning('请选择要导入的文档');
-      return;
-    }
-    setBatchImportVisible(true);
-  };
-
-  const handleBatchImportConfirm = () => {
-    if (!batchImportKnowledgeBase) {
-      message.warning('请选择知识库');
-      return;
-    }
-    setData(
-      data.map((item) =>
-        selectedRowKeys.includes(item.id)
-          ? { ...item, knowledgeBase: batchImportKnowledgeBase }
-          : item,
-      ),
-    );
-    message.success(`已选择 ${selectedRowKeys.length} 个文档添加到 ${batchImportKnowledgeBase}`);
-    setBatchImportVisible(false);
-    setBatchImportKnowledgeBase('');
-    setSelectedRowKeys([]);
-  };
-
-  const tabItems = [
-    {
-      key: 'document',
-      label: '文档导入',
-      children: null,
-    },
-    {
-      key: 'database',
-      label: '数据库同步',
-      children: (
-        <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>
-          数据库同步功能开发中...
-        </div>
-      ),
-    },
-    {
-      key: 'api',
-      label: 'API接入',
-      children: (
-        <div style={{ padding: 40, textAlign: 'center', color: '#999' }}>API接入功能开发中...</div>
       ),
     },
   ];
@@ -697,14 +571,9 @@ export default function DataPage() {
           />
         </Space>
         <Space size={12}>
-          <Button
-            type="primary"
-            icon={<CloudUploadOutlined />}
-            onClick={() => setUploadVisible(true)}
-          >
+          <Button type="primary" icon={<CloudUploadOutlined />} onClick={() => setUploadVisible(true)}>
             上传文档
           </Button>
-
           <Button icon={<FolderOutlined />} onClick={handleBatchImport}>
             批量入知识库
           </Button>
@@ -716,15 +585,15 @@ export default function DataPage() {
 
       <Alert
         message={<span style={{ fontWeight: 600, color: '#1890ff' }}>支持多种文档格式</span>}
-        description="已支持：docx、xlsx、pptx、md、txt、pdf、html、eml 等格式，单文件大小不超过100MB"
+        description="已支持：docx、xlsx、pptx、md、txt、pdf、html、eml 等格式，单文件大小不超过 100MB"
         type="info"
         showIcon
+        style={{ marginBottom: 16 }}
       />
 
       <div style={{ background: '#fff', borderRadius: 8, padding: 16 }}>
-        {/* <Tabs defaultActiveKey="document" items={tabItems} /> */}
         <Table
-          columns={columns as any}
+          columns={columns}
           dataSource={filteredData}
           rowKey="id"
           rowSelection={{
@@ -765,16 +634,11 @@ export default function DataPage() {
             <Row gutter={[16, 16]}>
               <Col span={24}>
                 <div style={{ fontSize: 13, color: '#8c8c8c' }}>文档名称</div>
-                <div style={{ fontSize: 15, fontWeight: 500, marginTop: 4 }}>
-                  {previewRecord.name}
-                </div>
+                <div style={{ fontSize: 15, fontWeight: 500, marginTop: 4 }}>{previewRecord.name}</div>
               </Col>
               <Col span={12}>
                 <div style={{ fontSize: 13, color: '#8c8c8c' }}>类型</div>
-                {/* <Tag color="blue" style={{ marginTop: 4 }}>
-                  {previewRecord.type}
-                </Tag> */}
-                {previewRecord.type}
+                <div style={{ fontSize: 15, marginTop: 4 }}>{previewRecord.type}</div>
               </Col>
               <Col span={12}>
                 <div style={{ fontSize: 13, color: '#8c8c8c' }}>大小</div>
@@ -785,28 +649,8 @@ export default function DataPage() {
                 <div style={{ fontSize: 15, marginTop: 4 }}>{previewRecord.knowledgeBase}</div>
               </Col>
               <Col span={12}>
-                <div style={{ fontSize: 13, color: '#8c8c8c' }}>解析状态</div>
-                <div
-                  style={{
-                    marginTop: 4,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <span
-                    style={{
-                      display: 'inline-block',
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      backgroundColor: statusConfig[previewRecord.status].color,
-                    }}
-                  />
-                  <span style={{ color: statusConfig[previewRecord.status].color }}>
-                    {statusConfig[previewRecord.status].text}
-                  </span>
-                </div>
+                <div style={{ fontSize: 13, color: '#8c8c8c' }}>渠道来源</div>
+                <div style={{ fontSize: 15, marginTop: 4 }}>{previewRecord.channelSource}</div>
               </Col>
               <Col span={24}>
                 <div style={{ fontSize: 13, color: '#8c8c8c' }}>分类标签</div>
@@ -815,10 +659,6 @@ export default function DataPage() {
                     <Tag key={tag}>{tag}</Tag>
                   ))}
                 </div>
-              </Col>
-              <Col span={24}>
-                <div style={{ fontSize: 13, color: '#8c8c8c' }}>上传时间</div>
-                <div style={{ fontSize: 15, marginTop: 4 }}>{previewRecord.uploadTime}</div>
               </Col>
             </Row>
             <div
@@ -842,24 +682,11 @@ export default function DataPage() {
         open={uploadVisible}
         onCancel={() => {
           if (!uploading) {
-            setUploadVisible(false);
-            setUploadCatalog('');
-            setUploadKnowledgeBase('');
-            setUploadTags('');
-            setFileList([]);
+            resetUploadState();
           }
         }}
         footer={[
-          <Button
-            key="cancel"
-            onClick={() => {
-              if (!uploading) {
-                setUploadVisible(false);
-                setFileList([]);
-              }
-            }}
-            disabled={uploading}
-          >
+          <Button key="cancel" onClick={resetUploadState} disabled={uploading}>
             取消
           </Button>,
           <Button
@@ -878,7 +705,7 @@ export default function DataPage() {
           <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>上传文件</div>
           <Dragger
             name="file"
-            multiple={true}
+            multiple
             showUploadList={false}
             beforeUpload={handleBeforeUpload}
             disabled={uploading}
@@ -889,12 +716,11 @@ export default function DataPage() {
             </p>
             <p style={{ fontSize: 14, color: '#595959' }}>点击或拖拽文件到此处上传</p>
             <p style={{ fontSize: 12, color: '#8c8c8c' }}>
-              支持 docx、xlsx、pptx、md、txt、pdf、html、eml 等格式，单文件大小不超过100MB
+              支持 docx、xlsx、pptx、md、txt、pdf、html、eml 等格式，单文件大小不超过 100MB
             </p>
           </Dragger>
         </div>
 
-        {/* 文件列表 */}
         {fileList.length > 0 && (
           <div
             style={{
@@ -945,9 +771,7 @@ export default function DataPage() {
                     >
                       {item.name}
                     </div>
-                    <div style={{ fontSize: 12, color: '#6c757d' }}>
-                      {formatFileSize(item.size)}
-                    </div>
+                    <div style={{ fontSize: 12, color: '#6c757d' }}>{formatFileSize(item.size)}</div>
                     {item.uploadStatus === '失败' && item.errorMsg && (
                       <Tooltip title={item.errorMsg}>
                         <div
@@ -1015,17 +839,9 @@ export default function DataPage() {
                       size="small"
                       icon={<DeleteOutlined />}
                       onClick={() => {
-                        setFileList((prev) => prev.filter((f) => f.uid !== item.uid));
+                        setFileList((prev) => prev.filter((current) => current.uid !== item.uid));
                       }}
                       style={{ color: '#ff4d4f' }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#fff1f0';
-                        e.currentTarget.style.borderColor = '#ffa39e';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.borderColor = 'transparent';
-                      }}
                     />
                   </div>
                 </div>
@@ -1033,6 +849,21 @@ export default function DataPage() {
             </div>
           </div>
         )}
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+            渠道来源 <span style={{ color: '#ff4d4f' }}>*</span>
+          </div>
+          <Select
+            style={{ width: '100%' }}
+            placeholder="请选择渠道来源"
+            value={uploadChannelSource}
+            onChange={setUploadChannelSource}
+            options={channelOptions}
+            showSearch
+            optionFilterProp="label"
+          />
+        </div>
 
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
@@ -1048,9 +879,7 @@ export default function DataPage() {
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, fontSize: 13, color: '#bfbfbf' }}>
-            归类到知识库（选填）
-          </div>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#bfbfbf' }}>归类到知识库（选填）</div>
           <Select
             style={{ width: '100%' }}
             placeholder="请选择知识库"
@@ -1061,11 +890,9 @@ export default function DataPage() {
         </div>
 
         <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
-            分类标签（用逗号分隔）
-          </div>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>分类标签（用逗号分隔）</div>
           <Input
-            placeholder="例如：产品,规划,2024"
+            placeholder="例如：产品规划,2024"
             value={uploadTags}
             onChange={(e) => setUploadTags(e.target.value)}
           />
@@ -1073,13 +900,7 @@ export default function DataPage() {
 
         {uploading && (
           <div style={{ marginTop: 16 }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                marginBottom: 8,
-              }}
-            >
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span>上传进度</span>
               <span>{uploadProgress}%</span>
             </div>
@@ -1102,9 +923,7 @@ export default function DataPage() {
       >
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
-            已选择{' '}
-            <span style={{ color: '#1890ff', fontWeight: 600 }}>{selectedRowKeys.length}</span>{' '}
-            个文档
+            已选择 <span style={{ color: '#1890ff', fontWeight: 600 }}>{selectedRowKeys.length}</span> 个文档
           </div>
         </div>
         <div style={{ marginBottom: 16 }}>
@@ -1122,4 +941,11 @@ export default function DataPage() {
       </Modal>
     </>
   );
+}
+
+function prevAverage(values: number[]) {
+  if (!values.length) {
+    return 0;
+  }
+  return values.reduce((sum, current) => sum + current, 0) / values.length;
 }

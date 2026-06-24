@@ -1,13 +1,13 @@
-/**
- * @name umi 的路由配置
- * @description 只支持 path,component,routes,redirect,wrappers,name,icon 的配置
- * @param path  path 只支持两种占位符配置，第一种是动态参数 :id 的形式，第二种是 * 通配符，通配符只能出现路由字符串的最后。
- * @param component 配置 location 和 path 匹配后用于渲染的 React 组件路径。可以是绝对路径，也可以是相对路径，如果是相对路径，会从 src/pages 开始找起。
- * @param routes 配置子路由，通常在需要为多个路径增加 layout 组件时使用。
- * @param redirect 配置路由跳转
- * @param wrappers 配置路由组件的包装组件，通过包装组件可以为当前的路由组件组合进更多的功能。 比如，可以用于路由级别的权限校验
- * @param name 配置路由的标题，默认读取国际化文件 menu.ts 中 menu.xxxx 的值，如配置 name 为 login，则读取 menu.ts 中 menu.login 的取值作为标题
- * @param icon 配置路由的图标，取值参考 https://ant.design/components/icon-cn， 注意去除风格后缀和大小写，如想要配置图标为 <StepBackwardOutlined /> 则取值应为 stepBackward 或 StepBackward，如想要配置图标为 <UserOutlined /> 则取值应为 user 或者 User
+﻿/**
+ * @name umi 鐨勮矾鐢遍厤缃?
+ * @description 鍙敮鎸?path,component,routes,redirect,wrappers,name,icon 鐨勯厤缃?
+ * @param path  path 鍙敮鎸佷袱绉嶅崰浣嶇閰嶇疆锛岀涓€绉嶆槸鍔ㄦ€佸弬鏁?:id 鐨勫舰寮忥紝绗簩绉嶆槸 * 閫氶厤绗︼紝閫氶厤绗﹀彧鑳藉嚭鐜拌矾鐢卞瓧绗︿覆鐨勬渶鍚庛€?
+ * @param component 閰嶇疆 location 鍜?path 鍖归厤鍚庣敤浜庢覆鏌撶殑 React 缁勪欢璺緞銆傚彲浠ユ槸缁濆璺緞锛屼篃鍙互鏄浉瀵硅矾寰勶紝濡傛灉鏄浉瀵硅矾寰勶紝浼氫粠 src/pages 寮€濮嬫壘璧枫€?
+ * @param routes 閰嶇疆瀛愯矾鐢憋紝閫氬父鍦ㄩ渶瑕佷负澶氫釜璺緞澧炲姞 layout 缁勪欢鏃朵娇鐢ㄣ€?
+ * @param redirect 閰嶇疆璺敱璺宠浆
+ * @param wrappers 閰嶇疆璺敱缁勪欢鐨勫寘瑁呯粍浠讹紝閫氳繃鍖呰缁勪欢鍙互涓哄綋鍓嶇殑璺敱缁勪欢缁勫悎杩涙洿澶氱殑鍔熻兘銆?姣斿锛屽彲浠ョ敤浜庤矾鐢辩骇鍒殑鏉冮檺鏍￠獙
+ * @param name 閰嶇疆璺敱鐨勬爣棰橈紝榛樿璇诲彇鍥介檯鍖栨枃浠?menu.ts 涓?menu.xxxx 鐨勫€硷紝濡傞厤缃?name 涓?login锛屽垯璇诲彇 menu.ts 涓?menu.login 鐨勫彇鍊间綔涓烘爣棰?
+ * @param icon 閰嶇疆璺敱鐨勫浘鏍囷紝鍙栧€煎弬鑰?https://ant.design/components/icon-cn锛?娉ㄦ剰鍘婚櫎椋庢牸鍚庣紑鍜屽ぇ灏忓啓锛屽鎯宠閰嶇疆鍥炬爣涓?<StepBackwardOutlined /> 鍒欏彇鍊煎簲涓?stepBackward 鎴?StepBackward锛屽鎯宠閰嶇疆鍥炬爣涓?<UserOutlined /> 鍒欏彇鍊煎簲涓?user 鎴栬€?User
  * @doc https://umijs.org/docs/guides/routes
  */
 export default [
@@ -60,7 +60,7 @@ export default [
     component: './DataSearch',
   },
   {
-    name: '数据接入',
+    name: '鏁版嵁鎺ュ叆',
     icon: 'database',
     path: '/data',
     routes: [
@@ -70,69 +70,79 @@ export default [
         component: './Data/Source',
       },
       {
-        name: '文档导入',
+        name: '鏂囨。瀵煎叆',
         path: '/data/document-import',
         component: './Data/DocumentImport',
       },
       {
-        name: '实时监控',
+        name: '瀹炴椂鐩戞帶',
         path: '/data/realtime-monitor',
         component: './Data/Monitor',
       },
       {
-        name: '文档详情',
+        name: '鏂囨。璇︽儏',
         path: '/data/document/:id',
         component: './Data/DocumentDetail',
       },
       {
-        name: '来源渠道',
+        name: '鏉ユ簮娓犻亾',
         path: '/data/channel-config',
         component: './Data/ChannelConfig',
+      },
+      {
+        name: '服务器配置',
+        path: '/data/host-config',
+        component: './Data/HostConfig',
+      },
+      {
+        name: '线路配置',
+        path: '/data/dir-config',
+        component: './Data/DirConfig',
       },
     ],
   },
   {
-    name: '配置中心',
+    name: '閰嶇疆涓績',
     icon: 'setting',
     path: '/config-center',
     routes: [
       {
-        name: '编目管理',
+        name: '缂栫洰绠＄悊',
         path: '/config-center/catalog',
         component: './ConfigCenter/Catalog',
       },
       {
-        name: '标签管理',
+        name: '鏍囩绠＄悊',
         path: '/config-center/tag',
         component: './ConfigCenter/Tag',
       },
       {
-        name: '实体类型配置',
+        name: '瀹炰綋绫诲瀷閰嶇疆',
         path: '/config-center/entity-type',
         component: './ConfigCenter/EntityType',
       },
       {
-        name: '知识抽取管理',
+        name: '鐭ヨ瘑鎶藉彇绠＄悊',
         path: '/config-center/knowledge-extract',
         component: './ConfigCenter/KnowledgeExtractConfig',
       },
       {
-        name: '知识抽取配置',
+        name: '鐭ヨ瘑鎶藉彇閰嶇疆',
         path: '/config-center/knowledge-extract/config',
         component: './ConfigCenter/KnowledgeExtractConfig/config',
       },
       {
-        name: '消融配置',
+        name: '娑堣瀺閰嶇疆',
         path: '/config-center/ablation',
         component: './ConfigCenter/Ablation',
       },
       {
-        name: '实体消融',
+        name: '瀹炰綋娑堣瀺',
         path: '/config-center/ablation/entity',
         component: './ConfigCenter/Ablation/Entity',
       },
       {
-        name: '关系消融',
+        name: '鍏崇郴娑堣瀺',
         path: '/config-center/ablation/relation',
         component: './ConfigCenter/Ablation/Relation',
       },
@@ -195,12 +205,12 @@ export default [
     path: '/system',
     routes: [
       {
-        name: '字典数据',
+        name: '瀛楀吀鏁版嵁',
         path: '/system/dict-data/index/:id',
         component: './System/DictData',
       },
       {
-        name: '分配用户',
+        name: '鍒嗛厤鐢ㄦ埛',
         path: '/system/role-auth/user/:id',
         component: './System/Role/authUser',
       },
@@ -211,7 +221,7 @@ export default [
     path: '/monitor',
     routes: [
       {
-        name: '任务日志',
+        name: '浠诲姟鏃ュ織',
         path: '/monitor/job-log/index/:id',
         component: './Monitor/JobLog',
       },
@@ -234,3 +244,4 @@ export default [
     ],
   },
 ];
+
