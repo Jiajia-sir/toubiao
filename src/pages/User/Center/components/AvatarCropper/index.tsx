@@ -41,7 +41,7 @@ const AvatarCropperForm: React.FC<AvatarCropperProps> = (props) => {
     const cropper: any = imageElement?.cropper;
     cropper.getCroppedCanvas().toBlob((blob: Blob) => {
       const formData = new FormData();
-      formData.append('avatarfile', blob);
+      formData.append('avatarFile', blob);
       uploadAvatar(formData).then((res) => {
         if (res.code === 200) {
           message.success(res.msg);          
