@@ -2,14 +2,26 @@ import { Footer, Question, SelectLang, AvatarDropdown, AvatarName } from '@/comp
 import { LinkOutlined } from '@ant-design/icons';
 import type { Settings as LayoutSettings } from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
-import type { RunTimeLayoutConfig } from '@umijs/max';
-import { history, Link } from '@umijs/max';
+import type { RunTimeLayoutConfig, RequestConfig } from '@umijs/max';
+import { history, Link, request as umiRequest } from '@umijs/max';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
-import { getAccessToken, getRefreshToken, getTokenExpireTime } from './access';
-import { ensureRemoteMenu, getRemoteMenu, getRoutersInfo, getUserInfo, patchRouteWithRemoteMenus, setRemoteMenu } from './services/session';
+import { getAccessToken, getRefreshToken, getTokenExpireTime, setSessionToken } from './access';
+import { ensureRemoteMenu, getRemoteMenu, getRoutersInfo, getUserInfo, patchRouteWithRemoteMenus, refreshToken, setRemoteMenu } from './services/session';
 import { PageEnum } from './enums/pagesEnums';
 import { handleAuthExpired } from './utils/authRedirect';
+
+// ========== Token 刷新队列机制 ==========
+// 参考 data-processing-platform 的无感知刷新实现
+
+/** 请求队列 - 存储刷新期间等待的请求配置 */
+let requestQueue: Array<{ url: string; options: any; resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
+/** 是否正在刷新 token */
+let isRefreshingToken = false;
+/** 忽略的错误消息 - 避免重复提示 */
+const ignoreRefreshMsgs = ["无效的刷新令牌", "刷新令牌已过期"];
+/** 重试请求的标志 header key */
+const RETRY_HEADER_KEY = 'X-Retry-After-Refresh';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -419,6 +431,33 @@ function normalizeYudaoResult(result: any) {
   return result;
 }
 
+/**
+ * 执行 token 刷新
+ * 成功：更新 token，重放队列中的请求
+ * 失败：提示用户重新登录
+ */
+async function doRefreshToken(): Promise<boolean> {
+  const refreshTokenStr = getRefreshToken();
+  if (!refreshTokenStr) {
+    return false;
+  }
+
+  try {
+    const res = await refreshToken(refreshTokenStr);
+    if (res.code === 200 && res.data) {
+      // 计算新的过期时间（默认 12 小时，与登录时一致）
+      const current = new Date();
+      const expireTime = current.setTime(current.getTime() + 1000 * 12 * 60 * 60);
+      setSessionToken(res.data.accessToken, res.data.refreshToken, expireTime);
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('刷新 token 失败:', e);
+    return false;
+  }
+}
+
 export const request = {
   ...errorConfig,
   requestInterceptors: [
@@ -428,23 +467,39 @@ export const request = {
       const authHeader = headers['Authorization'];
       const isToken = headers['isToken'];
       const isLoginPage = history.location.pathname === PageEnum.LOGIN;
+
       if (!authHeader && isToken !== false) {
         const expireTime = getTokenExpireTime();
         if (expireTime) {
           const left = Number(expireTime) - new Date().getTime();
-          const refreshToken = getRefreshToken();
-          if (left < checkRegion && refreshToken) {
+          const refreshTokenStr = getRefreshToken();
+
+          if (left < checkRegion && refreshTokenStr) {
+            // token 即将过期或已过期，但有 refreshToken
             if (left < 0) {
-              handleAuthExpired();
+              // token 已过期，由响应拦截器处理 401 进行刷新
+              // 这里不设置 Authorization，让请求发出后由响应拦截器捕获 401
+            } else {
+              // token 即将过期但还未过期，正常设置 Authorization
+              // 响应拦截器会在收到 401 时自动刷新
+              const accessToken = getAccessToken();
+              if (accessToken) {
+                headers['Authorization'] = `Bearer ${accessToken}`;
+              }
             }
           } else {
+            // token 未过期，正常设置 Authorization
             const accessToken = getAccessToken();
             if (accessToken) {
               headers['Authorization'] = `Bearer ${accessToken}`;
             }
           }
         } else {
-          if (!isLoginPage) {
+          // 没有过期时间信息，可能是旧版本数据
+          const accessToken = getAccessToken();
+          if (accessToken) {
+            headers['Authorization'] = `Bearer ${accessToken}`;
+          } else if (!isLoginPage) {
             handleAuthExpired();
           }
         }
@@ -454,13 +509,119 @@ export const request = {
     },
   ],
   responseInterceptors: [
-    (response: any) => {
+    async (response: any) => {
       // 适配 yudao 框架的 CommonResult 响应格式
       // 后端成功响应 code 为 0，统一转换为 200 以兼容前端现有判断逻辑
       normalizeYudaoResult(response?.data);
-      if (response?.status === 401 || response?.data?.code === 401) {
-        handleAuthExpired();
+
+      const data = response?.data;
+      const statusCode = response?.status;
+      const bizCode = data?.code;
+      const msg = data?.msg || '';
+
+      // 忽略特定的刷新相关错误消息
+      if (ignoreRefreshMsgs.includes(msg)) {
+        return Promise.reject(msg);
       }
+
+      // 处理 401 未认证响应
+      if (statusCode === 401 || bizCode === 401) {
+        // 检查是否是重试请求（避免无限循环）
+        const config = response.config || {};
+        const isRetryRequest = config.headers?.[RETRY_HEADER_KEY] === 'true';
+
+        // 如果是重试请求仍然返回 401，说明刷新后的 token 也无效了，直接跳转登录页
+        if (isRetryRequest) {
+          handleAuthExpired();
+          return Promise.reject('登录状态已过期，请重新登录');
+        }
+
+        // 保存原始请求的 url 和 options，用于重试
+        // response.config 是 axios 的请求配置，包含完整的请求信息
+        const originalUrl = config.url || '';
+        const originalOptions: any = {
+          method: config.method?.toUpperCase() || 'GET',
+          headers: { ...config.headers },
+        };
+
+        // 提取请求参数
+        if (config.params) {
+          originalOptions.params = config.params;
+        }
+        if (config.data) {
+          originalOptions.data = config.data;
+        }
+        // 保留其他可能需要的配置
+        if (config.responseType) {
+          originalOptions.responseType = config.responseType;
+        }
+        if (config.timeout) {
+          originalOptions.timeout = config.timeout;
+        }
+
+        // 如果正在刷新中，将当前请求加入队列等待
+        if (isRefreshingToken) {
+          return new Promise((resolve, reject) => {
+            requestQueue.push({
+              url: originalUrl,
+              options: originalOptions,
+              resolve,
+              reject,
+            });
+          });
+        }
+
+        // 开始刷新
+        isRefreshingToken = true;
+
+        try {
+          const success = await doRefreshToken();
+
+          if (success) {
+            // 刷新成功，重放队列中的所有请求
+            const queue = [...requestQueue];
+            requestQueue = [];
+
+            // 异步重放队列中的请求（不阻塞当前请求）
+            queue.forEach((item) => {
+              const accessToken = getAccessToken();
+              if (accessToken) {
+                item.options.headers = {
+                  ...item.options.headers,
+                  Authorization: `Bearer ${accessToken}`,
+                  [RETRY_HEADER_KEY]: 'true', // 标记为重试请求
+                };
+              }
+              // 使用 skipErrorHandler 避免重复处理错误
+              umiRequest(item.url, { ...item.options, skipErrorHandler: true })
+                .then(item.resolve)
+                .catch(item.reject);
+            });
+
+            // 用新 token 重新发起当前请求
+            const accessToken = getAccessToken();
+            if (accessToken) {
+              originalOptions.headers['Authorization'] = `Bearer ${accessToken}`;
+            }
+            // 标记为重试请求，避免无限循环
+            originalOptions.headers[RETRY_HEADER_KEY] = 'true';
+            // 重新发起请求，使用 skipErrorHandler 避免重复处理错误
+            return umiRequest(originalUrl, { ...originalOptions, skipErrorHandler: true });
+          } else {
+            // 刷新失败，拒绝队列中的所有请求
+            const queue = [...requestQueue];
+            requestQueue = [];
+            queue.forEach((item) => item.reject('登录状态已过期，请重新登录'));
+
+            handleAuthExpired();
+            return Promise.reject('登录状态已过期，请重新登录');
+          }
+        } finally {
+          // 清理状态
+          isRefreshingToken = false;
+        }
+      }
+
       return response;
     },
   ],
