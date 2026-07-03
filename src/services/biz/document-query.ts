@@ -33,6 +33,20 @@ export interface DocumentQueryResult {
   [key: string]: any;
 }
 
+export interface DocumentViewParams {
+  id: number | string;
+  esId?: string;
+  keyword?: string;
+}
+
+export interface DocumentHtmlChunkPageParams {
+  pageNo: number;
+  pageSize: number;
+  docId: number | string;
+  keyword: string;
+  contextSize: number;
+}
+
 export async function queryDocuments(data: DocumentQueryParams) {
   return request<DocumentQueryResult>(`${API_PREFIX}/biz/document-query/query`, {
     method: "POST",
@@ -49,5 +63,19 @@ export async function getDocumentFileTypeCount() {
 export async function getDocumentAccessModeCount() {
   return request(`${API_PREFIX}/biz/document-query/access-mode-count`, {
     method: "POST",
+  });
+}
+
+export async function viewDocument(data: DocumentViewParams) {
+  return request(`${API_PREFIX}/biz/document-query/view`, {
+    method: "POST",
+    data,
+  });
+}
+
+export async function getDocumentHtmlChunkPage(data: DocumentHtmlChunkPageParams) {
+  return request(`${API_PREFIX}/biz/document-query/html-chunk-page`, {
+    method: "POST",
+    data,
   });
 }

@@ -55,6 +55,7 @@ export interface ParseStep {
   name: string;
   duration: string;
   completed: boolean;
+  status?: "completed" | "pending" | "failed";
 }
 
 export interface SourceDocument {

@@ -61,12 +61,13 @@ type CustomCondition = {
   field: string;
   operator: string;
   value: string;
-  leftBracket: string;
-  rightBracket: string;
+  leftBracket: boolean;
+  rightBracket: boolean;
 };
 
 type SearchResult = {
   id: string;
+  esId: string;
   name: string;
   type: string;
   source: string;
@@ -75,6 +76,7 @@ type SearchResult = {
   size: string;
   viewCount: number;
   summary: string;
+  keywords: string[];
   entities: string[];
   tags: string[];
   knowledgeBase: string;
@@ -99,12 +101,27 @@ const entityOptions = {
   技术: ["自动驾驶", "电池技术", "芯片", "大模型"],
 };
 
+const fixedCustomFieldOptions = [
+  { label: "文件名", value: "name" },
+  { label: "关键词", value: "keywordsList" },
+  { label: "实体名称", value: "entities.entityName" },
+  { label: "实体类型", value: "entities.entityType" },
+  { label: "正文", value: "oriContent,transContent" },
+  { label: "上传人", value: "creatorName" },
+];
+
+const DEFAULT_CUSTOM_FIELD = "name";
+
 const relatedSearches = [
   "特斯拉商业模式分析",
   "新能源汽车行业竞争格局",
   "自动驾驶技术路线",
   "行业研究报告",
 ];
+
+function HighlightHtml({ html }: { html: string }) {
+  return <span dangerouslySetInnerHTML={{ __html: sanitizeHighlightHtml(html) }} />;
+}
 
 const typeIconMap: Record<string, React.ReactNode> = {
   DOC: <FileWordOutlined style={{ fontSize: 20, color: "#1890ff" }} />,
@@ -167,6 +184,12 @@ const normalizeCountOption = (item: any): FilterOption | null => {
     label: String(item?.label ?? item?.name ?? rawValue),
     value: String(rawValue),
     count: Number(item?.count ?? item?.total ?? item?.docCount ?? 0),
+    knowledgeBase:
+      extractStringList(item?.knowledgeBaseNames).length > 0
+        ? extractStringList(item?.knowledgeBaseNames).join("、")
+        : Array.isArray(item?.knowledgeBaseId) && item.knowledgeBaseId.length > 0
+          ? `已关联 ${item.knowledgeBaseId.length} 个知识库`
+          : "未入知识库",
   };
 };
 
@@ -187,23 +210,122 @@ const formatFileSize = (bytes: any) => {
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
 };
 
+const formatDateTime = (value: any) => {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+
+  if (typeof value === "number" || /^\d+$/.test(String(value))) {
+    const date = new Date(Number(value));
+    if (!Number.isNaN(date.getTime())) {
+      const year = date.getFullYear();
+      const month = `${date.getMonth() + 1}`.padStart(2, "0");
+      const day = `${date.getDate()}`.padStart(2, "0");
+      const hours = `${date.getHours()}`.padStart(2, "0");
+      const minutes = `${date.getMinutes()}`.padStart(2, "0");
+      const seconds = `${date.getSeconds()}`.padStart(2, "0");
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    }
+  }
+
+  return String(value);
+};
+
+const sanitizeHighlightHtml = (value: string) =>
+  String(value ?? "")
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/\son\w+=(["']).*?\1/gi, "")
+    .replace(/javascript:/gi, "");
+
+const extractEntityNames = (value: any): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item: any) => {
+    if (Array.isArray(item?.entityName)) {
+      return item.entityName.map((name: any) => String(name));
+    }
+    if (item?.entityName !== undefined) {
+      return [String(item.entityName)];
+    }
+    if (item?.name !== undefined) {
+      return [String(item.name)];
+    }
+    return [];
+  });
+};
+
+const extractStringList = (value: any): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => String(item ?? "")).filter(Boolean);
+};
+
 const mapDocumentResult = (item: any): SearchResult => {
   const fakeTags = ["行业分析", "重点文档", "自动生成"];
   const fakeEntities = ["特斯拉", "自动驾驶", "中国"];
 
   return {
     id: String(item?.id ?? item?.documentId ?? item?.fileId ?? Math.random()),
+    esId: String(item?.esId ?? item?._id ?? item?.docEsId ?? ""),
     name: item?.name ?? item?.fileName ?? item?.documentName ?? "-",
     type: String(item?.fileType ?? item?.type ?? "DOCX").toUpperCase(),
     source: item?.channelName ?? item?.accessMode ?? item?.source ?? "-",
     uploader: item?.creatorName ?? item?.creator ?? item?.uploader ?? item?.createBy ?? "-",
-    uploadTime: item?.createTime ?? item?.uploadTime ?? "-",
+    uploadTime: formatDateTime(item?.createTime ?? item?.uploadTime),
     size: formatFileSize(item?.fileSizeBytes ?? item?.fileSize),
     viewCount: Number(item?.viewCount ?? 0),
-    summary: item?.summary ?? item?.contentSnippet ?? item?.snippet ?? "-",
-    entities: fakeEntities,
-    tags: fakeTags,
+    summary: String(
+      item?.summary ??
+        item?.contentSnippet ??
+        item?.snippet ??
+        item?.oriContent ??
+        item?.transContent ??
+        "-",
+    ),
+    keywords: extractStringList(item?.keywordsList),
+    entities: extractEntityNames(item?.entities),
+    tags: extractStringList(item?.fileTagNames),
     knowledgeBase: item?.knowledgeBaseName ?? "未入知识库",
+  };
+};
+
+const mapDocumentResultFixed = (item: any): SearchResult => {
+  const knowledgeBaseNames = extractStringList(item?.knowledgeBaseNames);
+  const tagNames = extractStringList(item?.fileTagNames);
+  const keywordNames = extractStringList(item?.keywordsList);
+  const entityNames = extractEntityNames(item?.entities);
+  const summary =
+    item?.summary ??
+    item?.contentSnippet ??
+    item?.snippet ??
+    item?.oriContent ??
+    item?.transContent ??
+    "-";
+
+  return {
+    id: String(item?.id ?? item?.documentId ?? item?.fileId ?? Math.random()),
+    esId: String(item?.esId ?? item?._id ?? item?.docEsId ?? ""),
+    name: item?.name ?? item?.fileName ?? item?.documentName ?? "-",
+    type: String(item?.fileType ?? item?.type ?? "DOCX").toUpperCase(),
+    source: item?.channelName ?? item?.accessMode ?? item?.source ?? "-",
+    uploader: item?.creatorName ?? item?.creator ?? item?.uploader ?? item?.createBy ?? "-",
+    uploadTime: formatDateTime(item?.createTime ?? item?.uploadTime),
+    size: formatFileSize(item?.fileSizeBytes ?? item?.fileSize),
+    viewCount: Number(item?.viewCount ?? 0),
+    summary: String(summary),
+    keywords: keywordNames,
+    entities: entityNames,
+    tags: tagNames,
+    knowledgeBase:
+      knowledgeBaseNames.length > 0
+        ? knowledgeBaseNames.join("、")
+        : Array.isArray(item?.knowledgeBaseId) && item.knowledgeBaseId.length > 0
+          ? `已关联 ${item.knowledgeBaseId.length} 个知识库`
+          : "未入知识库",
   };
 };
 
@@ -239,8 +361,8 @@ export default function DataSearchPage() {
       field: "标签",
       operator: "等于",
       value: "",
-      leftBracket: "",
-      rightBracket: "",
+      leftBracket: false,
+      rightBracket: false,
     },
   ]);
   const [activeConditionId, setActiveConditionId] = useState<number>(1);
@@ -298,8 +420,16 @@ export default function DataSearchPage() {
     customConditions
       .filter((item) => item.field && item.operator && item.value.trim())
       .map((item, index) => {
-        const expression = `${item.leftBracket || ""}${item.field} ${item.operator} "${item.value.trim()}"${item.rightBracket || ""}`;
-        return index === 0 ? expression : `${item.logic} ${expression}`;
+        const logicMap: Record<CustomCondition["logic"], string> = {
+          AND: "且",
+          OR: "或",
+          NOT: "非",
+        };
+        const resolvedField = fixedCustomFieldOptions.some((option) => option.value === item.field)
+          ? item.field
+          : DEFAULT_CUSTOM_FIELD;
+        const expression = `${item.leftBracket ? "(" : ""}${resolvedField} ${item.operator} "${item.value.trim()}"${item.rightBracket ? ")" : ""}`;
+        return index === 0 ? expression : `${logicMap[item.logic]} ${expression}`;
       })
       .join(" ");
 
@@ -396,7 +526,7 @@ export default function DataSearchPage() {
     setLoading(true);
     try {
       const response: any = await queryDocuments(buildQueryPayload(pageNo, size));
-      const rows = extractPageList<any>(response).map(mapDocumentResult);
+      const rows = extractPageList<any>(response).map(mapDocumentResultFixed);
       setSearchResults(rows);
       setTotalResults(extractPageTotal(response));
       setCurrentPage(pageNo);
@@ -412,31 +542,8 @@ export default function DataSearchPage() {
 
   useEffect(() => {
     fetchFilterOptions();
+    fetchDocuments(1, pageSize);
   }, []);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchDocuments(1, pageSize);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [
-    searchText,
-    sortField,
-    sortOrder,
-    sourceFilter,
-    documentTypes,
-    knowledgeBaseFilter,
-    selectedTags,
-    catalogFilter,
-    dateRange,
-    pageSize,
-    queryStrategyMode,
-    fuzzyWeights.title,
-    fuzzyWeights.content,
-    fuzzyWeights.tag,
-    slop,
-    customConditions,
-  ]);
 
   const handleSearch = () => {
     fetchDocuments(1, pageSize);
@@ -474,8 +581,8 @@ export default function DataSearchPage() {
         field: "标签",
         operator: "等于",
         value: "",
-        leftBracket: "",
-        rightBracket: "",
+        leftBracket: false,
+        rightBracket: false,
       },
     ]);
     setActiveConditionId(id);
@@ -499,20 +606,19 @@ export default function DataSearchPage() {
     );
   };
 
-  const handleAddBracket = (
+  const handleToggleBracket = (
     id: number,
     side: "leftBracket" | "rightBracket",
-    bracket: "(" | ")",
   ) => {
     setCustomConditions((prev) =>
       prev.map((item) =>
-        item.id === id ? { ...item, [side]: `${item[side] || ""}${bracket}` } : item,
+        item.id === id ? { ...item, [side]: !item[side] } : item,
       ),
     );
   };
 
-  const handleAddBracketToActive = (side: "leftBracket" | "rightBracket", bracket: "(" | ")") => {
-    handleAddBracket(activeConditionId, side, bracket);
+  const handleToggleBracketToActive = (side: "leftBracket" | "rightBracket") => {
+    handleToggleBracket(activeConditionId, side);
   };
 
   const handleApplyAdvancedSearch = () => {
@@ -538,8 +644,8 @@ export default function DataSearchPage() {
         field: "标签",
         operator: "等于",
         value: "",
-        leftBracket: "",
-        rightBracket: "",
+        leftBracket: false,
+        rightBracket: false,
       },
     ]);
     setActiveConditionId(1);
@@ -802,7 +908,8 @@ export default function DataSearchPage() {
                   top: "100%",
                   right: 0,
                   marginTop: 4,
-                  width: 420,
+                  width: queryStrategyMode === "custom" ? 640 : 420,
+                  maxWidth: "calc(100vw - 48px)",
                   background: "#fff",
                   borderRadius: 8,
                   boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
@@ -889,12 +996,11 @@ export default function DataSearchPage() {
                 {queryStrategyMode === "custom" && (
                   <div
                     style={{
-                      background: "#f7f9fc",
-                      borderRadius: 8,
-                      padding: 12,
+                      background: "linear-gradient(180deg, #f8fbff 0%, #f4f7fb 100%)",
+                      borderRadius: 12,
+                      padding: 14,
                       marginBottom: 16,
-                      maxHeight: 260,
-                      overflowY: "auto",
+                      border: "1px solid #e6eef8",
                     }}
                   >
                     <div
@@ -902,12 +1008,8 @@ export default function DataSearchPage() {
                         display: "flex",
                         alignItems: "center",
                         gap: 8,
-                        marginBottom: 12,
-                        position: "sticky",
-                        top: 0,
-                        background: "#f7f9fc",
-                        zIndex: 1,
-                        paddingBottom: 4,
+                        marginBottom: 14,
+                        flexWrap: "wrap",
                       }}
                     >
                       <Button type="primary" size="small" onClick={handleAddCondition}>
@@ -915,74 +1017,80 @@ export default function DataSearchPage() {
                       </Button>
                       <Button
                         size="small"
-                        onClick={() => handleAddBracketToActive("leftBracket", "(")}
+                        onClick={() => handleToggleBracketToActive("leftBracket")}
                         disabled={!customConditions.some((item) => item.id === activeConditionId)}
                       >
                         (
                       </Button>
                       <Button
                         size="small"
-                        onClick={() => handleAddBracketToActive("rightBracket", ")")}
+                        onClick={() => handleToggleBracketToActive("rightBracket")}
                         disabled={!customConditions.some((item) => item.id === activeConditionId)}
                       >
                         )
                       </Button>
+                      <Button size="small" onClick={handleResetAdvancedSearch}>
+                        重置
+                      </Button>
                     </div>
-                    {customConditions.map((condition, index) => (
-                      <div
-                        key={condition.id}
-                        onClick={() => setActiveConditionId(condition.id)}
-                        style={{
-                          marginBottom: 12,
-                          padding: 10,
-                          background: "#fff",
-                          borderRadius: 6,
-                          border:
-                            activeConditionId === condition.id
-                              ? "1px solid #1890ff"
-                              : "1px solid #e8e8e8",
-                          boxShadow:
-                            activeConditionId === condition.id
-                              ? "0 0 0 2px rgba(24,144,255,0.08)"
-                              : "none",
-                          cursor: "pointer",
-                        }}
-                      >
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {customConditions.map((condition, index) => (
                         <div
+                          key={condition.id}
+                          onClick={() => setActiveConditionId(condition.id)}
                           style={{
                             display: "grid",
                             gridTemplateColumns:
-                              index > 0
-                                ? "72px 110px 110px minmax(260px, 1fr)"
-                                : "110px 110px minmax(260px, 1fr)",
-                            gap: 8,
+                              index < customConditions.length - 1
+                                ? "16px 88px 84px minmax(0,1fr) 16px 20px 64px"
+                                : "16px 88px 84px minmax(0,1fr) 16px 20px",
+                            gap: 10,
                             alignItems: "center",
-                            marginBottom: 8,
+                            padding: "14px 12px",
+                            background:
+                              activeConditionId === condition.id
+                                ? "linear-gradient(180deg, #ffffff 0%, #f7fbff 100%)"
+                                : "#ffffff",
+                            borderRadius: 10,
+                            border:
+                              activeConditionId === condition.id
+                                ? "1px solid #91caff"
+                                : "1px solid #e5eaf3",
+                            boxShadow:
+                              activeConditionId === condition.id
+                                ? "0 8px 20px rgba(24, 144, 255, 0.08)"
+                                : "0 2px 6px rgba(15, 23, 42, 0.04)",
+                            cursor: "pointer",
+                            width: "100%",
+                            boxSizing: "border-box",
                           }}
                         >
-                          {index > 0 && (
-                            <Select
-                              value={condition.logic}
-                              onChange={(value) => handleConditionChange(condition.id, "logic", value)}
-                              style={{ width: 72 }}
-                              options={[
-                                { label: "与", value: "AND" },
-                                { label: "或", value: "OR" },
-                                { label: "非", value: "NOT" },
-                              ]}
-                            />
-                          )}
+                          <div
+                            style={{
+                              textAlign: "center",
+                              color: condition.leftBracket ? "#1677ff" : "#c0c6d4",
+                              fontSize: 22,
+                              fontWeight: 600,
+                              lineHeight: 1,
+                            }}
+                          >
+                            {condition.leftBracket ? "(" : ""}
+                          </div>
                           <Select
-                            value={condition.field}
+                            value={
+                              fixedCustomFieldOptions.some((item) => item.value === condition.field)
+                                ? condition.field
+                                : DEFAULT_CUSTOM_FIELD
+                            }
                             onChange={(value) => handleConditionChange(condition.id, "field", value)}
-                            options={customFieldOptions}
-                            style={{ width: "100%" }}
+                            options={fixedCustomFieldOptions}
+                            style={{ width: "100%", minWidth: 0 }}
                           />
                           <Select
                             value={condition.operator}
                             onChange={(value) => handleConditionChange(condition.id, "operator", value)}
                             options={customOperatorOptions}
-                            style={{ width: "100%" }}
+                            style={{ width: "100%", minWidth: 0 }}
                           />
                           <Input
                             value={condition.value}
@@ -990,38 +1098,60 @@ export default function DataSearchPage() {
                             onChange={(e) =>
                               handleConditionChange(condition.id, "value", e.target.value)
                             }
-                            style={{ width: "100%", minWidth: 260 }}
+                            style={{ width: "100%", minWidth: 0 }}
                           />
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <span style={{ fontSize: 12, color: "#8c8c8c" }}>
-                            {condition.leftBracket || ""}
-                          </span>
-                          <span style={{ fontSize: 12, color: "#8c8c8c" }}>
-                            {condition.rightBracket || ""}
-                          </span>
+                          <div
+                            style={{
+                              textAlign: "center",
+                              color: condition.rightBracket ? "#1677ff" : "#c0c6d4",
+                              fontSize: 22,
+                              fontWeight: 600,
+                              lineHeight: 1,
+                            }}
+                          >
+                            {condition.rightBracket ? ")" : ""}
+                          </div>
                           <Button
                             danger
+                            type="text"
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleRemoveCondition(condition.id);
                             }}
                             disabled={customConditions.length === 1}
+                            style={{ padding: 0 }}
                           >
-                            删除条件
+                            <CloseOutlined />
                           </Button>
+                          {index < customConditions.length - 1 && (
+                            <Select
+                              value={condition.logic}
+                              onChange={(value) => handleConditionChange(condition.id, "logic", value)}
+                              style={{ width: "100%", minWidth: 0 }}
+                              options={[
+                                { label: "与", value: "AND" },
+                                { label: "或", value: "OR" },
+                                { label: "非", value: "NOT" },
+                              ]}
+                            />
+                          )}
                         </div>
-                      </div>
-                    ))}
-                    <div style={{ fontSize: 12, color: "#8c8c8c", marginBottom: 8 }}>
+                      ))}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#6b7280",
+                        marginTop: 12,
+                        marginBottom: 8,
+                        padding: "10px 12px",
+                        background: "#ffffff",
+                        border: "1px solid #e5eaf3",
+                        borderRadius: 8,
+                        lineHeight: 1.7,
+                      }}
+                    >
                       预览：{buildAdvanceSearch() || "-"}
                     </div>
                   </div>
@@ -1216,7 +1346,9 @@ export default function DataSearchPage() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                          <a style={{ fontSize: 16, fontWeight: 600, color: "#262626" }}>{result.name}</a>
+                          <a style={{ fontSize: 16, fontWeight: 600, color: "#262626" }}>
+                            <HighlightHtml html={result.name} />
+                          </a>
                           <Tag color={result.knowledgeBase === "未入知识库" ? "default" : "green"}>
                             {result.knowledgeBase}
                           </Tag>
@@ -1244,7 +1376,24 @@ export default function DataSearchPage() {
                           type="link"
                           size="small"
                           icon={<EyeOutlined />}
-                          onClick={() => history.push(`/data/document/${result.id}`)}
+                          onClick={() => {
+                            const detailQuery = new URLSearchParams();
+                            if (result.esId) {
+                              detailQuery.set("esId", result.esId);
+                            }
+                            if (searchText.trim()) {
+                              detailQuery.set("keyword", searchText.trim());
+                            }
+                            if (result.name) {
+                              detailQuery.set("title", result.name);
+                            }
+                            if (result.type) {
+                              detailQuery.set("type", result.type);
+                            }
+                            history.push(
+                              `/data/document/${result.id}${detailQuery.toString() ? `?${detailQuery.toString()}` : ""}`,
+                            );
+                          }}
                         >
                           详情
                         </Button>
@@ -1266,7 +1415,22 @@ export default function DataSearchPage() {
                         <Space wrap size={4}>
                           {result.entities.map((entity) => (
                             <Tag key={entity} color="blue">
-                              {entity}
+                              <HighlightHtml html={entity} />
+                            </Tag>
+                          ))}
+                        </Space>
+                      </div>
+                    )}
+
+                    {result.keywords.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, color: "#595959", fontWeight: 500, marginRight: 8 }}>
+                          关键词：
+                        </span>
+                        <Space wrap size={4}>
+                          {result.keywords.map((keyword) => (
+                            <Tag key={keyword} color="gold">
+                              <HighlightHtml html={keyword} />
                             </Tag>
                           ))}
                         </Space>
