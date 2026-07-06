@@ -25,22 +25,48 @@ function transformUserListParams(params?: API.System.UserListParams) {
   if (!params) {
     return params;
   }
+  const normalizedParams = { ...(params as Record<string, any>) };
+  if (typeof normalizedParams.current !== 'undefined' && typeof normalizedParams.pageNo === 'undefined') {
+    normalizedParams.pageNo = normalizedParams.current;
+  }
+  delete normalizedParams.current;
   return {
-    ...params,
-    username: (params as any).username ?? params.userName,
-    nickname: params.nickName,
-    mobile: params.phonenumber,
+    ...normalizedParams,
+    username: normalizedParams.username ?? normalizedParams.userName,
+    nickname: normalizedParams.nickName,
+    mobile: normalizedParams.phonenumber,
   };
+}
+
+function buildUserListQuery(params?: Record<string, any>) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === null || typeof value === 'undefined' || value === '') {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== null && typeof item !== 'undefined' && item !== '') {
+          searchParams.append(key, String(item));
+        }
+      });
+      return;
+    }
+    searchParams.append(key, String(value));
+  });
+  return searchParams.toString();
 }
 
 // 查询用户信息列表
 export async function getUserList(params?: API.System.UserListParams, options?: { [key: string]: any }) {
+  const queryParams = transformUserListParams(params);
   return request<API.System.UserPageResult>(`${API_PREFIX}/system/user/page`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    params: transformUserListParams(params),
+    params: queryParams,
+    paramsSerializer: (value) => buildUserListQuery(value as Record<string, any>),
     ...(options || {})
   });
 }

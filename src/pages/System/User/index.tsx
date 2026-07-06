@@ -694,33 +694,108 @@ const UserTableList: React.FC = () => {
   ];
 
   const tableColumns: ProColumns<API.System.User>[] = [
-    columns[0],
+    {
+      title: '用户昵称',
+      title: '用户账号',
+      dataIndex: 'username',
+      valueType: 'text',
+      hideInTable: true,
+      order: 100,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createTime',
+      valueType: 'dateTimeRange',
+      hideInTable: true,
+      order: 99,
+      fieldProps: {
+        showTime: true,
+        format: 'YYYY-MM-DD HH:mm:ss',
+      },
+      search: {
+        transform: (value: any) => {
+          if (!Array.isArray(value) || value.length !== 2) {
+            return {};
+          }
+          return {
+            createTime: value.map((item: any, index: number) => {
+              if (typeof item?.format === 'function') {
+                return item.format(index === 0 ? 'YYYY-MM-DD 00:00:00' : 'YYYY-MM-DD 23:59:59');
+              }
+              const date = new Date(item);
+              if (!Number.isNaN(date.getTime())) {
+                const year = date.getFullYear();
+                const month = `${date.getMonth() + 1}`.padStart(2, '0');
+                const day = `${date.getDate()}`.padStart(2, '0');
+                return `${year}-${month}-${day} ${index === 0 ? '00:00:00' : '23:59:59'}`;
+              }
+              return item;
+            }),
+          };
+        },
+      },
+    },
+    {
+      ...columns[0],
+      hideInSearch: true,
+    },
+    {
+      ...columns[1],
+      hideInSearch: true,
+      render: (_, record) => record.userName || (record as any).username || '-',
+    },
     {
       ...columns[2],
-      hideInSearch: false,
+      hideInSearch: true,
     },
     {
       ...columns[3],
       hideInSearch: true,
     },
-    columns[9],
-    columns[4],
-    columns[5],
+    {
+      ...columns[9],
+      hideInSearch: true,
+    },
+    {
+      ...columns[4],
+      hideInSearch: true,
+    },
+    {
+      ...columns[5],
+      hideInSearch: true,
+    },
     {
       ...columns[12],
+      hideInSearch: true,
       render: (_, record) => {
         const roles = Array.isArray((record as any).roles) ? (record as any).roles : [];
         const roleNames = roles.map((item: any) => item?.roleName ?? item?.name).filter(Boolean);
         return roleNames.length ? roleNames.join(', ') : '-';
       },
     },
-    columns[6],
-    columns[14],
-    columns[7],
-    columns[8],
-    columns[13],
+    {
+      ...columns[6],
+      hideInSearch: true,
+    },
+    {
+      ...columns[14],
+      hideInSearch: true,
+    },
+    {
+      ...columns[7],
+      hideInSearch: true,
+    },
+    {
+      ...columns[8],
+      hideInSearch: true,
+    },
+    {
+      ...columns[13],
+      hideInSearch: true,
+    },
     {
       ...columns[10],
+      hideInSearch: true,
       fixed: 'right',
     },
   ];
