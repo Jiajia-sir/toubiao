@@ -3,17 +3,23 @@ declare namespace API.System {
 
   interface User {
     userId: number;
+    id?: number;
     username?: string;
     deptId: number;
+    deptName?: string;
     userName: string;
     nickName: string;
+    nickname?: string;
     userType: string;
     email: string;
     phonenumber: string;
+    mobile?: string;
     sex: string;
     avatar: string;
     password: string;
     status: string;
+    postIds?: number[];
+    roles?: Array<{ id?: number; roleId?: number; name?: string; roleName?: string }>;
     delFlag: string;
     loginIp: string;
     loginDate: Date;

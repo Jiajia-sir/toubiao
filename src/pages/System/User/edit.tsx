@@ -1,23 +1,15 @@
 import React, { useEffect } from 'react';
 import {
   ProForm,
-  ProFormText,
-  ProFormSelect,
-  ProFormTextArea,
   ProFormCascader,
+  ProFormSelect,
+  ProFormText,
+  ProFormTextArea,
 } from '@ant-design/pro-components';
 import { Form, Modal } from 'antd';
-import { useIntl, FormattedMessage } from '@umijs/max';
-import { DataNode } from 'antd/es/tree';
-import { DictValueEnumObj } from '@/components/DictTag';
-
-/* *
- *
- * @author whiteshader@163.com
- * @datetime  2023/02/06
- * 
- * */
-
+import { FormattedMessage, useIntl } from '@umijs/max';
+import type { DataNode } from 'antd/es/tree';
+import type { DictValueEnumObj } from '@/components/DictTag';
 
 export type UserFormData = Record<string, unknown> & Partial<API.System.User>;
 
@@ -29,9 +21,9 @@ export type UserFormProps = {
   sexOptions: DictValueEnumObj;
   statusOptions: DictValueEnumObj;
   postIds: number[];
-  posts: string[];
+  posts: { label: string; value: number }[];
   roleIds: number[];
-  roles: string[];
+  roles: { label: string; value: number }[];
   depts: DataNode[];
 };
 
@@ -39,30 +31,33 @@ const findDeptPath = (options: DataNode[], targetValue?: React.Key): React.Key[]
   if (typeof targetValue === 'undefined' || targetValue === null) {
     return undefined;
   }
+
   for (const option of options) {
     const value = (option as any).value ?? option.key ?? (option as any).id;
     if (`${value}` === `${targetValue}`) {
       return [value];
     }
+
     const childPath = findDeptPath((option.children || []) as DataNode[], targetValue);
     if (childPath) {
       return [value, ...childPath];
     }
   }
+
   return undefined;
 };
 
 const UserForm: React.FC<UserFormProps> = (props) => {
   const [form] = Form.useForm();
-  const userId = Form.useWatch('userId', form);
-  const { sexOptions } = props;
-  const { roles, posts, depts } = props;
+  const intl = useIntl();
+  const isEdit = typeof props.values.userId !== 'undefined' && props.values.userId !== null;
+  const halfColProps = { xs: 24, md: 12, xl: 12 };
 
   useEffect(() => {
     form.resetFields();
     form.setFieldsValue({
       userId: props.values.userId,
-      deptId: findDeptPath(depts, props.values.deptId),
+      deptId: findDeptPath(props.depts, props.values.deptId),
       postIds: props.postIds,
       roleIds: props.roleIds,
       username: (props.values as any).username ?? props.values.userName,
@@ -70,47 +65,48 @@ const UserForm: React.FC<UserFormProps> = (props) => {
       email: props.values.email,
       phonenumber: props.values.phonenumber,
       sex: typeof props.values.sex === 'undefined' ? '1' : String(props.values.sex),
-      avatar: props.values.avatar,
-      delFlag: props.values.delFlag,
-      loginIp: props.values.loginIp,
-      loginDate: props.values.loginDate,
+      password: props.values.password,
       remark: props.values.remark,
     });
   }, [form, props]);
 
-  const intl = useIntl();
-  const handleOk = () => {
-    form.submit();
-  };
-  const handleCancel = () => {
-    props.onCancel();
-  };
   const handleFinish = async (values: Record<string, any>) => {
     const deptPath = values.deptId;
-    props.onSubmit({
+    const submitValues = {
       ...values,
       deptId: Array.isArray(deptPath) ? deptPath[deptPath.length - 1] : deptPath,
-    } as UserFormData);
+    } as UserFormData;
+
+    if (submitValues.userId && !submitValues.password) {
+      delete submitValues.password;
+    }
+
+    await props.onSubmit(submitValues);
   };
 
   return (
     <Modal
-      width={640}
+      width={720}
       title={intl.formatMessage({
         id: 'system.user.title',
         defaultMessage: '编辑用户信息',
       })}
       open={props.open}
       destroyOnClose
-      onOk={handleOk}
-      onCancel={handleCancel}
+      onOk={() => form.submit()}
+      onCancel={() => props.onCancel()}
     >
       <ProForm
-        grid={true}
+        grid
         form={form}
         layout="horizontal"
         submitter={false}
-        onFinish={handleFinish}>
+        labelAlign="right"
+        labelCol={{ xs: 24, sm: 7, md: 8 }}
+        wrapperCol={{ xs: 24, sm: 17, md: 16 }}
+        rowProps={{ gutter: [16, 0] }}
+        onFinish={handleFinish}
+      >
         <ProFormText name="userId" hidden />
         <ProFormText
           name="nickName"
@@ -119,13 +115,11 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             defaultMessage: '用户昵称',
           })}
           placeholder="请输入用户昵称"
-          colProps={{ xs: 24, md: 12, xl: 12 }}
+          colProps={halfColProps}
           rules={[
             {
               required: true,
-              message: (
-                <FormattedMessage id="请输入用户昵称！" defaultMessage="请输入用户昵称！" />
-              ),
+              message: <FormattedMessage id="请输入用户昵称！" defaultMessage="请输入用户昵称！" />,
             },
           ]}
         />
@@ -136,17 +130,16 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             defaultMessage: '部门',
           })}
           fieldProps={{
-            options: depts as any[],
+            options: props.depts as any[],
             changeOnSelect: true,
+            style: { width: '100%' },
           }}
-          placeholder="请输入用户部门"
-          colProps={{ md: 12, xl: 12 }}
+          placeholder="请选择所属部门"
+          colProps={halfColProps}
           rules={[
             {
               required: true,
-              message: (
-                <FormattedMessage id="请输入用户部门！" defaultMessage="请输入用户部门！" />
-              ),
+              message: <FormattedMessage id="请选择用户部门！" defaultMessage="请选择用户部门！" />,
             },
           ]}
         />
@@ -157,15 +150,7 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             defaultMessage: '手机号码',
           })}
           placeholder="请输入手机号码"
-          colProps={{ md: 12, xl: 12 }}
-          rules={[
-            {
-              required: false,
-              message: (
-                <FormattedMessage id="请输入手机号码！" defaultMessage="请输入手机号码！" />
-              ),
-            },
-          ]}
+          colProps={halfColProps}
         />
         <ProFormText
           name="email"
@@ -174,15 +159,7 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             defaultMessage: '用户邮箱',
           })}
           placeholder="请输入用户邮箱"
-          colProps={{ md: 12, xl: 12 }}
-          rules={[
-            {
-              required: false,
-              message: (
-                <FormattedMessage id="请输入用户邮箱！" defaultMessage="请输入用户邮箱！" />
-              ),
-            },
-          ]}
+          colProps={halfColProps}
         />
         <ProFormText
           name="username"
@@ -191,12 +168,8 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             defaultMessage: '用户账号',
           })}
           placeholder="请输入用户账号"
-          colProps={{ md: 12, xl: 12 }}
-          rules={[
-            {
-              required: true,
-            },
-          ]}
+          colProps={halfColProps}
+          rules={[{ required: true, message: '请输入用户账号' }]}
         />
         <ProFormText.Password
           name="password"
@@ -204,19 +177,19 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             id: 'system.user.password',
             defaultMessage: '密码',
           })}
-          placeholder="请输入密码"
-          colProps={{ md: 12, xl: 12 }}
+          placeholder={isEdit ? '如不修改密码请留空' : '请输入密码'}
+          colProps={halfColProps}
           rules={[
             {
-              required: true,
+              required: !isEdit,
               message: <FormattedMessage id="请输入密码！" defaultMessage="请输入密码！" />,
             },
           ]}
         />
         <ProFormSelect
           valueEnum={
-            Object.keys(sexOptions || {}).length > 0
-              ? sexOptions
+            Object.keys(props.sexOptions || {}).length > 0
+              ? props.sexOptions
               : {
                   1: { text: '男' },
                   2: { text: '女' },
@@ -227,17 +200,10 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             id: 'system.user.sex',
             defaultMessage: '用户性别',
           })}
-          initialValue={'1'}
-          placeholder="请输入用户性别"
-          colProps={{ md: 12, xl: 12 }}
-          rules={[
-            {
-              required: false,
-              message: (
-                <FormattedMessage id="请输入用户性别！" defaultMessage="请输入用户性别！" />
-              ),
-            },
-          ]}
+          initialValue="1"
+          placeholder="请选择用户性别"
+          colProps={halfColProps}
+          fieldProps={{ style: { width: '100%' } }}
         />
         <ProFormSelect
           name="postIds"
@@ -246,10 +212,10 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             id: 'system.user.post',
             defaultMessage: '岗位',
           })}
-          options={posts}
+          options={props.posts}
           placeholder="请选择岗位"
-          colProps={{ md: 12, xl: 12 }}
-          rules={[{ required: false, message: '请选择岗位!' }]}
+          colProps={halfColProps}
+          fieldProps={{ style: { width: '100%' } }}
         />
         <ProFormSelect
           name="roleIds"
@@ -258,10 +224,11 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             id: 'system.user.role',
             defaultMessage: '角色',
           })}
-          options={roles}
+          options={props.roles}
           placeholder="请选择角色"
-          colProps={{ md: 12, xl: 12 }}
-          rules={[{ required: true, message: '请选择角色!' }]}
+          colProps={halfColProps}
+          fieldProps={{ style: { width: '100%' } }}
+          rules={[{ required: true, message: '请选择角色' }]}
         />
         <ProFormTextArea
           name="remark"
@@ -270,13 +237,8 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             defaultMessage: '备注',
           })}
           placeholder="请输入备注"
-          colProps={{ md: 24, xl: 24 }}
-          rules={[
-            {
-              required: false,
-              message: <FormattedMessage id="请输入备注！" defaultMessage="请输入备注！" />,
-            },
-          ]}
+          colProps={halfColProps}
+          fieldProps={{ style: { width: '100%' }, autoSize: { minRows: 3, maxRows: 5 } }}
         />
       </ProForm>
     </Modal>

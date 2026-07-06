@@ -299,10 +299,13 @@ const UserTableList: React.FC = () => {
       ...user,
       userId: user.userId ?? user.id,
       deptId: user.deptId,
+      deptName: user.deptName,
       username: user.username ?? user.userName,
       userName: user.userName ?? user.username,
       nickName: user.nickName ?? user.nickname,
       phonenumber: user.phonenumber ?? user.mobile,
+      postIds: Array.isArray(user.postIds) ? user.postIds : [],
+      roles: Array.isArray(user.roles) ? user.roles : [],
       sex: typeof user.sex === 'undefined' || user.sex === null ? user.sex : String(user.sex),
       status:
         typeof user.status === 'undefined' || user.status === null
@@ -521,6 +524,19 @@ const UserTableList: React.FC = () => {
       valueType: 'text',
       hideInSearch: true,
     },
+    {
+      title: <FormattedMessage id="system.user.email" defaultMessage="邮箱" />,
+      dataIndex: 'email',
+      valueType: 'text',
+      hideInSearch: true,
+    },
+    {
+      title: <FormattedMessage id="system.user.sex" defaultMessage="性别" />,
+      dataIndex: 'sex',
+      valueType: 'select',
+      valueEnum: sexOptions,
+      hideInSearch: true,
+    },
 
     {
       title: <FormattedMessage id="system.user.loginIp" defaultMessage="登录ip" />,
@@ -643,6 +659,66 @@ const UserTableList: React.FC = () => {
           </a>
         </Dropdown>,
       ],
+    },
+    {
+      title: <FormattedMessage id="system.user.post" defaultMessage="岗位" />,
+      dataIndex: 'postIds',
+      valueType: 'text',
+      hideInSearch: true,
+      render: (_, record) => {
+        const ids = Array.isArray((record as any).postIds) ? (record as any).postIds : [];
+        return ids.length ? ids.join('、') : '-';
+      },
+    },
+    {
+      title: <FormattedMessage id="system.user.role" defaultMessage="角色" />,
+      dataIndex: 'roles',
+      valueType: 'text',
+      hideInSearch: true,
+      render: (_, record) => {
+        const roles = Array.isArray((record as any).roles) ? (record as any).roles : [];
+        const roleNames = roles.map((item: any) => item?.roleName ?? item?.name).filter(Boolean);
+        return roleNames.length ? roleNames.join('、') : '-';
+      },
+    },
+    {
+      title: <FormattedMessage id="system.user.remark" defaultMessage="备注" />,
+      dataIndex: 'remark',
+      valueType: 'text',
+      hideInSearch: true,
+      ellipsis: true,
+    },
+    {
+      title: <FormattedMessage id="system.user.loginDate" defaultMessage="登录时间" />,
+      dataIndex: 'loginDate',
+      valueType: 'dateTime',
+      hideInSearch: true,
+    },
+  ];
+
+  const tableColumns: ProColumns<API.System.User>[] = [
+    columns[0],
+    columns[2],
+    columns[3],
+    columns[9],
+    columns[4],
+    columns[5],
+    {
+      ...columns[12],
+      render: (_, record) => {
+        const roles = Array.isArray((record as any).roles) ? (record as any).roles : [];
+        const roleNames = roles.map((item: any) => item?.roleName ?? item?.name).filter(Boolean);
+        return roleNames.length ? roleNames.join(', ') : '-';
+      },
+    },
+    columns[6],
+    columns[14],
+    columns[7],
+    columns[8],
+    columns[13],
+    {
+      ...columns[10],
+      fixed: 'right',
     },
   ];
 
@@ -774,7 +850,7 @@ const UserTableList: React.FC = () => {
               getUserList({ ...params, deptId: selectDept.id } as API.System.UserListParams).then(
                 (res) => {
                   const result = {
-                    data: res.rows,
+                    data: (res.rows || []).map((item) => normalizeUser(item)),
                     total: res.total,
                     success: true,
                   };
@@ -782,7 +858,7 @@ const UserTableList: React.FC = () => {
                 },
               )
             }
-            columns={columns}
+            columns={tableColumns}
             rowSelection={{
               onChange: (_, selectedRows) => {
                 setSelectedRows(selectedRows);

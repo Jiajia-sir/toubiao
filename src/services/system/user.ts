@@ -68,12 +68,17 @@ export async function addUser(params: API.System.User, options?: { [key: string]
 
 // 修改用户信息
 export async function updateUser(params: API.System.User, options?: { [key: string]: any }) {
+  const data = transformUserPayload(params) as Record<string, any>;
+  data.id = params.userId;
+  if (!data.password) {
+    delete data.password;
+  }
   return request<API.Result>(`${API_PREFIX}/system/user/update`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: params,
+    data,
     ...(options || {})
   });
 }
@@ -105,7 +110,12 @@ export function moveUserDeptBatch(userIds: number[], deptId: number) {
 
 // 导出用户信息
 export function exportUser(params?: API.System.UserListParams, options?: { [key: string]: any }) {
-  return downLoadXlsx(`${API_PREFIX}/system/user/export`, { params }, `user_${new Date().getTime()}.xlsx`);
+  return downLoadXlsx(
+    `${API_PREFIX}/system/user/export`,
+    { params: transformUserListParams(params), ...(options || {}) },
+    `user_${new Date().getTime()}.xlsx`,
+    'GET',
+  );
 }
 
 export function getUserImportTemplate() {
