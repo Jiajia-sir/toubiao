@@ -174,6 +174,7 @@ const OperlogTableList: React.FC = () => {
       title: <FormattedMessage id="monitor.operlog.title" defaultMessage="操作模块" />,
       dataIndex: 'type',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="monitor.operlog.business_type" defaultMessage="业务类型" />,
@@ -190,16 +191,19 @@ const OperlogTableList: React.FC = () => {
       title: <FormattedMessage id="monitor.operlog.request_method" defaultMessage="请求方式" />,
       dataIndex: 'requestMethod',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="monitor.operlog.oper_name" defaultMessage="操作人员" />,
       dataIndex: 'userName',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="monitor.operlog.oper_ip" defaultMessage="主机地址" />,
       dataIndex: 'userIp',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="monitor.operlog.status" defaultMessage="操作状态" />,
@@ -209,11 +213,13 @@ const OperlogTableList: React.FC = () => {
         0: { text: '成功', status: 'Success' },
         1: { text: '失败', status: 'Error' },
       },
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="monitor.operlog.oper_time" defaultMessage="操作时间" />,
       dataIndex: 'createTime',
       valueType: 'dateTime',
+      hideInSearch: true,
     },
     // {
     //   title: <FormattedMessage id="pages.searchTable.titleOption" defaultMessage="操作" />,
