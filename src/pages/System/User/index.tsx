@@ -522,20 +522,17 @@ const UserTableList: React.FC = () => {
       title: <FormattedMessage id="system.user.dept_name" defaultMessage="部门" />,
       dataIndex: 'deptName',
       valueType: 'text',
-      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.user.email" defaultMessage="邮箱" />,
       dataIndex: 'email',
       valueType: 'text',
-      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.user.sex" defaultMessage="性别" />,
       dataIndex: 'sex',
       valueType: 'select',
       valueEnum: sexOptions,
-      hideInSearch: true,
     },
 
     {
@@ -698,8 +695,14 @@ const UserTableList: React.FC = () => {
 
   const tableColumns: ProColumns<API.System.User>[] = [
     columns[0],
-    columns[2],
-    columns[3],
+    {
+      ...columns[2],
+      hideInSearch: false,
+    },
+    {
+      ...columns[3],
+      hideInSearch: true,
+    },
     columns[9],
     columns[4],
     columns[5],

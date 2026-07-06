@@ -1404,7 +1404,7 @@ export default function DataSearchPage() {
                     </div>
 
                     <div style={{ fontSize: 14, color: "#8c8c8c", lineHeight: 1.8, marginBottom: 12 }}>
-                      {result.summary}
+                      <HighlightHtml html={result.summary} />
                     </div>
 
                     {result.entities.length > 0 && (
