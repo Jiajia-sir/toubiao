@@ -3,7 +3,6 @@ import {
   initChunkFileTask,
   createChunkFileTask,
   mergeChunkFileTask,
-  createFileBaseData,
 } from '@/pages/Data/DocumentImport/api';
 
 const CHUNK_SIZE = 1024 * 1024 * 5; // 5MB
@@ -27,6 +26,7 @@ export interface UploadFileItem {
   uploadStatus: UploadStatus;
   percentage: number;
   errorMsg?: string;
+  responseData?: any[];
 }
 
 /**
@@ -104,6 +104,7 @@ type OnStatusChange = (
   status: UploadStatus,
   percentage: number,
   errorMsg?: string,
+  responseData?: any[],
 ) => void;
 
 /**
@@ -120,7 +121,7 @@ async function uploadChunk(
   chunkNo: number,
   uploadId: string,
   onStatusChange: OnStatusChange,
-): Promise<void> {
+): Promise<any[]> {
   const current = chunkedfiles[chunkNo];
   onStatusChange(current.guid, '分片上传中', 0);
 
@@ -139,15 +140,16 @@ async function uploadChunk(
 
     if (chunkNo === chunkedfiles.length - 1) {
       // 所有分片上传完成，合并
-      await mergeChunks(uploadId, current.guid, onStatusChange);
+      return await mergeChunks(uploadId, current.guid, onStatusChange);
     } else {
       // 继续下一个分片
-      await uploadChunk(chunkedfiles, chunkNo + 1, uploadId, onStatusChange);
+      return await uploadChunk(chunkedfiles, chunkNo + 1, uploadId, onStatusChange);
     }
   } catch (err: any) {
     const errorMsg = err?.message || err?.data?.msg || '上传分片失败';
     onStatusChange(current.guid, '失败', 0, errorMsg);
     console.error('上传分片失败', err);
+    throw err;
   }
 }
 
@@ -158,19 +160,22 @@ async function mergeChunks(
   uploadId: string,
   guid: string,
   onStatusChange: OnStatusChange,
-): Promise<void> {
+): Promise<any[]> {
   onStatusChange(guid, '分片合并中', 95);
 
   try {
     const res = await mergeChunkFileTask({ uploadId });
+    const responseData = Array.isArray(res?.data) ? res.data : res?.data ? [res.data] : [];
 
     // 合并成功，先不执行素材解析
     // await parseMaterial(res.data, guid, onStatusChange);
-    onStatusChange(guid, '上传成功', 100);
+    onStatusChange(guid, '上传成功', 100, undefined, responseData);
+    return responseData;
   } catch (err: any) {
     const errorMsg = err?.message || err?.data?.msg || '合并分片文件失败';
     onStatusChange(guid, '失败', 0, errorMsg);
     console.error('合并分片文件失败', err);
+    throw err;
   }
 }
 
@@ -210,7 +215,7 @@ export async function chunkUpload(
   file: File,
   onStatusChange: OnStatusChange,
   uid?: string,
-): Promise<void> {
+): Promise<any[]> {
   const guid = uid || `${file.name}-${file.size}-${file.lastModified}-${Date.now()}`;
 
   try {
@@ -219,19 +224,21 @@ export async function chunkUpload(
 
     // 秒传：服务端已存在该文件
     if (res.data?.status === 'SUCCESS') {
-      onStatusChange(guid, '上传成功', 100);
-      // 秒传也需要合并+解析（不等待完成，与 Vue 原始逻辑一致）
-      mergeChunkFileTask({ uploadId: res.data.uploadId }).catch((err) => {
-        console.error('秒传合并失败', err);
-      });
-      return;
+      const mergeRes = await mergeChunkFileTask({ uploadId: res.data.uploadId });
+      const responseData = Array.isArray(mergeRes?.data)
+        ? mergeRes.data
+        : mergeRes?.data
+          ? [mergeRes.data]
+          : [];
+      onStatusChange(guid, '上传成功', 100, undefined, responseData);
+      return responseData;
     }
 
     // 初始化失败或无 uploadId
     if (!res.data?.uploadId) {
       const errorMsg = res.msg || '初始化失败，未获取到uploadId';
       onStatusChange(guid, '失败', 0, errorMsg);
-      return;
+      throw new Error(errorMsg);
     }
 
     onStatusChange(guid, '分片任务初始化', 5);
@@ -259,10 +266,11 @@ export async function chunkUpload(
     }
 
     // 开始上传分片
-    await uploadChunk(chunkedfiles, 0, res.data.uploadId, onStatusChange);
+    return await uploadChunk(chunkedfiles, 0, res.data.uploadId, onStatusChange);
   } catch (err: any) {
     const errorMsg = err?.message || err?.data?.msg || '分片上传失败';
     onStatusChange(guid, '失败', 0, errorMsg);
     console.error('分片上传失败', err);
+    throw err;
   }
 }
