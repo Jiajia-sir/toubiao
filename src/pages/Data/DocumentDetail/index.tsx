@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { history, useLocation, useParams } from "@umijs/max";
 import {
@@ -56,6 +56,7 @@ const META_CARD_HEIGHT = 340;
 const KEYWORD_CARD_HEIGHT = 220;
 const ENTITY_CARD_HEIGHT = 280;
 const TAG_CARD_HEIGHT = 220;
+const PREVIEW_PAGE_SIZE = 10;
 const PREVIEW_CARD_HEIGHT =
   META_CARD_HEIGHT +
   KEYWORD_CARD_HEIGHT +
@@ -500,7 +501,10 @@ export default function DataDetailPage() {
   const [previewTotal, setPreviewTotal] = useState(0);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewInitialized, setPreviewInitialized] = useState(false);
+  const [previewReachedEnd, setPreviewReachedEnd] = useState(false);
   const [previewChunks, setPreviewChunks] = useState<Array<{ seq: string; value: string; hit?: boolean }>>([]);
+  const previewLoadingRef = useRef(false);
+  const previewScrollLockRef = useRef(false);
 
   const baseDocument = getDocumentParseDetail(params.id || "");
   const sourceTitle = searchParams.get("title");
@@ -544,7 +548,10 @@ export default function DataDetailPage() {
     setPreviewPageNo(1);
     setPreviewTotal(0);
     setPreviewInitialized(false);
+    setPreviewReachedEnd(false);
     setPreviewChunks([]);
+    previewLoadingRef.current = false;
+    previewScrollLockRef.current = false;
   }, [params.id, detailData?.id, previewKeyword]);
 
   useEffect(() => {
@@ -552,9 +559,10 @@ export default function DataDetailPage() {
     const timer = setTimeout(async () => {
       try {
         setPreviewLoading(true);
+        previewLoadingRef.current = true;
         const response = await getDocumentHtmlChunkPage({
           pageNo: previewPageNo,
-          pageSize: 10,
+          pageSize: PREVIEW_PAGE_SIZE,
           docId: params.id || detailData?.id || 0,
           keyword: previewKeyword.trim(),
           contextSize: 1,
@@ -581,8 +589,11 @@ export default function DataDetailPage() {
           }))
           .filter((item) => item.value);
 
+        const pageTotal = extractPageTotal(response);
+        let mergedChunkCount = chunks.length;
         setPreviewChunks((previousChunks) => {
           if (previewPageNo === 1) {
+            mergedChunkCount = chunks.length;
             return chunks;
           }
 
@@ -593,10 +604,13 @@ export default function DataDetailPage() {
               mergedChunks.push(item);
             }
           });
+          mergedChunkCount = mergedChunks.length;
           return mergedChunks;
         });
-        setPreviewTotal(extractPageTotal(response));
+        setPreviewTotal(pageTotal);
+        setPreviewReachedEnd(chunks.length < PREVIEW_PAGE_SIZE || mergedChunkCount >= pageTotal);
         setPreviewInitialized(true);
+        previewScrollLockRef.current = false;
       } catch (error) {
         console.error(error);
         if (active) {
@@ -604,11 +618,14 @@ export default function DataDetailPage() {
             setPreviewChunks([]);
             setPreviewTotal(0);
           }
+          setPreviewReachedEnd(true);
           setPreviewInitialized(true);
+          previewScrollLockRef.current = false;
         }
       } finally {
         if (active) {
           setPreviewLoading(false);
+          previewLoadingRef.current = false;
         }
       }
     }, 300);
@@ -674,16 +691,18 @@ export default function DataDetailPage() {
     return previewBlocks.filter((block) => stripHtml(block.value).toLowerCase().includes(keyword));
   }, [previewBlocks, previewChunks.length, previewKeyword]);
 
-  const previewHasMore = previewTotal > 0 && previewChunks.length < previewTotal;
+  const previewHasMore = !previewReachedEnd && previewTotal > 0 && previewChunks.length < previewTotal;
 
   const handlePreviewScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
-    if (previewLoading || !previewHasMore) {
+    if (previewLoadingRef.current || previewScrollLockRef.current || !previewHasMore) {
       return;
     }
 
     const remainingDistance = target.scrollHeight - target.scrollTop - target.clientHeight;
     if (remainingDistance <= 120) {
+      previewScrollLockRef.current = true;
+      previewLoadingRef.current = true;
       setPreviewPageNo((currentPageNo) => currentPageNo + 1);
     }
   };
@@ -996,7 +1015,22 @@ export default function DataDetailPage() {
                     width: 100%;
                     max-width: 100%;
                     border-collapse: collapse;
+                    border-spacing: 0;
                     table-layout: auto;
+                    border: 1px solid #e2e8f0;
+                  }
+
+                  .document-preview-html colgroup,
+                  .document-preview-html col,
+                  .document-preview-html thead,
+                  .document-preview-html tbody,
+                  .document-preview-html tfoot,
+                  .document-preview-html tr {
+                    display: revert;
+                  }
+
+                  .document-preview-html tr {
+                    border: 1px solid #e2e8f0;
                   }
 
                   .document-preview-html td,
@@ -1005,11 +1039,19 @@ export default function DataDetailPage() {
                     vertical-align: top;
                     white-space: pre-wrap;
                     word-break: break-word;
+                    border: 1px solid #e2e8f0;
+                    box-sizing: border-box;
                   }
 
                   .document-preview-html img {
                     max-width: 100%;
                     height: auto;
+                  }
+
+                  .document-preview-html br {
+                    display: block;
+                    content: "";
+                    margin-top: 0.35em;
                   }
                 `}</style>
 
@@ -1037,7 +1079,7 @@ export default function DataDetailPage() {
                       )}
                       {!previewHasMore && previewInitialized && previewChunks.length > 0 && (
                         <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
-                          已加载全部 {previewTotal} 条内容
+                          已加载全部内容
                         </div>
                       )}
                       {!previewLoading && previewHasMore && (
