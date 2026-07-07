@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { history } from '@umijs/max';
 import { getTagList, type TagItem } from '@/services/biz/tag';
 import {
@@ -9,6 +10,7 @@ import {
   type EntityTypeAttributeItem,
   type EntityTypeItem,
 } from '@/services/biz/entity-type';
+import { getLlmModelConfigList, type LlmModelConfigItem } from '@/services/biz/llm-model-config';
 import {
   Card,
   Button,
@@ -72,7 +74,7 @@ const defaultTagOptions = [
   { label: '技术', value: '技术' },
 ];
 
-const modelOptions = [
+const defaultModelOptions = [
   {
     label: (
       <Space>
@@ -164,6 +166,40 @@ const sampleResult = `人物：张三
 时间：2023年10月15日
 事件：云栖大会`;
 
+interface ModelOption {
+  label: ReactNode;
+  value: string;
+}
+
+const normalizeModelOption = (item: LlmModelConfigItem): ModelOption => {
+  const displayName = item.name || item.modelCode;
+  const providerText = item.providerType ? String(item.providerType).toUpperCase() : 'MODEL';
+  const iconColorMap: Record<string, string> = {
+    vllm: '#1677ff',
+    ollama: '#52c41a',
+    sub2api: '#722ed1',
+    openai: '#10a37f',
+    claude: '#fa8c16',
+  };
+  const iconColor = iconColorMap[item.providerType] || '#1677ff';
+
+  return {
+    label: (
+      <Space>
+        <RobotOutlined style={{ color: iconColor }} />
+        <span>{displayName}</span>
+        {item.modelCode && item.modelCode !== displayName && (
+          <span style={{ color: '#8c8c8c', fontSize: 12 }}>({item.modelCode})</span>
+        )}
+        <Tag color="blue" style={{ marginInlineStart: 4 }}>
+          {providerText}
+        </Tag>
+      </Space>
+    ),
+    value: displayName,
+  };
+};
+
 export default function KnowledgeExtractConfigPage() {
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
@@ -192,6 +228,7 @@ export default function KnowledgeExtractConfigPage() {
   const [frequencyPenaltyEnabled, setFrequencyPenaltyEnabled] = useState(false);
   const [maxTokensEnabled, setMaxTokensEnabled] = useState(false);
   const [tagOptions, setTagOptions] = useState(defaultTagOptions);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>(defaultModelOptions);
   const [entityTypeOptions, setEntityTypeOptions] = useState<EntityTypeItem[]>([]);
   const [attributeOptionsMap, setAttributeOptionsMap] = useState<
     Record<string, EntityTypeAttributeItem[]>
@@ -300,8 +337,36 @@ export default function KnowledgeExtractConfigPage() {
       }
     };
 
+    const fetchModelOptions = async () => {
+      try {
+        const res: any = await getLlmModelConfigList();
+        if (res?.code === 200) {
+          const options = extractList<LlmModelConfigItem>(res)
+            .filter((item) => Number(item?.enabled) === 1)
+            .map(normalizeModelOption);
+          if (options.length > 0) {
+            setModelOptions(options);
+            setConfig((prev) => {
+              const exists = options.some((option) => option.value === prev.model);
+              return exists ? prev : { ...prev, model: options[0].value };
+            });
+          } else {
+            setModelOptions(defaultModelOptions);
+          }
+        } else {
+          message.error(res?.msg || '获取模型列表失败');
+          setModelOptions(defaultModelOptions);
+        }
+      } catch (error) {
+        console.error(error);
+        message.error('获取模型列表失败');
+        setModelOptions(defaultModelOptions);
+      }
+    };
+
     fetchTagOptions();
     fetchEntityTypeOptions();
+    fetchModelOptions();
   }, []);
 
   useEffect(() => {
@@ -1883,6 +1948,7 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
   },
 };
+
 
 
 

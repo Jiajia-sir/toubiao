@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @name umi 鐨勮矾鐢遍厤缃?
  * @description 鍙敮鎸?path,component,routes,redirect,wrappers,name,icon 鐨勯厤缃?
  * @param path  path 鍙敮鎸佷袱绉嶅崰浣嶇閰嶇疆锛岀涓€绉嶆槸鍔ㄦ€佸弬鏁?:id 鐨勫舰寮忥紝绗簩绉嶆槸 * 閫氶厤绗︼紝閫氶厤绗﹀彧鑳藉嚭鐜拌矾鐢卞瓧绗︿覆鐨勬渶鍚庛€?
@@ -122,6 +122,11 @@ export default [
         component: './ConfigCenter/KnowledgeExtractConfig',
       },
       {
+        name: '妯″瀷绠＄悊',
+        path: '/config-center/model-manage',
+        component: './ConfigCenter/ModelManage',
+      },
+      {
         name: '鐭ヨ瘑鎶藉彇閰嶇疆',
         path: '/config-center/knowledge-extract/config',
         component: './ConfigCenter/KnowledgeExtractConfig/config',
@@ -163,6 +168,10 @@ export default [
   {
     path: '/configCenter/knowledgeExtract/config/index',
     component: './ConfigCenter/KnowledgeExtractConfig',
+  },
+  {
+    path: '/configCenter/modelManage/index',
+    component: './ConfigCenter/ModelManage',
   },
   {
     path: '/configCenter/ablation/index',
@@ -244,4 +253,5 @@ export default [
     component: './404',
   },
 ];
+
 
