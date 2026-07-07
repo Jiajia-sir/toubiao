@@ -1,7 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { history } from '@umijs/max';
+import { getTagList, type TagItem } from '@/services/biz/tag';
+import {
+  getEntityTypeAttributeList,
+  getEntityTypeList,
+  type EntityTypeAttributeItem,
+  type EntityTypeItem,
+} from '@/services/biz/entity-type';
 import {
   Card,
   Button,
@@ -44,6 +51,8 @@ interface KnowledgeExtractConfig {
   granularity: '粗颗粒度' | '细颗粒度';
   model: string;
   categories: string[];
+  coarseEntityTypeIds: string[];
+  fineAttributeIdsByType: Record<string, string[]>;
   categoryLimit: number;
   temperature: number;
   topP: number;
@@ -52,7 +61,7 @@ interface KnowledgeExtractConfig {
   maxTokens: number;
 }
 
-const availableTags = [
+const defaultTagOptions = [
   { label: '新闻', value: '新闻' },
   { label: '公告', value: '公告' },
   { label: '政策', value: '政策' },
@@ -115,32 +124,9 @@ const categoryLimitOptions = [
   { label: '20个', value: 20 },
 ];
 
-const defaultCategories = ['人物', '地点', '时间', '机构', '事件', '产品', '概念'];
-
-const fineGrainedProperties = {
-  人物属性: [
-    '姓名',
-    '性别',
-    '年龄',
-    '学历',
-    '专业',
-    '国籍',
-    '职业',
-    '工作单位',
-    '联系方式',
-    '电子邮箱',
-    '研究方向',
-  ],
-  实体属性: ['实体名称', '实体类型', '实体状态', '实体描述', '关联实体'],
-  数值属性: ['数量', '金额', '比例', '百分比', '时间跨度', '距离', '面积', '体积', '重量'],
-  其他属性: ['颜色', '材质', '规格', '型号', '品牌', '产地', '生产日期', '有效期'],
-};
-
-const defaultCategoriesFine = ['人物属性', '实体属性', '数值属性', '其他属性'];
-
-const samplePrompt = `你是专业的智能问答知识抽取专家，请从1000字的文本中抽取以下15个类别：
-1. 人物属性：性别、年龄、学历、专业、国籍、职业、工作单位、联系方式、电子邮箱、研究方向
-2. 实体属性：3.数值属性、4.其他属性
+const samplePrompt = `你是专业的智能问答知识抽取专家，请根据配置的实体类型和实体属性完成知识抽取：
+1. 粗颗粒度：按实体类型输出实体识别结果
+2. 细颗粒度：按实体类型下的属性输出结构化信息
 3. 要求：
 - 严格基于原文抽取，不添加任何主观信息
 - 缺失的类别需用"无"
@@ -182,12 +168,14 @@ export default function KnowledgeExtractConfigPage() {
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [config, setConfig] = useState<KnowledgeExtractConfig>({
-    tags: ['新闻', '公告', '政策'],
+    tags: [],
     blockSize: 1000,
     splitMode: '字数',
     granularity: '粗颗粒度',
     model: 'Qwen2.5-7B-Instruct',
-    categories: defaultCategories,
+    categories: [],
+    coarseEntityTypeIds: [],
+    fineAttributeIdsByType: {},
     categoryLimit: 10,
     temperature: 0.1,
     topP: 0.3,
@@ -197,22 +185,207 @@ export default function KnowledgeExtractConfigPage() {
   });
   const [testText, setTestText] = useState('');
   const [extractResult, setExtractResult] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
-  const [showCategoryInput, setShowCategoryInput] = useState(false);
-  const [displayCategories, setDisplayCategories] = useState<string[]>(defaultCategories);
-  const [showFineInput, setShowFineInput] = useState(false);
-  const [fineCategoryInput, setFineCategoryInput] = useState('');
-  const [displayFineCategories, setDisplayFineCategories] = useState<string[]>([]);
   const [modelPrecision, setModelPrecision] = useState<string>('精确抽取');
   const [tempEnabled, setTempEnabled] = useState(true);
   const [topPEnabled, setTopPEnabled] = useState(true);
   const [presencePenaltyEnabled, setPresencePenaltyEnabled] = useState(true);
   const [frequencyPenaltyEnabled, setFrequencyPenaltyEnabled] = useState(false);
   const [maxTokensEnabled, setMaxTokensEnabled] = useState(false);
+  const [tagOptions, setTagOptions] = useState(defaultTagOptions);
+  const [entityTypeOptions, setEntityTypeOptions] = useState<EntityTypeItem[]>([]);
+  const [attributeOptionsMap, setAttributeOptionsMap] = useState<
+    Record<string, EntityTypeAttributeItem[]>
+  >({});
+  const [attributeLoadingMap, setAttributeLoadingMap] = useState<Record<string, boolean>>({});
+  const [activeFineEntityTypeId, setActiveFineEntityTypeId] = useState('');
+  const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
 
-  const customCategories = config.categories.filter((cat) => !defaultCategories.includes(cat));
+  const extractList = <T,>(response: any): T[] => {
+    if (Array.isArray(response?.data)) {
+      return response.data;
+    }
+    if (Array.isArray(response?.list)) {
+      return response.list;
+    }
+    if (Array.isArray(response)) {
+      return response;
+    }
+    return [];
+  };
 
-  const handleSave = () => {
+  const normalizeEntityTypeItem = (item: any): EntityTypeItem => ({
+    id: String(item?.id ?? ''),
+    name: String(item?.name ?? ''),
+    description: item?.description,
+    enabled: item?.enabled,
+    icon: item?.icon,
+    color: item?.color,
+    bgColor: item?.bgColor,
+    entityCount: Number(item?.entityCount ?? 0),
+    isSystem: Boolean(item?.isSystem),
+    createTime: item?.createTime,
+  });
+
+  const normalizeEntityTypeAttributeItem = (item: any): EntityTypeAttributeItem => ({
+    id: String(item?.id ?? ''),
+    entityTypeConfigId: String(item?.entityTypeConfigId ?? item?.entityTypeId ?? ''),
+    name: String(item?.name ?? ''),
+    code: item?.code,
+    dataType: item?.dataType ?? 'string',
+    description: item?.description,
+    createTime: item?.createTime,
+  });
+
+  const loadAttributeOptions = async (entityTypeId: string) => {
+    if (!entityTypeId || attributeOptionsMap[entityTypeId]) {
+      return;
+    }
+    setAttributeLoadingMap((prev) => ({ ...prev, [entityTypeId]: true }));
+    try {
+      const res: any = await getEntityTypeAttributeList(entityTypeId);
+      if (res?.code === 200) {
+        const options = extractList<any>(res).map(normalizeEntityTypeAttributeItem);
+        setAttributeOptionsMap((prev) => ({ ...prev, [entityTypeId]: options }));
+      } else {
+        message.error(res?.msg || '获取实体属性列表失败');
+        setAttributeOptionsMap((prev) => ({ ...prev, [entityTypeId]: [] }));
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('获取实体属性列表失败');
+      setAttributeOptionsMap((prev) => ({ ...prev, [entityTypeId]: [] }));
+    } finally {
+      setAttributeLoadingMap((prev) => ({ ...prev, [entityTypeId]: false }));
+    }
+  };
+
+  useEffect(() => {
+    const fetchTagOptions = async () => {
+      try {
+        const res: any = await getTagList();
+        if (res?.code === 200) {
+          const options = extractList<any>(res).map((item) => ({
+            label: item.tag,
+            value: item.tag,
+          }));
+          setTagOptions(options.length > 0 ? options : defaultTagOptions);
+        } else {
+          message.error(res?.msg || '获取标签列表失败');
+          setTagOptions(defaultTagOptions);
+        }
+      } catch (error) {
+        console.error(error);
+        message.error('获取标签列表失败');
+        setTagOptions(defaultTagOptions);
+      }
+    };
+
+    const fetchEntityTypeOptions = async () => {
+      try {
+        const res: any = await getEntityTypeList();
+        if (res?.code === 200) {
+          const options = extractList<any>(res).map(normalizeEntityTypeItem);
+          setEntityTypeOptions(options);
+          if (options.length > 0) {
+            setActiveFineEntityTypeId((prev) => prev || String(options[0].id));
+          }
+        } else {
+          message.error(res?.msg || '获取实体类型列表失败');
+          setEntityTypeOptions([]);
+        }
+      } catch (error) {
+        console.error(error);
+        message.error('获取实体类型列表失败');
+        setEntityTypeOptions([]);
+      }
+    };
+
+    fetchTagOptions();
+    fetchEntityTypeOptions();
+  }, []);
+
+  useEffect(() => {
+    if (!activeFineEntityTypeId && entityTypeOptions.length > 0) {
+      setActiveFineEntityTypeId(String(entityTypeOptions[0].id));
+    }
+  }, [activeFineEntityTypeId, entityTypeOptions]);
+
+  useEffect(() => {
+    if (activeFineEntityTypeId) {
+      void loadAttributeOptions(activeFineEntityTypeId);
+    }
+  }, [activeFineEntityTypeId]);
+
+  const selectedCoarseEntityTypes = entityTypeOptions.filter((item) =>
+    config.coarseEntityTypeIds.includes(String(item.id)),
+  );
+
+  const selectedFineAttributeGroups = entityTypeOptions
+    .map((entityType) => {
+      const entityTypeId = String(entityType.id);
+      const selectedIds = config.fineAttributeIdsByType[entityTypeId] || [];
+      const attributes = (attributeOptionsMap[entityTypeId] || []).filter((attribute) =>
+        selectedIds.includes(String(attribute.id)),
+      );
+      return {
+        entityType,
+        entityTypeId,
+        attributes,
+      };
+    })
+    .filter((item) => item.attributes.length > 0);
+
+  const selectedFineAttributeCount = selectedFineAttributeGroups.reduce(
+    (sum, item) => sum + item.attributes.length,
+    0,
+  );
+
+  const updateCoarseEntityTypeIds = (values: Array<string | number>) => {
+    setConfig({
+      ...config,
+      coarseEntityTypeIds: values.map(String).slice(0, config.categoryLimit),
+    });
+  };
+
+  const updateFineAttributeSelection = (
+    entityTypeId: string,
+    values: Array<string | number>,
+  ) => {
+    const currentIds = config.fineAttributeIdsByType[entityTypeId] || [];
+    const otherCount = selectedFineAttributeCount - currentIds.length;
+    const nextIds = values
+      .map(String)
+      .slice(0, Math.max(0, config.categoryLimit - otherCount));
+    setConfig({
+      ...config,
+      fineAttributeIdsByType: {
+        ...config.fineAttributeIdsByType,
+        [entityTypeId]: nextIds,
+      },
+    });
+  };
+
+  const inferAttributeValue = (attributeName: string, text: string) => {
+    if (attributeName.includes('性别')) {
+      return text.match(/男|女/)?.[0] || '无';
+    }
+    if (attributeName.includes('年龄')) {
+      return text.match(/\d+岁/)?.[0] || '无';
+    }
+    if (attributeName.includes('学历')) {
+      return text.match(/本科|硕士|博士|大专/)?.[0] || '无';
+    }
+    if (attributeName.includes('时间') || attributeName.includes('日期')) {
+      return text.match(/\d{4}年\d{1,2}月\d{1,2}日/)?.[0] || '无';
+    }
+    if (attributeName.includes('金额') || attributeName.includes('薪资')) {
+      return text.match(/\d+(?:\.\d+)?(?:元|万|亿元|%)/)?.[0] || '无';
+    }
+    if (attributeName.includes('地点') || attributeName.includes('地址')) {
+      return text.match(/北京|杭州|上海|广州|深圳/)?.[0] || '无';
+    }
+    return '示例值';
+  };  const handleSave = () => {
     setLoading(true);
     setTimeout(() => {
       message.success('保存成功');
@@ -227,94 +400,34 @@ export default function KnowledgeExtractConfigPage() {
       let result = '';
 
       if (config.granularity === '粗颗粒度') {
-        const entities: Record<string, string[]> = {
-          人物: [],
-          机构: [],
-          地点: [],
-          时间: [],
-          事件: [],
-          产品: [],
-          概念: [],
-        };
-
-        const patterns = {
-          人物: /(?:患者|代表|董事|总|经理|师|生|员|用户)/,
-          机构: /(?:集团|公司|医院|银行|政府|大学|研究所)/,
-          地点: /(?:北京|杭州|上海|广州|深圳|市|省)/,
-          时间: /(\d{4}年\d{1,2}月\d{1,2}日|\d{4}-\d{1,2}-\d{1,2}|今日|昨日)/,
-          事件: /(?:发布|成立|召开|实施|宣布|招聘|调整)/,
-          产品: /(?:模型|系统|平台|服务|产品|软件)/,
-          概念: /(?:AI|智能|数字化|信息化)/,
-        };
-
-        Object.entries(patterns).forEach(([category, pattern]) => {
-          const matches = text.match(new RegExp(pattern, 'g'));
-          if (matches) {
-            entities[category] = Array.from(new Set(matches));
-          }
-        });
-
-        result = `【${config.model} - ${modelPrecision}抽取结果】\n`;
-        Object.entries(entities).forEach(([category, values]) => {
-          if (values.length > 0) {
-            result += `${category}：${values.join('、')}\n`;
-          }
-        });
-        if (!result.includes('：')) {
-          result = `【抽取结果】
-人物：张三
-机构：阿里巴巴集团
-地点：杭州
-时间：2023年10月15日
-事件：云栖大会
-产品：AI大模型`;
+        const selectedNames = selectedCoarseEntityTypes.map((item) => item.name);
+        result = `【${config.model} - ${modelPrecision}粗颗粒度抽取结果】\n`;
+        if (selectedNames.length === 0) {
+          result += '未选择实体类型';
+        } else {
+          result += `抽取实体类型：${selectedNames.join('、')}\n\n`;
+          selectedNames.forEach((name) => {
+            result += `${name}：示例${name}结果\n`;
+          });
         }
       } else {
-        const props: string[] = [];
-        Object.entries(fineGrainedProperties).forEach(([category, properties]) => {
-          const selected = config.categories.filter((p) => (properties as string[]).includes(p));
-          if (selected.length > 0) {
-            props.push(...selected.slice(0, 4));
-          }
-        });
-
-        const extractFineGrained = (text: string) => {
-          const extracted: string[] = [];
-          if (text.includes('男') || text.includes('女')) {
-            extracted.push(`性别：${text.match(/男|女/)?.[0] || '未知'}`);
-          }
-          if (text.match(/\d+岁/)) {
-            extracted.push(`年龄：${text.match(/\d+岁/)?.[0]}`);
-          }
-          if (text.match(/本科|硕士|博士|大专/)) {
-            extracted.push(`学历：${text.match(/本科|硕士|博士|大专/)?.[0]}`);
-          }
-          if (text.match(/\d+元|\d+万/)) {
-            extracted.push(`金额：${text.match(/\d+[元万亿]/)?.[0]}`);
-          }
-          if (text.match(/\d+%/)) {
-            extracted.push(`比例：${text.match(/\d+%/)?.[0]}`);
-          }
-          if (text.match(/\d{4}年\d{1,2}月\d{1,2}日/)) {
-            extracted.push(`时间：${text.match(/\d{4}年\d{1,2}月\d{1,2}日/)?.[0]}`);
-          }
-          return extracted;
-        };
-
-        const fineResults = extractFineGrained(text);
-
         result = `【${config.model} - ${modelPrecision}细颗粒度抽取结果】\n`;
-        result += `属性：${props.join('、') || '无'}\n`;
-        result += '\n抽取详情：\n';
-        result += fineResults.length > 0 ? fineResults.join('\n') : '无详细信息';
+        if (selectedFineAttributeGroups.length === 0) {
+          result += '未选择实体属性';
+        } else {
+          selectedFineAttributeGroups.forEach(({ entityType, attributes }) => {
+            result += `\n【${entityType.name}】\n`;
+            attributes.forEach((attribute) => {
+              result += `${attribute.name}：${inferAttributeValue(attribute.name, text)}\n`;
+            });
+          });
+        }
       }
 
-      setExtractResult(result);
+      setExtractResult(result.trim() || '暂无结果');
       setTestLoading(false);
     }, 1500);
   };
-
-  const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
 
   const handleGeneratePrompt = () => {
     const granularity = config.granularity;
@@ -328,16 +441,17 @@ export default function KnowledgeExtractConfigPage() {
     prompt += `【精度模式】${precision}\n\n`;
 
     if (granularity === '粗颗粒度') {
-      const categoryText = config.categories.join('、');
+      const categoryText = selectedCoarseEntityTypes.map((item) => item.name).join('、') || '未选择';
       prompt += `【抽取类别】${categoryText}\n\n`;
     } else {
-      prompt += `【抽取类别】按以下分类抽取：\n\n`;
-      Object.entries(fineGrainedProperties).forEach(([category, properties]) => {
-        const selectedProps = config.categories.filter((p) => (properties as string[]).includes(p));
-        if (selectedProps.length > 0) {
-          prompt += `【${category}】${selectedProps.join('、')}\n`;
-        }
-      });
+      prompt += `【抽取类别】按以下实体类型及属性抽取：\n\n`;
+      if (selectedFineAttributeGroups.length === 0) {
+        prompt += `【未选择属性】请先选择实体类型属性\n`;
+      } else {
+        selectedFineAttributeGroups.forEach(({ entityType, attributes }) => {
+          prompt += `【${entityType.name}】${attributes.map((item) => item.name).join('、')}\n`;
+        });
+      }
     }
 
     prompt += `\n【要求】\n`;
@@ -442,7 +556,7 @@ export default function KnowledgeExtractConfigPage() {
                       });
                     }
                   }}
-                  options={availableTags.filter((tag) => !config.tags.includes(tag.value))}
+                  options={tagOptions.filter((tag) => !config.tags.includes(tag.value))}
                   allowClear
                 />
               </Space>
@@ -646,7 +760,7 @@ export default function KnowledgeExtractConfigPage() {
                             categoryLimit: Math.max(1, config.categoryLimit - 1),
                           })
                         }
-                        disabled={config.categoryLimit <= 0}
+                        disabled={config.categoryLimit <= 1}
                       >
                         -
                       </Button>
@@ -665,171 +779,40 @@ export default function KnowledgeExtractConfigPage() {
                       </Button>
                       <span style={{ color: '#666', marginLeft: 4 }}>个</span>
                       <span style={{ color: '#1677ff', fontSize: 12 }}>
-                        已选择 {config.categories.length} / {config.categoryLimit} 个类别，还可添加{' '}
-                        {Math.max(0, config.categoryLimit - config.categories.length)} 个
+                        已选择 {selectedCoarseEntityTypes.length} / {config.categoryLimit} 个类别，还可添加{' '}
+                        {Math.max(0, config.categoryLimit - selectedCoarseEntityTypes.length)} 个
                       </span>
                     </Space>
                   </div>
-                  <div style={{ marginBottom: 16 }}>
-                    {/* <div
-                      style={{
-                        fontWeight: 500,
-                        marginBottom: 12,
-                        color: "#333",
-                      }}
-                    >
-                      类别列表
-                    </div> */}
-                    <Checkbox.Group
-                      style={{
-                        width: '100%',
-                      }}
-                      value={config.categories}
-                      onChange={(values) =>
-                        setConfig({ ...config, categories: values as string[] })
-                      }
-                    >
-                      <Row gutter={[8, 8]}>
-                        {displayCategories.map((cat) => (
-                          <Col span={3} key={cat}>
+
+                  <Checkbox.Group
+                    style={{ width: '100%' }}
+                    value={config.coarseEntityTypeIds}
+                    onChange={(values) => updateCoarseEntityTypeIds(values as Array<string | number>)}
+                  >
+                    <Row gutter={[8, 8]}>
+                      {entityTypeOptions.map((entityType) => {
+                        const entityTypeId = String(entityType.id);
+                        const checked = config.coarseEntityTypeIds.includes(entityTypeId);
+                        return (
+                          <Col span={6} key={entityTypeId}>
                             <div
                               style={{
                                 padding: '8px 8px',
                                 borderRadius: 4,
-                                border: `1px solid ${
-                                  config.categories.includes(cat) ? '#1677ff' : '#d9d9d9'
-                                }`,
-                                background: config.categories.includes(cat) ? '#e6f7ff' : '#fafafa',
+                                border: `1px solid ${checked ? '#1677ff' : '#d9d9d9'}`,
+                                background: checked ? '#e6f7ff' : '#fafafa',
                                 transition: 'all 0.2s ease',
                                 textAlign: 'center',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
                               }}
                             >
-                              <Checkbox value={cat}>{cat}</Checkbox>
-                              {!defaultCategories.includes(cat) && (
-                                <span
-                                  style={{
-                                    color: '#ff4d4f',
-                                    cursor: 'pointer',
-                                    marginLeft: 2,
-                                    fontSize: 14,
-                                    fontWeight: 'bold',
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setConfig({
-                                      ...config,
-                                      categories: config.categories.filter((c) => c !== cat),
-                                    });
-                                    setDisplayCategories(
-                                      displayCategories.filter((c) => c !== cat),
-                                    );
-                                  }}
-                                >
-                                  ×
-                                </span>
-                              )}
+                              <Checkbox value={entityTypeId}>{entityType.name}</Checkbox>
                             </div>
                           </Col>
-                        ))}
-                      </Row>
-                    </Checkbox.Group>
-                  </div>
-                  <div style={{ marginTop: 12 }}>
-                    {/* <div
-                      style={{
-                        marginBottom: 8,
-                        color: "#333",
-                        fontWeight: 500,
-                      }}
-                    >
-                      添加新类别
-                    </div> */}
-                    {showCategoryInput ? (
-                      <Input
-                        autoFocus
-                        placeholder="输入类别名称，多个用逗号分隔，每项最多5字"
-                        value={customCategory}
-                        onChange={(e) => setCustomCategory(e.target.value.slice(0, 5))}
-                        maxLength={5}
-                        onPressEnter={() => {
-                          if (customCategory.trim()) {
-                            const newCategories = customCategory
-                              .split(',')
-                              .map((c) => c.trim().slice(0, 5))
-                              .filter(
-                                (c) =>
-                                  c &&
-                                  !config.categories.includes(c) &&
-                                  config.categories.length < config.categoryLimit,
-                              );
-                            if (newCategories.length > 0) {
-                              setConfig({
-                                ...config,
-                                categories: [...config.categories, ...newCategories],
-                              });
-                              setDisplayCategories([...displayCategories, ...newCategories]);
-                              setCustomCategory('');
-                            }
-                            setShowCategoryInput(false);
-                          }
-                        }}
-                        suffix={
-                          <Space>
-                            <Button
-                              size="small"
-                              type="text"
-                              onClick={() => {
-                                if (customCategory.trim()) {
-                                  const newCategories = customCategory
-                                    .split(',')
-                                    .map((c) => c.trim().slice(0, 5))
-                                    .filter(
-                                      (c) =>
-                                        c &&
-                                        !config.categories.includes(c) &&
-                                        config.categories.length < config.categoryLimit,
-                                    );
-                                  if (newCategories.length > 0) {
-                                    setConfig({
-                                      ...config,
-                                      categories: [...config.categories, ...newCategories],
-                                    });
-                                    setDisplayCategories([...displayCategories, ...newCategories]);
-                                    setCustomCategory('');
-                                  }
-                                }
-                                setShowCategoryInput(false);
-                              }}
-                            >
-                              确定
-                            </Button>
-                            <Button
-                              size="small"
-                              type="text"
-                              onClick={() => {
-                                setCustomCategory('');
-                                setShowCategoryInput(false);
-                              }}
-                            >
-                              取消
-                            </Button>
-                          </Space>
-                        }
-                        style={{ width: '100%' }}
-                      />
-                    ) : (
-                      <Button
-                        type="dashed"
-                        style={{ width: '100%', height: 36 }}
-                        onClick={() => setShowCategoryInput(true)}
-                      >
-                        + 添加新类别
-                      </Button>
-                    )}
-                  </div>
+                        );
+                      })}
+                    </Row>
+                  </Checkbox.Group>
                 </div>
               </div>
             ) : (
@@ -850,7 +833,7 @@ export default function KnowledgeExtractConfigPage() {
                     }}
                   >
                     <Space align="center">
-                      <span style={{ fontWeight: 500 }}>最少类别数量：</span>
+                      <span style={{ fontWeight: 500 }}>属性数量限制：</span>
                       <Button
                         shape="circle"
                         size="small"
@@ -879,176 +862,76 @@ export default function KnowledgeExtractConfigPage() {
                       </Button>
                       <span style={{ color: '#666', marginLeft: 4 }}>个</span>
                       <span style={{ color: '#1677ff', fontSize: 12 }}>
-                        已选择 {config.categories.length} / {config.categoryLimit} 个属性，还需添加{' '}
-                        {Math.max(0, config.categoryLimit - config.categories.length)} 个
+                        已选择 {selectedFineAttributeCount} / {config.categoryLimit} 个属性，还可添加{' '}
+                        {Math.max(0, config.categoryLimit - selectedFineAttributeCount)} 个
                       </span>
                     </Space>
                   </div>
-                  <Tabs
-                    defaultActiveKey="人物属性"
-                    items={defaultCategoriesFine.map((group) => ({
-                      key: group,
-                      label: group,
-                      children: (
-                        <Checkbox.Group
-                          style={{ width: '100%' }}
-                          value={config.categories}
-                          onChange={(values) => {
-                            const currentItems =
-                              group === '其他属性'
-                                ? [...fineGrainedProperties.其他属性, ...displayFineCategories]
-                                : fineGrainedProperties[
-                                    group as keyof typeof fineGrainedProperties
-                                  ];
-                            const others = config.categories.filter(
-                              (c) => !currentItems.includes(c),
-                            );
-                            setConfig({
-                              ...config,
-                              categories: [...others, ...values],
-                            });
-                          }}
-                        >
-                          <Row gutter={[8, 8]}>
-                            {(group === '其他属性'
-                              ? [
-                                  ...fineGrainedProperties[
-                                    group as keyof typeof fineGrainedProperties
-                                  ],
-                                  ...displayFineCategories,
-                                ]
-                              : fineGrainedProperties[group as keyof typeof fineGrainedProperties]
-                            ).map((prop) => (
-                              <Col span={3} key={prop}>
-                                <div
-                                  style={{
-                                    padding: '8px 8px',
-                                    borderRadius: 4,
-                                    border: `1px solid ${
-                                      config.categories.includes(prop) ? '#1677ff' : '#d9d9d9'
-                                    }`,
-                                    background: config.categories.includes(prop)
-                                      ? '#e6f7ff'
-                                      : '#fafafa',
-                                    transition: 'all 0.2s ease',
-                                    textAlign: 'center',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                  }}
-                                >
-                                  <Checkbox value={prop}>{prop}</Checkbox>
-                                  {displayFineCategories.includes(prop) && (
-                                    <span
-                                      style={{
-                                        color: '#ff4d4f',
-                                        cursor: 'pointer',
-                                        marginLeft: 2,
-                                        fontSize: 14,
-                                        fontWeight: 'bold',
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setConfig({
-                                          ...config,
-                                          categories: config.categories.filter((c) => c !== prop),
-                                        });
-                                        setDisplayFineCategories(
-                                          displayFineCategories.filter((c) => c !== prop),
-                                        );
-                                      }}
-                                    >
-                                      ×
-                                    </span>
-                                  )}
-                                </div>
-                              </Col>
-                            ))}
-                          </Row>
-                        </Checkbox.Group>
-                      ),
-                    }))}
-                  />
-                  <div style={{ marginTop: 16 }}>
-                    {showFineInput ? (
-                      <Input
-                        autoFocus
-                        placeholder="输入属性名称，多个用逗号分隔，每项最多5字"
-                        value={fineCategoryInput}
-                        onChange={(e) => setFineCategoryInput(e.target.value.slice(0, 5))}
-                        maxLength={5}
-                        onPressEnter={() => {
-                          if (fineCategoryInput.trim()) {
-                            const newFineCategories = fineCategoryInput
-                              .split(',')
-                              .map((c) => c.trim().slice(0, 5))
-                              .filter((c) => c && !config.categories.includes(c));
-                            if (newFineCategories.length > 0) {
-                              setConfig({
-                                ...config,
-                                categories: [...config.categories, ...newFineCategories],
-                              });
-                              setDisplayFineCategories([
-                                ...displayFineCategories,
-                                ...newFineCategories,
-                              ]);
-                              setFineCategoryInput('');
-                            }
-                            setShowFineInput(false);
-                          }
-                        }}
-                        suffix={
-                          <Space>
-                            <Button
-                              size="small"
-                              type="text"
-                              onClick={() => {
-                                if (fineCategoryInput.trim()) {
-                                  const newFineCategories = fineCategoryInput
-                                    .split(',')
-                                    .map((c) => c.trim().slice(0, 5))
-                                    .filter((c) => c && !config.categories.includes(c));
-                                  if (newFineCategories.length > 0) {
-                                    setConfig({
-                                      ...config,
-                                      categories: [...config.categories, ...newFineCategories],
-                                    });
-                                    setDisplayFineCategories([
-                                      ...displayFineCategories,
-                                      ...newFineCategories,
-                                    ]);
-                                    setFineCategoryInput('');
-                                  }
-                                }
-                                setShowFineInput(false);
-                              }}
+
+                  {entityTypeOptions.length === 0 ? (
+                    <div style={{ color: '#8c8c8c', textAlign: 'center', padding: '24px 0' }}>
+                      暂无实体类型数据
+                    </div>
+                  ) : (
+                    <Tabs
+                      activeKey={activeFineEntityTypeId || String(entityTypeOptions[0]?.id || '')}
+                      onChange={(key) => {
+                        const entityTypeId = String(key);
+                        setActiveFineEntityTypeId(entityTypeId);
+                        void loadAttributeOptions(entityTypeId);
+                      }}
+                      items={entityTypeOptions.map((entityType) => {
+                        const entityTypeId = String(entityType.id);
+                        const selectedIds = config.fineAttributeIdsByType[entityTypeId] || [];
+                        const attributes = attributeOptionsMap[entityTypeId] || [];
+                        const isLoading = attributeLoadingMap[entityTypeId];
+                        return {
+                          key: entityTypeId,
+                          label: entityType.name,
+                          children: isLoading ? (
+                            <div style={{ color: '#8c8c8c', textAlign: 'center', padding: '24px 0' }}>
+                              属性加载中...
+                            </div>
+                          ) : attributes.length === 0 ? (
+                            <div style={{ color: '#8c8c8c', textAlign: 'center', padding: '24px 0' }}>
+                              当前实体类型下暂无属性
+                            </div>
+                          ) : (
+                            <Checkbox.Group
+                              style={{ width: '100%' }}
+                              value={selectedIds}
+                              onChange={(values) =>
+                                updateFineAttributeSelection(entityTypeId, values as Array<string | number>)
+                              }
                             >
-                              确定
-                            </Button>
-                            <Button
-                              size="small"
-                              type="text"
-                              onClick={() => {
-                                setFineCategoryInput('');
-                                setShowFineInput(false);
-                              }}
-                            >
-                              取消
-                            </Button>
-                          </Space>
-                        }
-                        style={{ width: '100%' }}
-                      />
-                    ) : (
-                      <Button
-                        type="dashed"
-                        style={{ width: '100%', height: 36 }}
-                        onClick={() => setShowFineInput(true)}
-                      >
-                        + 添加新类别
-                      </Button>
-                    )}
-                  </div>
+                              <Row gutter={[8, 8]}>
+                                {attributes.map((attribute) => {
+                                  const attributeId = String(attribute.id);
+                                  const checked = selectedIds.includes(attributeId);
+                                  return (
+                                    <Col span={6} key={attributeId}>
+                                      <div
+                                        style={{
+                                          padding: '8px 8px',
+                                          borderRadius: 4,
+                                          border: `1px solid ${checked ? '#1677ff' : '#d9d9d9'}`,
+                                          background: checked ? '#e6f7ff' : '#fafafa',
+                                          transition: 'all 0.2s ease',
+                                          textAlign: 'center',
+                                        }}
+                                      >
+                                        <Checkbox value={attributeId}>{attribute.name}</Checkbox>
+                                      </div>
+                                    </Col>
+                                  );
+                                })}
+                              </Row>
+                            </Checkbox.Group>
+                          ),
+                        };
+                      })}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -1605,25 +1488,23 @@ export default function KnowledgeExtractConfigPage() {
                     </div>
                     {config.granularity === '粗颗粒度' ? (
                       <div style={{ marginTop: 8 }}>
-                        <Space wrap size={4}>
-                          {config.categories.map((cat) => (
-                            <Tag key={cat} color="blue" style={{ margin: 0 }}>
-                              {cat}
-                            </Tag>
-                          ))}
-                        </Space>
+                        {selectedCoarseEntityTypes.length > 0 ? (
+                          <Space wrap size={4}>
+                            {selectedCoarseEntityTypes.map((entityType) => (
+                              <Tag key={entityType.id} color="blue" style={{ margin: 0 }}>
+                                {entityType.name}
+                              </Tag>
+                            ))}
+                          </Space>
+                        ) : (
+                          <div style={{ fontSize: 12, color: '#8c8c8c' }}>未选择实体类型</div>
+                        )}
                       </div>
                     ) : (
                       <div style={{ marginTop: 8 }}>
-                        {Object.keys(fineGrainedProperties).map((category) => {
-                          const props =
-                            fineGrainedProperties[category as keyof typeof fineGrainedProperties];
-                          const selected = config.categories.filter((c) =>
-                            (props as string[]).includes(c),
-                          );
-                          if (selected.length === 0) return null;
-                          return (
-                            <div key={category} style={{ marginBottom: 6 }}>
+                        {selectedFineAttributeGroups.length > 0 ? (
+                          selectedFineAttributeGroups.map(({ entityType, attributes }) => (
+                            <div key={entityType.id} style={{ marginBottom: 6 }}>
                               <div
                                 style={{
                                   fontSize: 11,
@@ -1631,18 +1512,20 @@ export default function KnowledgeExtractConfigPage() {
                                   marginBottom: 2,
                                 }}
                               >
-                                {category}：
+                                {entityType.name}：
                               </div>
                               <Space wrap size={4}>
-                                {selected.map((prop) => (
-                                  <Tag key={prop} color="orange" style={{ margin: 0 }}>
-                                    {prop}
+                                {attributes.map((attribute) => (
+                                  <Tag key={attribute.id} color="orange" style={{ margin: 0 }}>
+                                    {attribute.name}
                                   </Tag>
                                 ))}
                               </Space>
                             </div>
-                          );
-                        })}
+                          ))
+                        ) : (
+                          <div style={{ fontSize: 12, color: '#8c8c8c' }}>未选择实体属性</div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2000,3 +1883,8 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
   },
 };
+
+
+
+
+

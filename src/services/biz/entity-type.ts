@@ -1,6 +1,19 @@
 import { request } from "@umijs/max";
 import { API_PREFIX } from "@/constants";
 
+export interface EntityTypeItem {
+  id: number | string;
+  name: string;
+  description?: string;
+  enabled?: string;
+  icon?: string;
+  color?: string;
+  bgColor?: string;
+  entityCount?: number;
+  isSystem?: boolean;
+  createTime?: string;
+}
+
 export interface EntityTypeParams {
   id?: number | string;
   name: string;
@@ -20,6 +33,16 @@ export interface EntityTypePageParams {
   description?: string;
   enabled?: string;
   createTime?: string[];
+}
+
+export interface EntityTypeAttributeItem {
+  id: number | string;
+  entityTypeConfigId: number | string;
+  name: string;
+  code?: string;
+  dataType: string;
+  description?: string;
+  createTime?: string;
 }
 
 export interface EntityTypeAttributeParams {
@@ -68,6 +91,12 @@ export async function getEntityTypePage(params: EntityTypePageParams) {
   });
 }
 
+export async function getEntityTypeList() {
+  return request<EntityTypeItem[]>(`${API_PREFIX}/biz/entity-type-config/list`, {
+    method: "GET",
+  });
+}
+
 export async function addEntityTypeAttribute(data: EntityTypeAttributeParams) {
   return request(`${API_PREFIX}/biz/entity-type-attribute-config/create`, {
     method: "POST",
@@ -96,4 +125,14 @@ export async function getEntityTypeAttributePage(
     method: "GET",
     params,
   });
+}
+
+export async function getEntityTypeAttributeList(entityTypeConfigId: number | string) {
+  return request<EntityTypeAttributeItem[]>(
+    `${API_PREFIX}/biz/entity-type-attribute-config/list-by-entity-type-id`,
+    {
+      method: "GET",
+      params: { entityTypeConfigId },
+    },
+  );
 }

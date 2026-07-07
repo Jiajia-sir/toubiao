@@ -14,11 +14,11 @@ export default {
   dev: {
     // localhost:8000/admin-api/** -> http://localhost:8080/admin-api/**
     '/admin-api/': {
-      target: 'http://192.168.31.244:42026',
+      target: 'http://192.168.31.132:42026',
       changeOrigin: true,
     },
     '/profile/avatar/': {
-      target: 'http://192.168.31.244:42026',
+      target: 'http://192.168.31.132:42026',
       changeOrigin: true,
     }
   },

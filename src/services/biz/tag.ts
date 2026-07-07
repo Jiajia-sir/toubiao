@@ -55,3 +55,12 @@ export async function getTagPage(params: TagPageParams) {
     params,
   });
 }
+
+export async function getTagList() {
+  return request<TagItem[]>(`${API_PREFIX}/biz/tag/list`, {
+    method: 'GET',
+  });
+}
+
+
+
