@@ -4,7 +4,32 @@ import { MenuDataItem } from '@ant-design/pro-components';
 import { request } from '@umijs/max';
 import React, { lazy } from 'react';
 
-let remoteMenu: any = null;
+const REMOTE_MENU_STORAGE_KEY = 'remote-menu-cache';
+
+function canUseSessionStorage() {
+  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+}
+
+function readStoredRemoteMenu() {
+  if (!canUseSessionStorage()) {
+    return null;
+  }
+
+  const rawValue = window.sessionStorage.getItem(REMOTE_MENU_STORAGE_KEY);
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    const parsedValue = JSON.parse(rawValue);
+    return Array.isArray(parsedValue) ? parsedValue : null;
+  } catch (error) {
+    window.sessionStorage.removeItem(REMOTE_MENU_STORAGE_KEY);
+    return null;
+  }
+}
+
+let remoteMenu: any = readStoredRemoteMenu();
 
 const componentSegmentAliasMap: Record<string, string> = {
   Loginlog: 'Logininfor',
@@ -17,6 +42,17 @@ export function getRemoteMenu() {
 
 export function setRemoteMenu(data: any) {
   remoteMenu = data;
+
+  if (!canUseSessionStorage()) {
+    return;
+  }
+
+  if (Array.isArray(data)) {
+    window.sessionStorage.setItem(REMOTE_MENU_STORAGE_KEY, JSON.stringify(data));
+    return;
+  }
+
+  window.sessionStorage.removeItem(REMOTE_MENU_STORAGE_KEY);
 }
 
 export async function ensureRemoteMenu() {

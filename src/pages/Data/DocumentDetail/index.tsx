@@ -29,6 +29,7 @@ import {
   Input,
   message,
   Modal,
+  Pagination,
   Progress,
   Row,
   Slider,
@@ -118,6 +119,16 @@ const extractPageList = <T,>(response: any): T[] => {
   return [];
 };
 
+const extractPageTotal = (response: any) => {
+  const total =
+    response?.data?.total ??
+    response?.total ??
+    response?.data?.data?.total ??
+    response?.data?.page?.total;
+  const resolvedTotal = Number(total);
+  return Number.isFinite(resolvedTotal) && resolvedTotal >= 0 ? resolvedTotal : 0;
+};
+
 const toTextList = (value: any): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -162,6 +173,21 @@ const sanitizePreviewHtml = (value: string) =>
     .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
     .replace(/\son\w+=(["']).*?\1/gi, "")
     .replace(/javascript:/gi, "");
+
+const normalizePreviewHtml = (value: string) => {
+  const sanitizedHtml = sanitizePreviewHtml(value);
+  const styleBlocks = sanitizedHtml.match(/<style[\s\S]*?>[\s\S]*?<\/style>/gi)?.join("") ?? "";
+  const bodyContent = sanitizedHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1];
+
+  if (bodyContent) {
+    return `${styleBlocks}${bodyContent}`.trim();
+  }
+
+  return sanitizedHtml
+    .replace(/<!DOCTYPE[^>]*>/gi, "")
+    .replace(/<\/?(html|head|body|meta|title)[^>]*>/gi, "")
+    .trim();
+};
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -459,7 +485,10 @@ export default function DataDetailPage() {
   const [previewKeyword, setPreviewKeyword] = useState(searchParams.get("keyword") || "");
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [detailData, setDetailData] = useState<any>(null);
-  const [previewChunks, setPreviewChunks] = useState<string[]>([]);
+  const [previewPageNo, setPreviewPageNo] = useState(1);
+  const [previewPageSize, setPreviewPageSize] = useState(10);
+  const [previewTotal, setPreviewTotal] = useState(0);
+  const [previewChunks, setPreviewChunks] = useState<Array<{ seq: string; value: string; hit?: boolean }>>([]);
 
   const baseDocument = getDocumentParseDetail(params.id || "");
   const sourceTitle = searchParams.get("title");
@@ -500,12 +529,16 @@ export default function DataDetailPage() {
   }, [params.id, sourceEsId, sourceKeyword]);
 
   useEffect(() => {
+    setPreviewPageNo(1);
+  }, [params.id, detailData?.id, previewKeyword]);
+
+  useEffect(() => {
     let active = true;
     const timer = setTimeout(async () => {
       try {
         const response = await getDocumentHtmlChunkPage({
-          pageNo: 1,
-          pageSize: 10,
+          pageNo: previewPageNo,
+          pageSize: previewPageSize,
           docId: params.id || detailData?.id || 0,
           keyword: previewKeyword.trim(),
           contextSize: 1,
@@ -516,10 +549,12 @@ export default function DataDetailPage() {
         }
 
         const chunks = extractPageList<any>(response)
-          .map((item) =>
-            String(
-              item?.transHtml ??
-                item?.oriHtml ??
+          .map((item, index) => ({
+            seq: String(item?.seq ?? `${previewPageNo}-${index}`),
+            hit: Boolean(item?.hit),
+            value: String(
+              item?.oriHtml ??
+                item?.transHtml ??
                 item?.transContent ??
                 item?.oriContent ??
                 item?.content ??
@@ -527,14 +562,16 @@ export default function DataDetailPage() {
                 item?.html ??
                 "",
             ),
-          )
-          .filter(Boolean);
+          }))
+          .filter((item) => item.value);
 
         setPreviewChunks(chunks);
+        setPreviewTotal(extractPageTotal(response));
       } catch (error) {
         console.error(error);
         if (active) {
           setPreviewChunks([]);
+          setPreviewTotal(0);
         }
       }
     }, 300);
@@ -543,7 +580,7 @@ export default function DataDetailPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [params.id, detailData?.id, previewKeyword]);
+  }, [params.id, detailData?.id, previewKeyword, previewPageNo, previewPageSize]);
 
   const document = useMemo(
     () => buildDocumentDetail(baseDocument, detailData, sourceTitle, sourceType),
@@ -575,12 +612,18 @@ export default function DataDetailPage() {
 
   const previewBlocks = useMemo(
     () =>
-      (previewChunks.length > 0 ? previewChunks : ["暂无正文内容"]).map((item) => ({
+      (previewChunks.length > 0
+        ? previewChunks
+        : [{ seq: "empty", value: "暂无正文内容", hit: false }]).map((item) => ({
         type: "paragraph",
-        value: item,
+        value: item.value,
+        seq: item.seq,
+        hit: item.hit,
       })) as Array<{
         type: PreviewBlockType;
         value: string;
+        seq: string;
+        hit?: boolean;
       }>,
     [previewChunks],
   );
@@ -888,16 +931,69 @@ export default function DataDetailPage() {
                   <div>上传人：{document.uploader}</div>
                 </div>
 
+                <style>{`
+                  .document-preview-html {
+                    color: #334155;
+                    font-size: 15px;
+                    line-height: 1.9;
+                    overflow-x: auto;
+                  }
+
+                  .document-preview-html table {
+                    width: 100%;
+                    max-width: 100%;
+                    border-collapse: collapse;
+                    table-layout: auto;
+                  }
+
+                  .document-preview-html td,
+                  .document-preview-html th {
+                    padding: 6px 8px;
+                    vertical-align: top;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                  }
+
+                  .document-preview-html img {
+                    max-width: 100%;
+                    height: auto;
+                  }
+                `}</style>
+
                 {filteredPreviewBlocks.length > 0 ? (
-                  filteredPreviewBlocks.map((block, index) => (
-                    <PreviewBlock
-                      key={`${block.type}-${index}-${block.value}`}
-                      type={block.type}
-                      keyword={previewKeyword}
-                    >
-                      {block.value}
-                    </PreviewBlock>
-                  ))
+                  <>
+                    {filteredPreviewBlocks.map((block, index) => (
+                      <div key={`${block.seq}-${index}`} style={{ marginBottom: index === filteredPreviewBlocks.length - 1 ? 0 : 18 }}>
+                        {block.hit && (
+                          <div style={{ marginBottom: 8 }}>
+                            <Tag color="processing" style={{ margin: 0 }}>
+                              命中片段
+                            </Tag>
+                          </div>
+                        )}
+                        <PreviewBlock type={block.type} keyword={previewKeyword}>
+                          {block.value}
+                        </PreviewBlock>
+                      </div>
+                    ))}
+                    {previewTotal > 0 && (
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+                        <Pagination
+                          current={previewPageNo}
+                          pageSize={previewPageSize}
+                          total={previewTotal}
+                          showSizeChanger
+                          showQuickJumper
+                          pageSizeOptions={["5", "10", "20", "50"]}
+                          showTotal={(total) => `共 ${total} 条`}
+                          onChange={(page, size) => {
+                            setPreviewPageNo(page);
+                            setPreviewPageSize(size);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到匹配内容" style={{ marginTop: 48 }} />
                 )}
@@ -1197,10 +1293,17 @@ function PreviewBlock({
   keyword?: string;
 }) {
   const isHtmlContent = typeof children === "string" && /<\/?[a-z][\s\S]*>/i.test(children);
+  const htmlChildren =
+    typeof children === "string" && isHtmlContent ? normalizePreviewHtml(children) : "";
   const resolvedChildren =
     typeof children === "string"
       ? isHtmlContent
-        ? <span dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(children) }} />
+        ? (
+          <div
+            className="document-preview-html"
+            dangerouslySetInnerHTML={{ __html: htmlChildren }}
+          />
+        )
         : renderHighlightedText(children, keyword || "")
       : children;
 
@@ -1225,9 +1328,9 @@ function PreviewBlock({
   }
 
   return (
-    <p style={{ color: "#334155", lineHeight: 1.9, margin: "0 0 14px", fontSize: 15 }}>
+    <div style={{ color: "#334155", lineHeight: 1.9, margin: 0, fontSize: 15 }}>
       {resolvedChildren}
-    </p>
+    </div>
   );
 }
 

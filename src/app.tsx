@@ -7,7 +7,7 @@ import { history, Link, request as umiRequest } from '@umijs/max';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 import { getAccessToken, getRefreshToken, getTokenExpireTime, setSessionToken } from './access';
-import { ensureRemoteMenu, getRemoteMenu, getRoutersInfo, getUserInfo, patchRouteWithRemoteMenus, refreshToken, setRemoteMenu } from './services/session';
+import { ensureRemoteMenu, getRemoteMenu, getUserInfo, patchRouteWithRemoteMenus, refreshToken, setRemoteMenu } from './services/session';
 import { PageEnum } from './enums/pagesEnums';
 import { handleAuthExpired } from './utils/authRedirect';
 
@@ -183,16 +183,19 @@ export async function patchClientRoutes({ routes }) {
 }
 
 export function render(oldRender: () => void) {
-  // console.log('render get routers', oldRender)
   const token = getAccessToken();
   if(!token || token?.length === 0) {
     oldRender();
     return;
   }
-  getRoutersInfo().then(res => {
-    setRemoteMenu(res);
-    oldRender()
-  });
+
+  ensureRemoteMenu()
+    .catch(() => {
+      setRemoteMenu(null);
+    })
+    .finally(() => {
+      oldRender();
+    });
 }
 
 /**
