@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { history, useLocation } from '@umijs/max';
 import {
-  Alert,
   Button,
   Input,
   message,
@@ -15,6 +14,7 @@ import {
   Table,
   Tag,
   Tooltip,
+  Typography,
   Upload,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -58,10 +58,11 @@ import {
   reAnalysisDocument,
   type DocumentPageItem,
 } from './api';
+import DocumentPreviewModal from './DocumentPreviewModal';
 
 const { Dragger } = Upload;
 
-interface DocumentRecord {
+export interface DocumentRecord {
   id: string;
   name: string;
   filePath: string;
@@ -74,6 +75,7 @@ interface DocumentRecord {
   fileTagNames: string[];
   catalogName: string;
   status: string;
+  intelligentStatus: string;
   entityCount: number | string;
   relationCount: number | string;
   entities: string[];
@@ -153,6 +155,62 @@ const getStatusInfo = (status: string) =>
   };
 
 const isStatusCompleted = (status: string) => String(status) === '2';
+
+/** 智能化状态枚举：0=未处理 1=处理中 2=已完成 3=失败 */
+const intelligentStatusMap: Record<string, { text: string; color: string; bgColor: string }> = {
+  '0': { text: '未处理', color: '#8c8c8c', bgColor: '#f5f5f5' },
+  '1': { text: '处理中', color: '#1890ff', bgColor: '#e6f7ff' },
+  '2': { text: '已完成', color: '#52c41a', bgColor: '#f6ffed' },
+  '3': { text: '失败', color: '#ff4d4f', bgColor: '#fff1f0' },
+};
+
+const getIntelligentStatusInfo = (status: string) =>
+  intelligentStatusMap[String(status)] || intelligentStatusMap['0'];
+
+const INTELLIGENT_STEPS = ['关键词提取', '实体抽取', '标签分类'];
+
+const INTELLIGENT_STEP_HEIGHT = 20;
+
+const IntelligentProcessingTag: React.FC = () => {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStep((prev) => (prev + 1) % INTELLIGENT_STEPS.length);
+    }, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <LoadingOutlined spin style={{ fontSize: 12 }} />
+      <span
+        style={{
+          display: 'inline-block',
+          overflow: 'hidden',
+          height: INTELLIGENT_STEP_HEIGHT,
+          lineHeight: `${INTELLIGENT_STEP_HEIGHT}px`,
+          verticalAlign: 'middle',
+        }}
+      >
+        <span
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            transform: `translateY(-${step * INTELLIGENT_STEP_HEIGHT}px)`,
+            transition: 'transform 0.4s ease',
+          }}
+        >
+          {INTELLIGENT_STEPS.map((s) => (
+            <span key={s} style={{ height: INTELLIGENT_STEP_HEIGHT, lineHeight: `${INTELLIGENT_STEP_HEIGHT}px`, whiteSpace: 'nowrap' }}>
+              {s}
+            </span>
+          ))}
+        </span>
+      </span>
+    </span>
+  );
+};
 
 const extractPageList = (payload: any): any[] =>
   payload?.data?.list || payload?.data?.records || payload?.list || payload?.rows || [];
@@ -239,6 +297,7 @@ const normalizeDocumentRecord = (item: DocumentPageItem, index: number): Documen
     fileTagNames: extractStringList(item.fileTagNames ?? item.fileTagName),
     catalogName: String(item.catalogName ?? item.catalog ?? '-'),
     status: String(item.status ?? ''),
+    intelligentStatus: String(item.intelligentStatus ?? ''),
     entityCount: item.entityCount ?? 0,
     relationCount: item.relationCount ?? 0,
     entities: (() => {
@@ -374,6 +433,23 @@ export default function DocumentImportPage() {
   const [batchImportKnowledgeBase, setBatchImportKnowledgeBase] = useState<
     number | string | undefined
   >();
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [previewRecord, setPreviewRecord] = useState<DocumentRecord | null>(null);
+
+  const handlePreview = (record: DocumentRecord) => {
+    const filePath = record.filePath?.trim();
+    if (!filePath) {
+      message.warning('文件路径不存在，无法预览');
+      return;
+    }
+    setPreviewRecord(record);
+    setPreviewVisible(true);
+  };
+
+  const handlePreviewClose = () => {
+    setPreviewVisible(false);
+    setPreviewRecord(null);
+  };
 
   const [uploadKnowledgeBase, setUploadKnowledgeBase] = useState<Array<number | string>>([]);
   const [uploadTags, setUploadTags] = useState<Array<number | string>>([]);
@@ -842,7 +918,26 @@ export default function DocumentImportPage() {
             {getFileTypeIcon(record.fileType)}
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>{record.name}</div>
+            <Typography.Text
+              style={{
+                fontWeight: 600,
+                fontSize: 14,
+                marginBottom: 4,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                color: '#4e7cc4',
+                cursor: 'pointer',
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#1890ff')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#4e7cc4')}
+              onClick={() => handlePreview(record)}
+              title="点击预览文档"
+            >
+              {record.name}
+              <EyeOutlined style={{ fontSize: 13 }} />
+            </Typography.Text>
             {renderDocumentStats(record)}
           </div>
         </div>
@@ -931,6 +1026,48 @@ export default function DocumentImportPage() {
               />
             )}
             {text}
+          </span>
+        );
+      },
+    },
+    {
+      title: '智能化状态',
+      dataIndex: 'intelligentStatus',
+      key: 'intelligentStatus',
+      render: (value: string) => {
+        const info = getIntelligentStatusInfo(value);
+        const isProcessing = String(value) === '1';
+
+        return (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '2px 10px',
+              borderRadius: 12,
+              background: info.bgColor,
+              color: info.color,
+              fontSize: 12,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isProcessing ? (
+              <IntelligentProcessingTag />
+            ) : (
+              <>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    backgroundColor: info.color,
+                  }}
+                />
+                {info.text}
+              </>
+            )}
           </span>
         );
       },
@@ -1080,15 +1217,18 @@ export default function DocumentImportPage() {
 
   return (
     <>
+      {/* 筛选区 */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 16,
-          padding: '12px 16px',
-          background: '#fff',
+          marginBottom: 12,
+          padding: '14px 20px',
+          background: 'linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%)',
           borderRadius: 8,
+          border: '1px solid #d6e4ff',
+          boxShadow: '0 1px 2px rgba(24,144,255,0.06)',
         }}
       >
         <Space size={12}>
@@ -1119,14 +1259,14 @@ export default function DocumentImportPage() {
             optionFilterProp="label"
           />
           <Input
-            placeholder="文档名称搜索"
+            placeholder="搜索文档名称"
             prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
-            style={{ width: 300 }}
+            style={{ width: 320 }}
             value={searchText}
             onChange={(e) => handleSearchTextChange(e.target.value)}
             allowClear
           />
-          <Button onClick={handleResetSearch}>重置搜索</Button>
+          <Button onClick={handleResetSearch}>重置</Button>
         </Space>
         <Space size={12}>
           <Button icon={<ReloadOutlined />} onClick={fetchDocuments} loading={loading}>
@@ -1153,15 +1293,9 @@ export default function DocumentImportPage() {
         </Space>
       </div>
 
-      <Alert
-        message={<span style={{ fontWeight: 600, color: '#1890ff' }}>支持多种文档格式</span>}
-        description="已支持：docx、xlsx、pptx、md、txt、pdf、html、eml 等格式，单文件大小不超过 100MB"
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-      />
 
-      <div style={{ background: '#fff', borderRadius: 8, padding: 16 }}>
+      {/* 表格区 */}
+      <div style={{ background: '#fff', borderRadius: 8, padding: 16, border: '1px solid #e8e8e8', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
         <Table
           columns={columns}
           dataSource={data}
@@ -1463,6 +1597,12 @@ export default function DocumentImportPage() {
           />
         </div>
       </Modal>
+
+      <DocumentPreviewModal
+        visible={previewVisible}
+        record={previewRecord}
+        onClose={handlePreviewClose}
+      />
     </>
   );
 }

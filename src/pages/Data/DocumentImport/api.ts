@@ -27,6 +27,7 @@ export interface DocumentPageItem {
   fileTagNames?: Array<number | string>;
   catalogName?: string;
   status?: number | string;
+  intelligentStatus?: number | string;
   entityCount?: number | string;
   relationCount?: number | string;
   entities?: any[];
