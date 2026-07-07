@@ -40,10 +40,15 @@ export function downLoadZip(url: string) {
   });
 }
 
-export async function downLoadXlsx(url: string, params: any, fileName: string) {
+export async function downLoadXlsx(
+  url: string,
+  params: any,
+  fileName: string,
+  method: 'GET' | 'POST' = 'POST',
+) {
   return request(url, {
     ...params,
-    method: 'POST',
+    method,
     responseType: 'blob',
   }).then((data) => {
     const aLink = document.createElement('a');

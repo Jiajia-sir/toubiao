@@ -157,6 +157,12 @@ const stripHtml = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const sanitizePreviewHtml = (value: string) =>
+  String(value ?? "")
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/\son\w+=(["']).*?\1/gi, "")
+    .replace(/javascript:/gi, "");
+
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const renderHighlightedText = (text: string, keyword: string) => {
@@ -511,17 +517,15 @@ export default function DataDetailPage() {
 
         const chunks = extractPageList<any>(response)
           .map((item) =>
-            stripHtml(
-              String(
+            String(
+              item?.transHtml ??
+                item?.oriHtml ??
                 item?.transContent ??
-                  item?.oriContent ??
-                  item?.transHtml ??
-                  item?.oriHtml ??
-                  item?.content ??
-                  item?.text ??
-                  item?.html ??
-                  "",
-              ),
+                item?.oriContent ??
+                item?.content ??
+                item?.text ??
+                item?.html ??
+                "",
             ),
           )
           .filter(Boolean);
@@ -582,10 +586,13 @@ export default function DataDetailPage() {
   );
 
   const filteredPreviewBlocks = useMemo(() => {
+    if (previewChunks.length > 0) {
+      return previewBlocks;
+    }
     const keyword = previewKeyword.trim().toLowerCase();
     if (!keyword) return previewBlocks;
-    return previewBlocks.filter((block) => block.value.toLowerCase().includes(keyword));
-  }, [previewBlocks, previewKeyword]);
+    return previewBlocks.filter((block) => stripHtml(block.value).toLowerCase().includes(keyword));
+  }, [previewBlocks, previewChunks.length, previewKeyword]);
 
   const entityGraphData = useMemo<EntityGraphData>(() => {
     const centerNode = document.graph.nodes[0];
@@ -1189,8 +1196,13 @@ function PreviewBlock({
   children: ReactNode;
   keyword?: string;
 }) {
+  const isHtmlContent = typeof children === "string" && /<\/?[a-z][\s\S]*>/i.test(children);
   const resolvedChildren =
-    typeof children === "string" ? renderHighlightedText(children, keyword || "") : children;
+    typeof children === "string"
+      ? isHtmlContent
+        ? <span dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(children) }} />
+        : renderHighlightedText(children, keyword || "")
+      : children;
 
   if (type === "heading") {
     return (
