@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { history } from '@umijs/max';
+import { getTagList, type TagItem } from '@/services/biz/tag';
 import {
   Card,
   Button,
@@ -52,7 +53,7 @@ interface KnowledgeExtractConfig {
   maxTokens: number;
 }
 
-const availableTags = [
+const defaultTagOptions = [
   { label: '新闻', value: '新闻' },
   { label: '公告', value: '公告' },
   { label: '政策', value: '政策' },
@@ -182,7 +183,7 @@ export default function KnowledgeExtractConfigPage() {
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [config, setConfig] = useState<KnowledgeExtractConfig>({
-    tags: ['新闻', '公告', '政策'],
+    tags: [],
     blockSize: 1000,
     splitMode: '字数',
     granularity: '粗颗粒度',
@@ -209,6 +210,31 @@ export default function KnowledgeExtractConfigPage() {
   const [presencePenaltyEnabled, setPresencePenaltyEnabled] = useState(true);
   const [frequencyPenaltyEnabled, setFrequencyPenaltyEnabled] = useState(false);
   const [maxTokensEnabled, setMaxTokensEnabled] = useState(false);
+  const [tagOptions, setTagOptions] = useState(defaultTagOptions);
+
+  useEffect(() => {
+    const fetchTagOptions = async () => {
+      try {
+        const res: any = await getTagList();
+        if (res?.code === 200) {
+          const options = (res?.data || []).map((item: TagItem) => ({
+            label: item.tag,
+            value: item.tag,
+          }));
+          setTagOptions(options.length > 0 ? options : defaultTagOptions);
+        } else {
+          message.error(res?.msg || '获取标签列表失败');
+          setTagOptions(defaultTagOptions);
+        }
+      } catch (error) {
+        console.error(error);
+        message.error('获取标签列表失败');
+        setTagOptions(defaultTagOptions);
+      }
+    };
+
+    fetchTagOptions();
+  }, []);
 
   const customCategories = config.categories.filter((cat) => !defaultCategories.includes(cat));
 
@@ -442,7 +468,7 @@ export default function KnowledgeExtractConfigPage() {
                       });
                     }
                   }}
-                  options={availableTags.filter((tag) => !config.tags.includes(tag.value))}
+                  options={tagOptions.filter((tag) => !config.tags.includes(tag.value))}
                   allowClear
                 />
               </Space>
@@ -2000,3 +2026,5 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
   },
 };
+
+
