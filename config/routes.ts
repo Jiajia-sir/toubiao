@@ -16,11 +16,6 @@ export default [
     redirect: '/dashboard',
   },
   {
-    path: '*',
-    layout: false,
-    component: './404',
-  },
-  {
     path: '/user',
     layout: false,
     routes: [
@@ -242,6 +237,11 @@ export default [
         component: './Tool/Gen/edit',
       },
     ],
+  },
+  {
+    path: '*',
+    layout: false,
+    component: './404',
   },
 ];
 

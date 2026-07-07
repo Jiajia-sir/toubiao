@@ -51,6 +51,18 @@ import { getDocumentHtmlChunkPage, viewDocument } from "@/services/biz/document-
 
 type PreviewBlockType = "meta" | "heading" | "paragraph" | "bullet";
 
+const CARD_STACK_GAP = 12;
+const META_CARD_HEIGHT = 340;
+const KEYWORD_CARD_HEIGHT = 220;
+const ENTITY_CARD_HEIGHT = 280;
+const TAG_CARD_HEIGHT = 220;
+const PREVIEW_CARD_HEIGHT =
+  META_CARD_HEIGHT +
+  KEYWORD_CARD_HEIGHT +
+  ENTITY_CARD_HEIGHT +
+  TAG_CARD_HEIGHT +
+  CARD_STACK_GAP * 3;
+
 const formatFileSize = (bytes: any) => {
   const size = Number(bytes);
   if (!Number.isFinite(size) || size <= 0) {
@@ -118,6 +130,16 @@ const extractPageList = <T,>(response: any): T[] => {
   return [];
 };
 
+const extractPageTotal = (response: any) => {
+  const total =
+    response?.data?.total ??
+    response?.total ??
+    response?.data?.data?.total ??
+    response?.data?.page?.total;
+  const resolvedTotal = Number(total);
+  return Number.isFinite(resolvedTotal) && resolvedTotal >= 0 ? resolvedTotal : 0;
+};
+
 const toTextList = (value: any): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -162,6 +184,21 @@ const sanitizePreviewHtml = (value: string) =>
     .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
     .replace(/\son\w+=(["']).*?\1/gi, "")
     .replace(/javascript:/gi, "");
+
+const normalizePreviewHtml = (value: string) => {
+  const sanitizedHtml = sanitizePreviewHtml(value);
+  const styleBlocks = sanitizedHtml.match(/<style[\s\S]*?>[\s\S]*?<\/style>/gi)?.join("") ?? "";
+  const bodyContent = sanitizedHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1];
+
+  if (bodyContent) {
+    return `${styleBlocks}${bodyContent}`.trim();
+  }
+
+  return sanitizedHtml
+    .replace(/<!DOCTYPE[^>]*>/gi, "")
+    .replace(/<\/?(html|head|body|meta|title)[^>]*>/gi, "")
+    .trim();
+};
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -459,7 +496,11 @@ export default function DataDetailPage() {
   const [previewKeyword, setPreviewKeyword] = useState(searchParams.get("keyword") || "");
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [detailData, setDetailData] = useState<any>(null);
-  const [previewChunks, setPreviewChunks] = useState<string[]>([]);
+  const [previewPageNo, setPreviewPageNo] = useState(1);
+  const [previewTotal, setPreviewTotal] = useState(0);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewInitialized, setPreviewInitialized] = useState(false);
+  const [previewChunks, setPreviewChunks] = useState<Array<{ seq: string; value: string; hit?: boolean }>>([]);
 
   const baseDocument = getDocumentParseDetail(params.id || "");
   const sourceTitle = searchParams.get("title");
@@ -500,11 +541,19 @@ export default function DataDetailPage() {
   }, [params.id, sourceEsId, sourceKeyword]);
 
   useEffect(() => {
+    setPreviewPageNo(1);
+    setPreviewTotal(0);
+    setPreviewInitialized(false);
+    setPreviewChunks([]);
+  }, [params.id, detailData?.id, previewKeyword]);
+
+  useEffect(() => {
     let active = true;
     const timer = setTimeout(async () => {
       try {
+        setPreviewLoading(true);
         const response = await getDocumentHtmlChunkPage({
-          pageNo: 1,
+          pageNo: previewPageNo,
           pageSize: 10,
           docId: params.id || detailData?.id || 0,
           keyword: previewKeyword.trim(),
@@ -516,10 +565,12 @@ export default function DataDetailPage() {
         }
 
         const chunks = extractPageList<any>(response)
-          .map((item) =>
-            String(
-              item?.transHtml ??
-                item?.oriHtml ??
+          .map((item, index) => ({
+            seq: String(item?.seq ?? `${previewPageNo}-${index}`),
+            hit: Boolean(item?.hit),
+            value: String(
+              item?.oriHtml ??
+                item?.transHtml ??
                 item?.transContent ??
                 item?.oriContent ??
                 item?.content ??
@@ -527,14 +578,37 @@ export default function DataDetailPage() {
                 item?.html ??
                 "",
             ),
-          )
-          .filter(Boolean);
+          }))
+          .filter((item) => item.value);
 
-        setPreviewChunks(chunks);
+        setPreviewChunks((previousChunks) => {
+          if (previewPageNo === 1) {
+            return chunks;
+          }
+
+          const existingSeqSet = new Set(previousChunks.map((item) => item.seq));
+          const mergedChunks = [...previousChunks];
+          chunks.forEach((item) => {
+            if (!existingSeqSet.has(item.seq)) {
+              mergedChunks.push(item);
+            }
+          });
+          return mergedChunks;
+        });
+        setPreviewTotal(extractPageTotal(response));
+        setPreviewInitialized(true);
       } catch (error) {
         console.error(error);
         if (active) {
-          setPreviewChunks([]);
+          if (previewPageNo === 1) {
+            setPreviewChunks([]);
+            setPreviewTotal(0);
+          }
+          setPreviewInitialized(true);
+        }
+      } finally {
+        if (active) {
+          setPreviewLoading(false);
         }
       }
     }, 300);
@@ -543,7 +617,7 @@ export default function DataDetailPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [params.id, detailData?.id, previewKeyword]);
+  }, [params.id, detailData?.id, previewKeyword, previewPageNo]);
 
   const document = useMemo(
     () => buildDocumentDetail(baseDocument, detailData, sourceTitle, sourceType),
@@ -575,12 +649,18 @@ export default function DataDetailPage() {
 
   const previewBlocks = useMemo(
     () =>
-      (previewChunks.length > 0 ? previewChunks : ["暂无正文内容"]).map((item) => ({
+      (previewChunks.length > 0
+        ? previewChunks
+        : [{ seq: "empty", value: "暂无正文内容", hit: false }]).map((item) => ({
         type: "paragraph",
-        value: item,
+        value: item.value,
+        seq: item.seq,
+        hit: item.hit,
       })) as Array<{
         type: PreviewBlockType;
         value: string;
+        seq: string;
+        hit?: boolean;
       }>,
     [previewChunks],
   );
@@ -593,6 +673,20 @@ export default function DataDetailPage() {
     if (!keyword) return previewBlocks;
     return previewBlocks.filter((block) => stripHtml(block.value).toLowerCase().includes(keyword));
   }, [previewBlocks, previewChunks.length, previewKeyword]);
+
+  const previewHasMore = previewTotal > 0 && previewChunks.length < previewTotal;
+
+  const handlePreviewScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    if (previewLoading || !previewHasMore) {
+      return;
+    }
+
+    const remainingDistance = target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (remainingDistance <= 120) {
+      setPreviewPageNo((currentPageNo) => currentPageNo + 1);
+    }
+  };
 
   const entityGraphData = useMemo<EntityGraphData>(() => {
     const centerNode = document.graph.nodes[0];
@@ -867,16 +961,18 @@ export default function DataDetailPage() {
                   />
                 </Space>
               }
-              style={{ ...surfaceCardStyle, width: "100%", height: "100%" }}
-              styles={{ body: { padding: 14, height: "calc(100% - 57px)" } }}
+              style={{ ...surfaceCardStyle, width: "100%", height: PREVIEW_CARD_HEIGHT }}
+              styles={{ body: { padding: 14, height: PREVIEW_CARD_HEIGHT - 57 } }}
             >
               <div
+                onScroll={handlePreviewScroll}
                 style={{
                   border: "1px solid #dfe7f2",
                   borderRadius: 12,
                   background: "#fbfcff",
                   padding: "16px 20px",
                   height: "100%",
+                  overflowY: "auto",
                 }}
               >
                 <div style={{ fontSize: 18, fontWeight: 700, color: "#1f2a44", marginBottom: 12 }}>
@@ -888,18 +984,75 @@ export default function DataDetailPage() {
                   <div>上传人：{document.uploader}</div>
                 </div>
 
+                <style>{`
+                  .document-preview-html {
+                    color: #334155;
+                    font-size: 15px;
+                    line-height: 1.9;
+                    overflow-x: auto;
+                  }
+
+                  .document-preview-html table {
+                    width: 100%;
+                    max-width: 100%;
+                    border-collapse: collapse;
+                    table-layout: auto;
+                  }
+
+                  .document-preview-html td,
+                  .document-preview-html th {
+                    padding: 6px 8px;
+                    vertical-align: top;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                  }
+
+                  .document-preview-html img {
+                    max-width: 100%;
+                    height: auto;
+                  }
+                `}</style>
+
                 {filteredPreviewBlocks.length > 0 ? (
-                  filteredPreviewBlocks.map((block, index) => (
-                    <PreviewBlock
-                      key={`${block.type}-${index}-${block.value}`}
-                      type={block.type}
-                      keyword={previewKeyword}
-                    >
-                      {block.value}
-                    </PreviewBlock>
-                  ))
+                  <>
+                    {filteredPreviewBlocks.map((block, index) => (
+                      <div key={`${block.seq}-${index}`} style={{ marginBottom: index === filteredPreviewBlocks.length - 1 ? 0 : 18 }}>
+                        {block.hit && (
+                          <div style={{ marginBottom: 8 }}>
+                            <Tag color="processing" style={{ margin: 0 }}>
+                              命中片段
+                            </Tag>
+                          </div>
+                        )}
+                        <PreviewBlock type={block.type} keyword={previewKeyword}>
+                          {block.value}
+                        </PreviewBlock>
+                      </div>
+                    ))}
+                    <div style={{ display: "grid", gap: 8, marginTop: 20, paddingBottom: 4 }}>
+                      {previewLoading && (
+                        <div style={{ textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                          正在加载更多内容...
+                        </div>
+                      )}
+                      {!previewHasMore && previewInitialized && previewChunks.length > 0 && (
+                        <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                          已加载全部 {previewTotal} 条内容
+                        </div>
+                      )}
+                      {!previewLoading && previewHasMore && (
+                        <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                          下滑继续加载更多内容
+                        </div>
+                      )}
+                    </div>
+                  </>
                 ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到匹配内容" style={{ marginTop: 48 }} />
+                  !previewLoading && previewInitialized ? (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到匹配内容" style={{ marginTop: 48 }} />
+                  ) : (
+                    <div style={{ textAlign: "center", color: "#64748b", paddingTop: 48 }}>内容加载中...</div>
+                  )
                 )}
               </div>
             </Card>
@@ -907,7 +1060,12 @@ export default function DataDetailPage() {
 
           <Col xs={24} xl={8} style={{ display: "flex" }}>
             <div style={{ display: "grid", gap: 12, width: "100%" }}>
-              <Card bordered={false} title="元数据信息" style={surfaceCardStyle} styles={{ body: { padding: 14 } }}>
+              <Card
+                bordered={false}
+                title="元数据信息"
+                style={{ ...surfaceCardStyle, height: META_CARD_HEIGHT }}
+                styles={{ body: { padding: 14, height: META_CARD_HEIGHT - 57, overflowY: "auto" } }}
+              >
                 <InfoList
                   items={[
                     ["文档标题", document.title.replace(/\.(pdf|docx|txt)$/i, "")],
@@ -928,38 +1086,43 @@ export default function DataDetailPage() {
                 bordered={false}
                 title="提取关键词"
                 extra={<span style={{ color: "#94a3b8" }}>共 {document.keywords.length} 个</span>}
-                style={surfaceCardStyle}
-                styles={{ body: { padding: 14 } }}
+                style={{ ...surfaceCardStyle, height: KEYWORD_CARD_HEIGHT }}
+                styles={{ body: { padding: 14, height: KEYWORD_CARD_HEIGHT - 57, overflowY: "auto" } }}
               >
-                <Space wrap size={[8, 10]}>
-                  {document.keywords.map((item, index) => (
-                    <ColorTag key={item} palette={keywordPalettes[index % keywordPalettes.length]}>
-                      {item}
-                    </ColorTag>
-                  ))}
-                </Space>
+                {document.keywords.length > 0 ? (
+                  <Space wrap size={[8, 10]}>
+                    {document.keywords.map((item, index) => (
+                      <ColorTag key={item} palette={keywordPalettes[index % keywordPalettes.length]}>
+                        {item}
+                      </ColorTag>
+                    ))}
+                  </Space>
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关键词" />
+                )}
               </Card>
 
-              {entityEntries.length > 0 && (
-                <Card
-                  bordered={false}
-                  title="实体抽取"
-                  extra={
-                    <Space size={8}>
-                      <span style={{ color: "#94a3b8" }}>共 {entityCount} 个</span>
-                      <Tooltip title="查看本文档知识图谱">
-                        <Button
-                          type="text"
-                          shape="circle"
-                          icon={<ClusterOutlined />}
-                          onClick={() => setGraphOpen(true)}
-                        />
-                      </Tooltip>
-                    </Space>
-                  }
-                  style={surfaceCardStyle}
-                  styles={{ body: { padding: 14 } }}
-                >
+              <Card
+                bordered={false}
+                title="实体抽取"
+                extra={
+                  <Space size={8}>
+                    <span style={{ color: "#94a3b8" }}>共 {entityCount} 个</span>
+                    <Tooltip title={entityCount > 0 ? "查看本文档知识图谱" : "暂无实体可查看"}>
+                      <Button
+                        type="text"
+                        shape="circle"
+                        icon={<ClusterOutlined />}
+                        disabled={entityCount === 0}
+                        onClick={() => setGraphOpen(true)}
+                      />
+                    </Tooltip>
+                  </Space>
+                }
+                style={{ ...surfaceCardStyle, height: ENTITY_CARD_HEIGHT }}
+                styles={{ body: { padding: 14, height: ENTITY_CARD_HEIGHT - 57, overflowY: "auto" } }}
+              >
+                {entityEntries.length > 0 ? (
                   <div style={{ display: "grid", gap: 12 }}>
                     {entityEntries.map(([type, entities], index) => {
                       const meta = entityTypeMeta[type as keyof typeof entityTypeMeta];
@@ -1006,23 +1169,29 @@ export default function DataDetailPage() {
                       );
                     })}
                   </div>
-                </Card>
-              )}
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无实体" />
+                )}
+              </Card>
 
               <Card
                 bordered={false}
                 title="标签分类结果"
                 extra={<span style={{ color: "#94a3b8" }}>共 {document.tags.length} 个</span>}
-                style={surfaceCardStyle}
-                styles={{ body: { padding: 14 } }}
+                style={{ ...surfaceCardStyle, height: TAG_CARD_HEIGHT }}
+                styles={{ body: { padding: 14, height: TAG_CARD_HEIGHT - 57, overflowY: "auto" } }}
               >
-                <Space wrap size={[8, 10]}>
-                  {document.tags.map((item, index) => (
-                    <ColorTag key={item} palette={tagPalettes[index % tagPalettes.length]}>
-                      {item}
-                    </ColorTag>
-                  ))}
-                </Space>
+                {document.tags.length > 0 ? (
+                  <Space wrap size={[8, 10]}>
+                    {document.tags.map((item, index) => (
+                      <ColorTag key={item} palette={tagPalettes[index % tagPalettes.length]}>
+                        {item}
+                      </ColorTag>
+                    ))}
+                  </Space>
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无标签分类结果" />
+                )}
               </Card>
             </div>
           </Col>
@@ -1156,8 +1325,10 @@ function InfoList({ items }: { items: Array<[string, string]> }) {
             alignItems: "flex-start",
           }}
         >
-          <span style={{ color: "#64748b" }}>{label}</span>
-          <span style={{ color: "#1f2937", fontWeight: 600, textAlign: "right" }}>{value}</span>
+          <span style={{ color: "#64748b", flexShrink: 0 }}>{label}</span>
+          <span style={{ color: "#1f2937", fontWeight: 600, textAlign: "right", whiteSpace: "normal", wordBreak: "break-word" }}>
+            {value}
+          </span>
         </div>
       ))}
     </div>
@@ -1197,10 +1368,17 @@ function PreviewBlock({
   keyword?: string;
 }) {
   const isHtmlContent = typeof children === "string" && /<\/?[a-z][\s\S]*>/i.test(children);
+  const htmlChildren =
+    typeof children === "string" && isHtmlContent ? normalizePreviewHtml(children) : "";
   const resolvedChildren =
     typeof children === "string"
       ? isHtmlContent
-        ? <span dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(children) }} />
+        ? (
+          <div
+            className="document-preview-html"
+            dangerouslySetInnerHTML={{ __html: htmlChildren }}
+          />
+        )
         : renderHighlightedText(children, keyword || "")
       : children;
 
@@ -1225,9 +1403,9 @@ function PreviewBlock({
   }
 
   return (
-    <p style={{ color: "#334155", lineHeight: 1.9, margin: "0 0 14px", fontSize: 15 }}>
+    <div style={{ color: "#334155", lineHeight: 1.9, margin: 0, fontSize: 15 }}>
       {resolvedChildren}
-    </p>
+    </div>
   );
 }
 

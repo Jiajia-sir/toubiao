@@ -1,54 +1,40 @@
 "use client";
 
-import { history } from "@umijs/max";
-import { Modal } from "antd";
 import { clearSessionToken } from "@/access";
 import { PageEnum } from "@/enums/pagesEnums";
 import { setRemoteMenu } from "@/services/session";
+import { history } from "@umijs/max";
+import { message, Modal } from "antd";
 
-let isShowingRelogin = false;
+let isRedirectingToLogin = false;
 
-/**
- * 处理认证过期 - 弹窗提示用户重新登录
- * 参考 data-processing-platform 的实现
- */
-export function handleAuthExpired() {
+function resetAuthState() {
   clearSessionToken();
   setRemoteMenu(null);
+  Modal.destroyAll();
+}
 
-  // 防止重复弹窗
-  if (isShowingRelogin) {
+export function handleAuthExpired() {
+  if (isRedirectingToLogin) {
     return;
   }
 
-  // 如果已经在登录页，不处理
+  resetAuthState();
+
   if (history.location.pathname === PageEnum.LOGIN) {
     return;
   }
 
-  isShowingRelogin = true;
-
-  Modal.confirm({
-    title: "系统提示",
-    content: "登录状态已过期，您可以继续留在该页面，或者重新登录",
-    okText: "重新登录",
-    cancelText: "取消",
-    onOk() {
-      isShowingRelogin = false;
-      history.replace(PageEnum.LOGIN);
-    },
-    onCancel() {
-      isShowingRelogin = false;
-    },
-  });
+  isRedirectingToLogin = true;
+  message.warning("登录状态已过期，请重新登录");
+  history.replace(PageEnum.LOGIN);
+  setTimeout(() => {
+    isRedirectingToLogin = false;
+  }, 0);
 }
 
-/**
- * 直接跳转到登录页（用于 refreshToken 刷新失败等必须登出的场景）
- */
 export function redirectToLogin() {
-  clearSessionToken();
-  setRemoteMenu(null);
+  resetAuthState();
 
   if (history.location.pathname === PageEnum.LOGIN) {
     return;
