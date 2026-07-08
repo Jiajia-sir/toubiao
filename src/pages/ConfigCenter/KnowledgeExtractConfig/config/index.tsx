@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { history } from '@umijs/max';
+import { history, useSearchParams } from '@umijs/max';
+import { createKnowledgeExtractConfig, getKnowledgeExtractConfigDetail, updateKnowledgeExtractConfig } from '@/services/biz/knowledge-extract-config';
 import { getTagList, type TagItem } from '@/services/biz/tag';
 import {
   getEntityTypeAttributeList,
@@ -47,11 +48,16 @@ import {
 interface KnowledgeExtractConfig {
   id?: string;
   name?: string;
+  description?: string;
+  enabled: '启用' | '停用';
+  isBuiltin?: boolean;
+  sortNo?: number;
   tags: string[];
   blockSize: number;
   splitMode: '字数' | '段落';
   granularity: '粗颗粒度' | '细颗粒度';
   model: string;
+  modelId?: number;
   categories: string[];
   coarseEntityTypeIds: string[];
   fineAttributeIdsByType: Record<string, string[]>;
@@ -74,44 +80,8 @@ const defaultTagOptions = [
   { label: '技术', value: '技术' },
 ];
 
-const defaultModelOptions = [
-  {
-    label: (
-      <Space>
-        <RobotOutlined style={{ color: '#1677ff' }} />
-        <span>Qwen2.5-7B-Instruct</span>
-      </Space>
-    ),
-    value: 'Qwen2.5-7B-Instruct',
-  },
-  {
-    label: (
-      <Space>
-        <RobotOutlined style={{ color: '#fa8c16' }} />
-        <span>Qwen2.5-14B-Instruct</span>
-      </Space>
-    ),
-    value: 'Qwen2.5-14B-Instruct',
-  },
-  {
-    label: (
-      <Space>
-        <ThunderboltOutlined style={{ color: '#eb2f96' }} />
-        <span>GLM-4-9B-Chat</span>
-      </Space>
-    ),
-    value: 'GLM-4-9B-Chat',
-  },
-  {
-    label: (
-      <Space>
-        <FireOutlined style={{ color: '#52c41a' }} />
-        <span>Llama-3-8B-Instruct</span>
-      </Space>
-    ),
-    value: 'Llama-3-8B-Instruct',
-  },
-];
+const defaultModelOptions: ModelOption[] = [];
+
 
 const modelPrecisionOptions = [
   { label: '精确抽取', value: '精确抽取' },
@@ -168,7 +138,8 @@ const sampleResult = `人物：张三
 
 interface ModelOption {
   label: ReactNode;
-  value: string;
+  value: number;
+  modelName: string;
 }
 
 const normalizeModelOption = (item: LlmModelConfigItem): ModelOption => {
@@ -196,19 +167,31 @@ const normalizeModelOption = (item: LlmModelConfigItem): ModelOption => {
         </Tag>
       </Space>
     ),
-    value: displayName,
+    value: Number(item.id),
+    modelName: displayName,
   };
 };
 
 export default function KnowledgeExtractConfigPage() {
+  const [searchParams] = useSearchParams();
+  const templateId = searchParams.get('id');
+  const mode = searchParams.get('mode');
+  const isReadOnly = mode === 'view';
   const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
   const [config, setConfig] = useState<KnowledgeExtractConfig>({
+    name: '',
+    description: '',
+    enabled: '启用',
+    isBuiltin: false,
+    sortNo: 0,
     tags: [],
     blockSize: 1000,
     splitMode: '字数',
     granularity: '粗颗粒度',
-    model: 'Qwen2.5-7B-Instruct',
+    model: '',
+    modelId: undefined,
     categories: [],
     coarseEntityTypeIds: [],
     fineAttributeIdsByType: {},
@@ -236,6 +219,65 @@ export default function KnowledgeExtractConfigPage() {
   const [attributeLoadingMap, setAttributeLoadingMap] = useState<Record<string, boolean>>({});
   const [activeFineEntityTypeId, setActiveFineEntityTypeId] = useState('');
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
+
+  const getSelectedModelName = () => {
+    const option = modelOptions.find((item) => item.value === config.modelId);
+    return option?.modelName || config.model || '未选择模型';
+  };
+
+  const hydrateTemplateDetail = (payload: any) => {
+    const detail = payload?.data || payload;
+    const snapshot = detail?.configSnapshot || {};
+    const extractSchema = detail?.extractSchema || {};
+    const fineAttributeIdsByType =
+      extractSchema?.fineAttributeIdsByType || snapshot?.fineAttributeIdsByType || {};
+    const normalizedFineAttributeIdsByType = Object.keys(fineAttributeIdsByType).reduce<Record<string, string[]>>(
+      (acc, key) => {
+        acc[String(key)] = (fineAttributeIdsByType[key] || []).map(String);
+        return acc;
+      },
+      {},
+    );
+    Object.keys(normalizedFineAttributeIdsByType).forEach((key) => {
+      void loadAttributeOptions(String(key));
+    });
+    const coarseEntityTypeIds = (extractSchema?.coarseEntityTypeIds || snapshot?.coarseEntityTypeIds || []).map(String);
+    setConfig((prev) => ({
+      ...prev,
+      id: detail?.id ? String(detail.id) : prev.id,
+      name: detail?.name || snapshot?.name || '',
+      description: detail?.description || snapshot?.description || '',
+      enabled: detail?.enabled || prev.enabled,
+      isBuiltin: detail?.isBuiltin ?? prev.isBuiltin,
+      sortNo: Number(detail?.sortNo ?? prev.sortNo ?? 0),
+      tags: (detail?.tags || snapshot?.tags || []).map(String),
+      blockSize: Number(detail?.blockSize ?? snapshot?.blockSize ?? prev.blockSize),
+      splitMode: (detail?.splitMode || snapshot?.splitMode || prev.splitMode) as '字数' | '段落',
+      granularity: (detail?.granularity || snapshot?.granularity || prev.granularity) as '粗颗粒度' | '细颗粒度',
+      model: detail?.modelName || snapshot?.modelName || prev.model,
+      modelId: detail?.modelId ? Number(detail.modelId) : snapshot?.modelId ? Number(snapshot.modelId) : prev.modelId,
+      categories: snapshot?.categories || prev.categories,
+      coarseEntityTypeIds,
+      fineAttributeIdsByType: normalizedFineAttributeIdsByType,
+      categoryLimit: Number(extractSchema?.categoryLimit ?? snapshot?.categoryLimit ?? prev.categoryLimit),
+      temperature: Number(detail?.temperature ?? snapshot?.temperature ?? prev.temperature),
+      topP: Number(detail?.topP ?? snapshot?.topP ?? prev.topP),
+      presencePenalty: Number(detail?.presencePenalty ?? snapshot?.presencePenalty ?? prev.presencePenalty),
+      frequencyPenalty: Number(detail?.frequencyPenalty ?? snapshot?.frequencyPenalty ?? prev.frequencyPenalty),
+      maxTokens: Number(detail?.maxTokens ?? snapshot?.maxTokens ?? prev.maxTokens),
+    }));
+    setModelPrecision(extractSchema?.modelPrecision || snapshot?.modelPrecision || '精确抽取');
+    setTempEnabled(Boolean(detail?.temperatureEnabled ?? snapshot?.temperatureEnabled ?? true));
+    setTopPEnabled(Boolean(detail?.topPEnabled ?? snapshot?.topPEnabled ?? true));
+    setPresencePenaltyEnabled(Boolean(detail?.presencePenaltyEnabled ?? snapshot?.presencePenaltyEnabled ?? true));
+    setFrequencyPenaltyEnabled(Boolean(detail?.frequencyPenaltyEnabled ?? snapshot?.frequencyPenaltyEnabled ?? false));
+    setMaxTokensEnabled(Boolean(detail?.maxTokensEnabled ?? snapshot?.maxTokensEnabled ?? false));
+    setGeneratedPrompt(detail?.generatedPrompt || snapshot?.generatedPrompt || '');
+    const firstTypeId = Object.keys(normalizedFineAttributeIdsByType)[0];
+    if (firstTypeId) {
+      setActiveFineEntityTypeId(firstTypeId);
+    }
+  };
 
   const extractList = <T,>(response: any): T[] => {
     if (Array.isArray(response?.data)) {
@@ -347,8 +389,13 @@ export default function KnowledgeExtractConfigPage() {
           if (options.length > 0) {
             setModelOptions(options);
             setConfig((prev) => {
-              const exists = options.some((option) => option.value === prev.model);
-              return exists ? prev : { ...prev, model: options[0].value };
+              const exists = options.some((option) => option.value === prev.modelId);
+              return exists
+                ? {
+                    ...prev,
+                    model: options.find((option) => option.value === prev.modelId)?.modelName || prev.model,
+                  }
+                : { ...prev, modelId: options[0].value, model: options[0].modelName };
             });
           } else {
             setModelOptions(defaultModelOptions);
@@ -380,6 +427,25 @@ export default function KnowledgeExtractConfigPage() {
       void loadAttributeOptions(activeFineEntityTypeId);
     }
   }, [activeFineEntityTypeId]);
+
+  useEffect(() => {
+    const fetchTemplateDetail = async () => {
+      if (!templateId) {
+        return;
+      }
+      setDetailLoading(true);
+      try {
+        const res: any = await getKnowledgeExtractConfigDetail(templateId);
+        hydrateTemplateDetail(res);
+      } catch (error) {
+        console.error(error);
+        message.error('获取模板详情失败');
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+    void fetchTemplateDetail();
+  }, [templateId]);
 
   const selectedCoarseEntityTypes = entityTypeOptions.filter((item) =>
     config.coarseEntityTypeIds.includes(String(item.id)),
@@ -450,12 +516,112 @@ export default function KnowledgeExtractConfigPage() {
       return text.match(/北京|杭州|上海|广州|深圳/)?.[0] || '无';
     }
     return '示例值';
-  };  const handleSave = () => {
+  };
+
+  const handleSave = async () => {
+    if (!config.name?.trim()) {
+      message.error('请输入模板名称');
+      return;
+    }
+    if (!config.modelId) {
+      message.error('请选择模型');
+      return;
+    }
+    if (config.tags.length === 0) {
+      message.error('请至少选择一个适用标签');
+      return;
+    }
+    if (config.granularity === '粗颗粒度' && config.coarseEntityTypeIds.length === 0) {
+      message.error('粗颗粒度模式下请至少选择一个实体类型');
+      return;
+    }
+    if (config.granularity === '细颗粒度' && selectedFineAttributeCount === 0) {
+      message.error('细颗粒度模式下请至少选择一个实体属性');
+      return;
+    }
+
+    const prompt = generatedPrompt || samplePrompt;
+    const extractSchema = {
+      granularity: config.granularity,
+      categoryLimit: config.categoryLimit,
+      modelPrecision,
+      coarseEntityTypeIds: config.coarseEntityTypeIds,
+      fineAttributeIdsByType: config.fineAttributeIdsByType,
+    };
+    const configSnapshot = {
+      name: config.name,
+      description: config.description,
+      tags: config.tags,
+      splitMode: config.splitMode,
+      blockSize: config.blockSize,
+      granularity: config.granularity,
+      modelName: getSelectedModelName(),
+      modelId: config.modelId,
+      modelPrecision,
+      categoryLimit: config.categoryLimit,
+      categories: config.categories,
+      coarseEntityTypeIds: config.coarseEntityTypeIds,
+      fineAttributeIdsByType: config.fineAttributeIdsByType,
+      generatedPrompt: prompt,
+      temperatureEnabled: tempEnabled,
+      temperature: config.temperature,
+      topPEnabled,
+      topP: config.topP,
+      presencePenaltyEnabled,
+      presencePenalty: config.presencePenalty,
+      frequencyPenaltyEnabled,
+      frequencyPenalty: config.frequencyPenalty,
+      maxTokensEnabled,
+      maxTokens: config.maxTokens,
+    };
+
+    if (isReadOnly) {
+      return;
+    }
     setLoading(true);
-    setTimeout(() => {
-      message.success('保存成功');
+    try {
+      const payload = {
+        id: config.id,
+        name: config.name.trim(),
+        description: config.description?.trim() || '',
+        enabled: config.enabled,
+        isBuiltin: Boolean(config.isBuiltin),
+        tags: config.tags,
+        splitMode: config.splitMode,
+        blockSize: config.blockSize,
+        granularity: config.granularity,
+        modelName: getSelectedModelName(),
+        modelId: config.modelId,
+        temperatureEnabled: tempEnabled,
+        temperature: config.temperature,
+        topPEnabled,
+        topP: config.topP,
+        presencePenaltyEnabled,
+        presencePenalty: config.presencePenalty,
+        frequencyPenaltyEnabled,
+        frequencyPenalty: config.frequencyPenalty,
+        maxTokensEnabled,
+        maxTokens: config.maxTokens,
+        generatedPrompt: prompt,
+        extractSchema,
+        configSnapshot,
+        sortNo: Number(config.sortNo ?? 0),
+      };
+      const res: any = config.id
+        ? await updateKnowledgeExtractConfig(payload)
+        : await createKnowledgeExtractConfig(payload);
+      if (res?.code === 200) {
+        message.success(config.id ? '更新成功' : '保存成功');
+        history.push('/config-center/knowledge-extract');
+      } else {
+        message.error(res?.msg || '保存失败');
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('保存失败');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleExtract = () => {
@@ -466,7 +632,7 @@ export default function KnowledgeExtractConfigPage() {
 
       if (config.granularity === '粗颗粒度') {
         const selectedNames = selectedCoarseEntityTypes.map((item) => item.name);
-        result = `【${config.model} - ${modelPrecision}粗颗粒度抽取结果】\n`;
+        result = `【${getSelectedModelName()} - ${modelPrecision}粗颗粒度抽取结果】\n`;
         if (selectedNames.length === 0) {
           result += '未选择实体类型';
         } else {
@@ -476,7 +642,7 @@ export default function KnowledgeExtractConfigPage() {
           });
         }
       } else {
-        result = `【${config.model} - ${modelPrecision}细颗粒度抽取结果】\n`;
+        result = `【${getSelectedModelName()} - ${modelPrecision}细颗粒度抽取结果】\n`;
         if (selectedFineAttributeGroups.length === 0) {
           result += '未选择实体属性';
         } else {
@@ -554,7 +720,7 @@ export default function KnowledgeExtractConfigPage() {
               color: '#fff',
             }}
           >
-            知识抽取配置
+            {isReadOnly ? '查看知识抽取配置' : config.id ? '编辑知识抽取配置' : '知识抽取配置'}
           </h2>
         </Space>
         <p
@@ -568,8 +734,33 @@ export default function KnowledgeExtractConfigPage() {
         </p>
       </div>
 
-      <Row gutter={24}>
+      <Row gutter={24} style={isReadOnly ? { pointerEvents: 'none', opacity: 0.92 } : undefined}>
         <Col span={14}>
+          <Card loading={detailLoading} style={{ marginBottom: 16 }}>
+            <Row gutter={16}>
+              <Col span={12}>
+                <div style={{ fontWeight: 500, fontSize: 14, color: '#333', marginBottom: 4 }}>
+                  <span style={{ color: '#ff4d4f' }}>*</span> 模板名称
+                </div>
+                <Input
+                  placeholder="请输入模板名称"
+                  value={config.name}
+                  onChange={(e) => setConfig({ ...config, name: e.target.value })}
+                />
+              </Col>
+              <Col span={12}>
+                <div style={{ fontWeight: 500, fontSize: 14, color: '#333', marginBottom: 4 }}>
+                  模板描述
+                </div>
+                <Input
+                  placeholder="请输入模板描述"
+                  value={config.description}
+                  onChange={(e) => setConfig({ ...config, description: e.target.value })}
+                />
+              </Col>
+            </Row>
+          </Card>
+
           <Card style={{ marginBottom: 16 }}>
             <div
               style={{
@@ -1042,9 +1233,13 @@ export default function KnowledgeExtractConfigPage() {
                 选择模型
               </div>
               <Select
-                value={config.model}
-                onChange={(value) => setConfig({ ...config, model: value })}
+                value={config.modelId}
+                onChange={(value) => {
+                  const option = modelOptions.find((item) => item.value === value);
+                  setConfig({ ...config, modelId: value, model: option?.modelName || '' });
+                }}
                 options={modelOptions}
+                placeholder="请选择模型"
                 style={{ width: '100%' }}
               />
             </div>
@@ -1636,7 +1831,7 @@ export default function KnowledgeExtractConfigPage() {
                         color: '#1f1f1f',
                       }}
                     >
-                      {config.model}
+                      {getSelectedModelName()}
                       <Tag color="blue" style={{ marginLeft: 8 }}>
                         {modelPrecision}
                       </Tag>
@@ -1904,6 +2099,7 @@ export default function KnowledgeExtractConfigPage() {
                 </div>
               </div>
 
+              {!isReadOnly && (
               <Button
                 type="primary"
                 block
@@ -1912,8 +2108,9 @@ export default function KnowledgeExtractConfigPage() {
                 loading={loading}
                 style={{ height: 44, fontSize: 15, fontWeight: 500 }}
               >
-                保存配置
+                {config.id ? '更新配置' : '保存配置'}
               </Button>
+              )}
             </Space>
           </Card>
         </Col>
@@ -1948,6 +2145,12 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
   },
 };
+
+
+
+
+
+
 
 
 
