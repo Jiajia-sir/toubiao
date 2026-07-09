@@ -33,6 +33,21 @@ export interface DocumentQueryResult {
   [key: string]: any;
 }
 
+export interface DocumentKnowledgeBaseFacetItem {
+  id?: number | string;
+  name?: string;
+  count?: number;
+}
+
+export interface DocumentFacetResult {
+  knowledgeBaseCounts?: DocumentKnowledgeBaseFacetItem[];
+  fileTypeCounts?: Array<{
+    fileType?: string;
+    count?: number;
+  }>;
+  [key: string]: any;
+}
+
 export interface DocumentViewParams {
   id: number | string;
   esId?: string;
@@ -49,6 +64,13 @@ export interface DocumentHtmlChunkPageParams {
 
 export async function queryDocuments(data: DocumentQueryParams) {
   return request<DocumentQueryResult>(`${API_PREFIX}/biz/document-query/query`, {
+    method: "POST",
+    data,
+  });
+}
+
+export async function getDocumentFacet(data: DocumentQueryParams) {
+  return request<DocumentFacetResult>(`${API_PREFIX}/biz/document-query/facet`, {
     method: "POST",
     data,
   });
