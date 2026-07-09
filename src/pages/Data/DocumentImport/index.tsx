@@ -9,9 +9,11 @@ import {
   Modal,
   Popconfirm,
   Progress,
+  Radio,
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -23,6 +25,7 @@ import {
   CloudUploadOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  EditOutlined,
   EyeOutlined,
   FileExcelOutlined,
   FileMarkdownOutlined,
@@ -38,6 +41,7 @@ import {
   ReloadOutlined,
   SearchOutlined,
   CloseCircleOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import { fileTypeConfig } from '@/config/fileTypes';
 import {
@@ -52,10 +56,12 @@ import { getKnowledgeBasePage } from '@/services/biz/knowledge-base';
 import { getCatalogTypePage } from '@/services/biz/catalogType';
 import { getTagPage } from '@/services/biz/tag';
 import {
+  batchSetDocumentKnowledgeBase,
   createFileBaseData,
   deleteDocumentBatch,
   getDocumentPage,
   reAnalysisDocument,
+  updateDocument,
   type DocumentPageItem,
 } from './api';
 import DocumentPreviewModal from './DocumentPreviewModal';
@@ -81,14 +87,6 @@ export interface DocumentRecord {
   entities: string[];
   createTime: string;
 }
-
-const tagColorMap: Record<string, string> = {
-  产品需求: '#1890ff',
-  技术文档: '#52c41a',
-  财务报告: '#faad14',
-  市场分析: '#eb2f96',
-  项目管理: '#13c2c2',
-};
 
 const fileTypeIconMap: Record<string, React.ReactNode> = {
   docx: <FileWordOutlined style={{ fontSize: 24, color: fileTypeConfig.DOCX.color }} />,
@@ -202,7 +200,14 @@ const IntelligentProcessingTag: React.FC = () => {
           }}
         >
           {INTELLIGENT_STEPS.map((s) => (
-            <span key={s} style={{ height: INTELLIGENT_STEP_HEIGHT, lineHeight: `${INTELLIGENT_STEP_HEIGHT}px`, whiteSpace: 'nowrap' }}>
+            <span
+              key={s}
+              style={{
+                height: INTELLIGENT_STEP_HEIGHT,
+                lineHeight: `${INTELLIGENT_STEP_HEIGHT}px`,
+                whiteSpace: 'nowrap',
+              }}
+            >
               {s}
             </span>
           ))}
@@ -270,7 +275,17 @@ const formatDocumentFileSize = (value: any) => {
 
 const normalizeDocumentRecord = (item: DocumentPageItem, index: number): DocumentRecord => {
   const fileType = String(item.fileType ?? item.type ?? '').toUpperCase();
-  const knowledgeBaseIds = extractIdList(item.knowledgeBaseIds ?? item.knowledgeBaseId);
+
+  // 优先从 knowledgeBaseObj [{id,name}] 解析，兼容旧字段 knowledgeBaseIds/knowledgeBaseNames
+  const objList = Array.isArray(item.knowledgeBaseObj) ? item.knowledgeBaseObj : [];
+  const knowledgeBaseIds =
+    objList.length > 0
+      ? objList.map((obj) => obj.id).filter((id) => id !== undefined && id !== null)
+      : extractIdList(item.knowledgeBaseIds ?? item.knowledgeBaseId);
+  const knowledgeBaseNames =
+    objList.length > 0
+      ? objList.map((obj) => String(obj.name ?? '')).filter(Boolean)
+      : extractStringList(item.knowledgeBaseNames ?? item.knowledgeBaseName);
 
   return {
     id: String(item.id ?? item.documentId ?? item.fileId ?? `${index}`),
@@ -279,7 +294,7 @@ const normalizeDocumentRecord = (item: DocumentPageItem, index: number): Documen
     fileType: fileType || '-',
     fileSizeBytes: item.fileSizeBytes,
     knowledgeBaseIds,
-    knowledgeBaseNames: extractStringList(item.knowledgeBaseNames ?? item.knowledgeBaseName),
+    knowledgeBaseNames,
     keywords: (() => {
       const raw = item.keywords;
       if (Array.isArray(raw)) {
@@ -315,22 +330,64 @@ const renderTags = (values: string[]) => {
     return '-';
   }
 
-  return values.map((value) => {
-    const color = tagColorMap[value] || '#1890ff';
-    return (
-      <Tag
-        key={value}
-        style={{
-          color,
-          background: `${color}15`,
-          border: `1px solid ${color}30`,
-          marginBottom: 2,
-        }}
-      >
-        {value}
-      </Tag>
-    );
-  });
+  const normalizedValues = values
+    .map((value) =>
+      typeof value === 'string'
+        ? value
+        : String((value as any)?.label ?? (value as any)?.name ?? value),
+    )
+    .filter(Boolean);
+
+  if (!normalizedValues.length) {
+    return '-';
+  }
+
+  const maxVisible = 3;
+  const visibleValues = normalizedValues.slice(0, maxVisible);
+  const hiddenValues = normalizedValues.slice(maxVisible);
+
+  const content = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+      {visibleValues.map((value, index) => {
+        const color = '#1890ff';
+        return (
+          <Tag
+            key={`${value}-${index}`}
+            style={{
+              color,
+              background: `${color}15`,
+              border: `1px solid ${color}30`,
+              marginBottom: 2,
+            }}
+          >
+            {value}
+          </Tag>
+        );
+      })}
+      {hiddenValues.length > 0 && <span style={{ color: '#bfbfbf' }}>+{hiddenValues.length}</span>}
+    </span>
+  );
+
+  if (!hiddenValues.length) {
+    return content;
+  }
+
+  return (
+    <Tooltip
+      color="#fff"
+      title={
+        <div style={tagTooltipOverlayStyle}>
+          {normalizedValues.map((value, idx) => (
+            <span key={`${value}-${idx}`} style={miniTagStyle}>
+              {value}
+            </span>
+          ))}
+        </div>
+      }
+    >
+      {content}
+    </Tooltip>
+  );
 };
 
 const miniTagStyle: React.CSSProperties = {
@@ -425,16 +482,29 @@ export default function DocumentImportPage() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [channelFilter, setChannelFilter] = useState<number | string | undefined>();
   const [searchText, setSearchText] = useState('');
+  // accessMode：1=自动读取 2=页面上传
+  const [accessMode, setAccessMode] = useState<string>('2');
 
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const [uploadVisible, setUploadVisible] = useState(false);
   const [batchImportVisible, setBatchImportVisible] = useState(false);
-  const [batchImportKnowledgeBase, setBatchImportKnowledgeBase] = useState<
-    number | string | undefined
-  >();
+  const [batchImportKnowledgeBases, setBatchImportKnowledgeBases] = useState<
+    Array<number | string>
+  >([]);
+  const [batchImportOperateType, setBatchImportOperateType] = useState<'APPEND' | 'REPLACE'>(
+    'APPEND',
+  );
+  const [batchImportSubmitting, setBatchImportSubmitting] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewRecord, setPreviewRecord] = useState<DocumentRecord | null>(null);
+  const [editVisible, setEditVisible] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<DocumentRecord | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [editingCatalog, setEditingCatalog] = useState<number | string | undefined>();
+  const [editingKnowledgeBases, setEditingKnowledgeBases] = useState<Array<number | string>>([]);
+  const [editingTags, setEditingTags] = useState<Array<number | string>>([]);
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const handlePreview = (record: DocumentRecord) => {
     const filePath = record.filePath?.trim();
@@ -449,6 +519,48 @@ export default function DocumentImportPage() {
   const handlePreviewClose = () => {
     setPreviewVisible(false);
     setPreviewRecord(null);
+  };
+
+  const splitFileName = (name: string) => {
+    const trimmedName = String(name || '').trim();
+    const lastDotIndex = trimmedName.lastIndexOf('.');
+
+    if (lastDotIndex <= 0 || lastDotIndex === trimmedName.length - 1) {
+      return {
+        baseName: trimmedName,
+        extension: '',
+      };
+    }
+
+    return {
+      baseName: trimmedName.slice(0, lastDotIndex),
+      extension: trimmedName.slice(lastDotIndex),
+    };
+  };
+
+  const handleEditOpen = (record: DocumentRecord) => {
+    const { baseName } = splitFileName(record.name === '-' ? '' : record.name);
+    setEditingRecord(record);
+    setEditingName(baseName);
+    const matchedCatalog = catalogOptions.find((option) => option.label === record.catalogName);
+    setEditingCatalog(matchedCatalog?.value);
+    setEditingKnowledgeBases(record.knowledgeBaseIds.map((item) => String(item)));
+    setEditingTags(
+      (record.fileTagNames || [])
+        .map((tagName) => tagOptions.find((option) => option.label === tagName)?.value)
+        .filter((value): value is number | string => value !== undefined && value !== null && value !== ''),
+    );
+    setEditVisible(true);
+  };
+
+  const resetEditState = () => {
+    setEditVisible(false);
+    setEditingRecord(null);
+    setEditingName('');
+    setEditingCatalog(undefined);
+    setEditingKnowledgeBases([]);
+    setEditingTags([]);
+    setEditSubmitting(false);
   };
 
   const [uploadKnowledgeBase, setUploadKnowledgeBase] = useState<Array<number | string>>([]);
@@ -482,8 +594,9 @@ export default function DocumentImportPage() {
       fileType: typeFilter || undefined,
       channelId: channelFilter,
       status: statusFilter || undefined,
+      accessMode: accessMode || undefined,
     }),
-    [channelFilter, pageNo, pageSize, searchText, statusFilter, typeFilter],
+    [accessMode, channelFilter, pageNo, pageSize, searchText, statusFilter, typeFilter],
   );
 
   const documentRequestKey = useMemo(
@@ -578,7 +691,7 @@ export default function DocumentImportPage() {
 
         const options = items.map((item: any) => ({
           label: item.name,
-          value: item.id,
+          value: String(item.id),
           disabled: String(item.enabled) === '0',
         }));
         const nameMap = items.reduce<Record<string, string>>((map, item) => {
@@ -654,6 +767,11 @@ export default function DocumentImportPage() {
   const handleTypeFilterChange = (value?: string) => {
     resetToFirstPage();
     setTypeFilter(value ?? null);
+  };
+
+  const handleAccessModeChange = (value: string) => {
+    resetToFirstPage();
+    setAccessMode(value);
   };
 
   const handleChannelFilterChange = (value?: number | string) => {
@@ -861,40 +979,95 @@ export default function DocumentImportPage() {
     }
   };
 
-  const handleBatchImport = () => {
+  const handleEditSubmit = async () => {
+    if (!editingRecord) {
+      return;
+    }
+    if (!editingName.trim()) {
+      message.warning('请输入文件名称');
+      return;
+    }
+    if (editingCatalog === undefined || editingCatalog === null || editingCatalog === '') {
+      message.warning('请选择编目分类');
+      return;
+    }
+    if (!editingKnowledgeBases.length) {
+      message.warning('请选择知识库');
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      const { extension } = splitFileName(editingRecord.name === '-' ? '' : editingRecord.name);
+      const res: any = await updateDocument({
+        id: editingRecord.id,
+        name: `${editingName.trim()}${extension}`,
+        catalogId: editingCatalog,
+        knowledgeBaseIds: editingKnowledgeBases,
+        fileTagIds: editingTags,
+      });
+      if (res?.code !== undefined && res.code !== 200) {
+        message.error(res?.msg || '编辑文档失败');
+        return;
+      }
+      message.success('编辑文档成功');
+      resetEditState();
+      await fetchDocuments();
+    } catch (error) {
+      console.error(error);
+      message.error('编辑文档失败');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const handleBatchKnowledgeBaseOpen = () => {
     if (selectedRowKeys.length === 0) {
       message.warning('请选择要导入的文档');
       return;
     }
+    setBatchImportKnowledgeBases([]);
+    setBatchImportOperateType('APPEND');
     setBatchImportVisible(true);
   };
 
-  const handleBatchImportConfirm = () => {
-    if (
-      batchImportKnowledgeBase === undefined ||
-      batchImportKnowledgeBase === null ||
-      batchImportKnowledgeBase === ''
-    ) {
+  const handleBatchKnowledgeBaseSubmit = async () => {
+    if (!batchImportKnowledgeBases.length) {
       message.warning('请选择知识库');
       return;
     }
-    const knowledgeBaseName =
-      knowledgeBaseNameMap[String(batchImportKnowledgeBase)] || String(batchImportKnowledgeBase);
-    setData((prev) =>
-      prev.map((item) =>
-        selectedRowKeys.includes(item.id)
-          ? {
-              ...item,
-              knowledgeBaseIds: [batchImportKnowledgeBase],
-              knowledgeBaseNames: [knowledgeBaseName],
-            }
-          : item,
-      ),
-    );
-    message.success(`已选择 ${selectedRowKeys.length} 个文档添加到 ${knowledgeBaseName}`);
-    setBatchImportVisible(false);
-    setBatchImportKnowledgeBase(undefined);
-    setSelectedRowKeys([]);
+
+    setBatchImportSubmitting(true);
+    try {
+      const res: any = await batchSetDocumentKnowledgeBase({
+        documentIds: selectedRowKeys.map((id) => id as number | string),
+        knowledgeBaseIds: batchImportKnowledgeBases,
+        operateType: batchImportOperateType,
+      });
+      if (res?.code !== undefined && res.code !== 200) {
+        message.error(res?.msg || '批量入知识库失败');
+        return;
+      }
+      const knowledgeBaseNames = batchImportKnowledgeBases.map(
+        (id) => knowledgeBaseNameMap[String(id)] || String(id),
+      );
+      const knowledgeBaseText = knowledgeBaseNames.join('、');
+      message.success(
+        batchImportOperateType === 'REPLACE'
+          ? `已将所选文档覆盖到知识库 ${knowledgeBaseText}`
+          : `已为所选文档追加知识库 ${knowledgeBaseText}`,
+      );
+      setBatchImportVisible(false);
+      setBatchImportKnowledgeBases([]);
+      setBatchImportOperateType('APPEND');
+      setSelectedRowKeys([]);
+      await fetchDocuments();
+    } catch (error) {
+      console.error(error);
+      message.error('批量入知识库失败');
+    } finally {
+      setBatchImportSubmitting(false);
+    }
   };
 
   const columns: ColumnsType<DocumentRecord> = [
@@ -1177,6 +1350,14 @@ export default function DocumentImportPage() {
             <Button
               type="link"
               size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEditOpen(record)}
+            >
+              编辑
+            </Button>
+            <Button
+              type="link"
+              size="small"
               icon={<DownloadOutlined />}
               onClick={() => handleDownload(record)}
             >
@@ -1279,7 +1460,7 @@ export default function DocumentImportPage() {
           >
             上传文档
           </Button>
-          <Button icon={<FolderOutlined />} onClick={handleBatchImport}>
+          <Button icon={<FolderOutlined />} onClick={handleBatchKnowledgeBaseOpen}>
             批量入知识库
           </Button>
           <Button
@@ -1293,9 +1474,41 @@ export default function DocumentImportPage() {
         </Space>
       </div>
 
-
       {/* 表格区 */}
-      <div style={{ background: '#fff', borderRadius: 8, padding: 16, border: '1px solid #e8e8e8', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 8,
+          padding: 16,
+          border: '1px solid #e8e8e8',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+        }}
+      >
+        <Tabs
+          activeKey={accessMode}
+          onChange={handleAccessModeChange}
+          style={{ marginBottom: 16 }}
+          items={[
+            {
+              key: '1',
+              label: (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <SyncOutlined />
+                  自动读取
+                </span>
+              ),
+            },
+            {
+              key: '2',
+              label: (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <CloudUploadOutlined />
+                  页面上传
+                </span>
+              ),
+            },
+          ]}
+        />
         <Table
           columns={columns}
           dataSource={data}
@@ -1318,6 +1531,79 @@ export default function DocumentImportPage() {
           }}
         />
       </div>
+
+      <Modal
+        title="编辑文档"
+        open={editVisible}
+        onCancel={() => {
+          if (!editSubmitting) {
+            resetEditState();
+          }
+        }}
+        onOk={handleEditSubmit}
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={editSubmitting}
+        width={560}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+            文件名称 <span style={{ color: '#ff4d4f' }}>*</span>
+          </div>
+          <Input
+            value={editingName}
+            onChange={(e) => setEditingName(e.target.value)}
+            placeholder="请输入文件名称（不含后缀）"
+            maxLength={100}
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+            编辑编目 <span style={{ color: '#ff4d4f' }}>*</span>
+          </div>
+          <Select
+            style={{ width: '100%' }}
+            placeholder="请选择编目分类"
+            value={editingCatalog}
+            onChange={setEditingCatalog}
+            options={catalogOptions}
+            showSearch
+            optionFilterProp="label"
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+            编辑知识库 <span style={{ color: '#ff4d4f' }}>*</span>
+          </div>
+          <Select
+            mode="multiple"
+            style={{ width: '100%' }}
+            placeholder="请选择知识库"
+            value={editingKnowledgeBases}
+            onChange={setEditingKnowledgeBases}
+            options={knowledgeBaseOptions}
+            showSearch
+            optionFilterProp="label"
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>编辑分类标签</div>
+          <Select
+            mode="multiple"
+            allowClear
+            style={{ width: '100%' }}
+            placeholder="请选择分类标签"
+            value={editingTags}
+            onChange={setEditingTags}
+            options={tagOptions}
+            showSearch
+            optionFilterProp="label"
+          />
+        </div>
+      </Modal>
 
       <Modal
         title="上传文档"
@@ -1570,12 +1856,14 @@ export default function DocumentImportPage() {
         open={batchImportVisible}
         onCancel={() => {
           setBatchImportVisible(false);
-          setBatchImportKnowledgeBase(undefined);
+          setBatchImportKnowledgeBases([]);
+          setBatchImportOperateType('APPEND');
         }}
-        onOk={handleBatchImportConfirm}
+        onOk={handleBatchKnowledgeBaseSubmit}
         okText="确认"
         cancelText="取消"
-        width={400}
+        confirmLoading={batchImportSubmitting}
+        width={520}
       >
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
@@ -1589,12 +1877,60 @@ export default function DocumentImportPage() {
             选择目标知识库 <span style={{ color: '#ff4d4f' }}>*</span>
           </div>
           <Select
+            mode="multiple"
             style={{ width: '100%' }}
-            placeholder="请选择知识库"
-            value={batchImportKnowledgeBase}
-            onChange={setBatchImportKnowledgeBase}
+            placeholder="请选择一个或多个知识库"
+            value={batchImportKnowledgeBases}
+            onChange={setBatchImportKnowledgeBases}
             options={knowledgeBaseOptions}
+            showSearch
+            optionFilterProp="label"
           />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+            入知识库方式 <span style={{ color: '#ff4d4f' }}>*</span>
+          </div>
+          <Radio.Group
+            value={batchImportOperateType}
+            onChange={(e) => setBatchImportOperateType(e.target.value)}
+            style={{ width: '100%' }}
+          >
+            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  border:
+                    batchImportOperateType === 'APPEND'
+                      ? '1px solid #91caff'
+                      : '1px solid #f0f0f0',
+                  borderRadius: 8,
+                  background: batchImportOperateType === 'APPEND' ? '#f0f7ff' : '#fff',
+                }}
+              >
+                <Radio value="APPEND">追加关联</Radio>
+                <div style={{ marginTop: 6, paddingLeft: 24, fontSize: 12, color: '#8c8c8c' }}>
+                  保留文档当前已有知识库，并额外添加本次选择的知识库，适合补充关联。
+                </div>
+              </div>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  border:
+                    batchImportOperateType === 'REPLACE'
+                      ? '1px solid #ffccc7'
+                      : '1px solid #f0f0f0',
+                  borderRadius: 8,
+                  background: batchImportOperateType === 'REPLACE' ? '#fff2f0' : '#fff',
+                }}
+              >
+                <Radio value="REPLACE">覆盖替换</Radio>
+                <div style={{ marginTop: 6, paddingLeft: 24, fontSize: 12, color: '#8c8c8c' }}>
+                  清空文档原有关联，仅保留本次选中的知识库，适合统一重置。
+                </div>
+              </div>
+            </Space>
+          </Radio.Group>
         </div>
       </Modal>
 
