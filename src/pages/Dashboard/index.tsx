@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { history } from '@umijs/max';
 import { Row, Col, Card, Progress, Table, Tag, Button, Space, Select, theme } from 'antd';
 import {
@@ -17,109 +17,17 @@ import {
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { statusConfig } from '@/config/status';
+import {
+  getDashboardFileTypeCount,
+  getDashboardImportTrend,
+  getDashboardOverviewCount,
+  type DashboardFileTypeCountItem,
+  type DashboardImportTrend,
+  type DashboardImportTrendItem,
+  type DashboardOverviewCount,
+} from '@/services/biz/dashboard';
 
-const statCards = [
-  {
-    title: '总导入文档数',
-    value: '12,456',
-    suffix: '份',
-    icon: <FileTextOutlined />,
-    color: '#3b82f6',
-    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
-    bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-    link: '/data/source',
-    trend: '+12.5%',
-    trendUp: true,
-    trendText: '较昨日',
-    jumpMoudle: '文档导入页',
-  },
-  {
-    title: '总数据源接入数',
-    value: '8',
-    suffix: '个',
-    icon: <DatabaseOutlined />,
-    color: '#3b82f6',
-    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
-    bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-    link: '/data/source',
-    trend: '+2',
-    trendUp: true,
-    trendText: '较昨日',
-    jumpMoudle: '数据源接入页',
-  },
-  {
-    title: '知识库总数',
-    value: '28',
-    suffix: '个',
-    icon: <FundProjectionScreenOutlined />,
-    color: '#3b82f6',
-    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
-    bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-    link: '/dashboard',
-    trend: '+3',
-    trendUp: true,
-    trendText: '较昨日',
-    jumpMoudle: '知识库页',
-  },
-  {
-    title: '总实体数',
-    value: '248,793',
-    suffix: '个',
-    icon: <ClusterOutlined />,
-    color: '#3b82f6',
-    gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
-    bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-    link: '/dashboard',
-    trend: '+5,234',
-    trendUp: true,
-    trendText: '较昨日',
-    jumpMoudle: '实体页',
-  },
-];
-
-const lineChartData = [
-  { day: 1, document: 120, entity: 180 },
-  { day: 2, document: 132, entity: 192 },
-  { day: 3, document: 128, entity: 210 },
-  { day: 4, document: 142, entity: 225 },
-  { day: 5, document: 135, entity: 218 },
-  { day: 6, document: 156, entity: 245 },
-  { day: 7, document: 148, entity: 238 },
-  { day: 8, document: 168, entity: 268 },
-  { day: 9, document: 175, entity: 285 },
-  { day: 10, document: 162, entity: 272 },
-  { day: 11, document: 188, entity: 310 },
-  { day: 12, document: 195, entity: 328 },
-  { day: 13, document: 182, entity: 315 },
-  { day: 14, document: 210, entity: 355 },
-  { day: 15, document: 225, entity: 380 },
-  { day: 16, document: 218, entity: 365 },
-  { day: 17, document: 245, entity: 410 },
-  { day: 18, document: 258, entity: 435 },
-  { day: 19, document: 242, entity: 418 },
-  { day: 20, document: 275, entity: 465 },
-  { day: 21, document: 290, entity: 495 },
-  { day: 22, document: 278, entity: 475 },
-  { day: 23, document: 315, entity: 535 },
-  { day: 24, document: 332, entity: 565 },
-  { day: 25, document: 318, entity: 545 },
-  { day: 26, document: 355, entity: 605 },
-  { day: 27, document: 375, entity: 640 },
-  { day: 28, document: 358, entity: 615 },
-  { day: 29, document: 395, entity: 675 },
-  { day: 30, document: 420, entity: 720 },
-];
-
-const pieChartData = [
-  { name: 'DOCX', value: 28, color: '#1e3a8a' },
-  { name: 'PDF', value: 22, color: '#1e40af' },
-  { name: 'XLSX', value: 18, color: '#2563eb' },
-  { name: 'PPTX', value: 12, color: '#3b82f6' },
-  { name: 'MD', value: 8, color: '#60a5fa' },
-  { name: 'HTML', value: 6, color: '#93c5fd' },
-  { name: 'TXT', value: 4, color: '#bfdbfe' },
-  { name: '其他', value: 2, color: '#dbeafe' },
-];
+const PIE_COLORS = ['#1e3a8a', '#1e40af', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe'];
 
 const recentTasks = [
   {
@@ -156,7 +64,25 @@ const recentTasks = [
   },
 ];
 
-const getLineChartOption = () => ({
+const formatCount = (value?: number) => Number(value || 0).toLocaleString('zh-CN');
+
+const getTrendListByRange = (trendData: DashboardImportTrend | undefined, timeRange: string) => {
+  if (!trendData) {
+    return [];
+  }
+  if (timeRange === '7') {
+    return trendData.last7Days || [];
+  }
+  if (timeRange === '15') {
+    return trendData.last15Days || [];
+  }
+  if (timeRange === '90') {
+    return trendData.last90Days || [];
+  }
+  return trendData.last30Days || [];
+};
+
+const getLineChartOption = (lineChartData: DashboardImportTrendItem[]) => ({
   tooltip: {
     trigger: 'axis',
     borderRadius: 12,
@@ -166,7 +92,7 @@ const getLineChartOption = () => ({
     textStyle: { color: '#1f2937', fontSize: 12 },
   },
   legend: {
-    data: ['文档', '实体'],
+    data: ['文档导入量'],
     top: 0,
     textStyle: { color: '#6b7280', fontSize: 12 },
     itemWidth: 12,
@@ -177,7 +103,7 @@ const getLineChartOption = () => ({
   xAxis: {
     type: 'category',
     boundaryGap: false,
-    data: lineChartData.map((item) => item.day),
+    data: lineChartData.map((item) => item.statDate.slice(5)),
     axisLine: { lineStyle: { color: '#e5e7eb' } },
     axisLabel: { fontSize: 12, color: '#9ca3af' },
     axisTick: { show: false },
@@ -191,12 +117,12 @@ const getLineChartOption = () => ({
   },
   series: [
     {
-      name: '文档',
+      name: '文档导入量',
       type: 'line',
       smooth: true,
       symbol: 'circle',
       symbolSize: 6,
-      data: lineChartData.map((item) => item.document),
+      data: lineChartData.map((item) => item.count),
       itemStyle: { color: '#3b82f6', borderColor: '#fff', borderWidth: 2 },
       lineStyle: { width: 3 },
       areaStyle: {
@@ -213,38 +139,15 @@ const getLineChartOption = () => ({
         },
       },
     },
-    {
-      name: '实体',
-      type: 'line',
-      smooth: true,
-      symbol: 'circle',
-      symbolSize: 6,
-      data: lineChartData.map((item) => item.entity),
-      itemStyle: { color: '#2563eb', borderColor: '#fff', borderWidth: 2 },
-      lineStyle: { width: 3 },
-      areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: [
-            { offset: 0, color: 'rgba(37, 99, 235, 0.2)' },
-            { offset: 1, color: 'rgba(37, 99, 235, 0.02)' },
-          ],
-        },
-      },
-    },
   ],
 });
 
-const getPieChartOption = () => {
+const getPieChartOption = (pieChartData: Array<{ name: string; value: number; color: string }>) => {
   const total = pieChartData.reduce((sum, item) => sum + item.value, 0);
   return {
     tooltip: {
       trigger: 'item',
-      formatter: '{b}: {c}% ({d}%)',
+      formatter: '{b}: {c} ({d}%)',
       borderRadius: 12,
       border: '1px solid rgba(59, 130, 246, 0.15)',
       backgroundColor: 'rgba(255, 255, 255, 0.98)',
@@ -262,7 +165,7 @@ const getPieChartOption = () => {
       formatter: (name: string) => {
         const item = pieChartData.find((i) => i.name === name);
         const value = item ? item.value : 0;
-        const percent = ((value / total) * 100).toFixed(0);
+        const percent = total > 0 ? ((value / total) * 100).toFixed(0) : '0';
         return `${name} ${percent}%`;
       },
     },
@@ -295,8 +198,116 @@ const getPieChartOption = () => {
 export default function DashboardPage() {
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<string>('30');
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardStats, setDashboardStats] = useState<{
+    overview: DashboardOverviewCount;
+    trend: DashboardImportTrend;
+    fileTypeCount: DashboardFileTypeCountItem[];
+  }>();
   const { token } = theme.useToken();
   const isDark = token.colorBgBase === '#000' || token.colorBgContainer.toLowerCase() !== '#ffffff';
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDashboardStats = async () => {
+      setDashboardLoading(true);
+      try {
+        const [overview, trend, fileTypeCount] = await Promise.all([
+          getDashboardOverviewCount(),
+          getDashboardImportTrend(),
+          getDashboardFileTypeCount(),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        setDashboardStats({
+          overview: (overview || {}) as DashboardOverviewCount,
+          trend: (trend || {}) as DashboardImportTrend,
+          fileTypeCount: (fileTypeCount || []) as DashboardFileTypeCountItem[],
+        });
+      } finally {
+        if (!cancelled) {
+          setDashboardLoading(false);
+        }
+      }
+    };
+
+    loadDashboardStats();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const statCards = useMemo(
+    () => [
+      {
+        title: '总导入文档数',
+        value: formatCount(dashboardStats?.overview?.documentTotal),
+        suffix: '份',
+        icon: <FileTextOutlined />,
+        color: '#3b82f6',
+        gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
+        bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+        link: '/data/document-import',
+        trendText: '累计总量',
+        jumpMoudle: '文档导入页',
+      },
+      {
+        title: '总数据源接入数',
+        value: formatCount(dashboardStats?.overview?.dataSourceTotal),
+        suffix: '个',
+        icon: <DatabaseOutlined />,
+        color: '#3b82f6',
+        gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
+        bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+        link: '/data/source',
+        trendText: '累计总量',
+        jumpMoudle: '数据源接入页',
+      },
+      {
+        title: '知识库总数',
+        value: formatCount(dashboardStats?.overview?.knowledgeBaseTotal),
+        suffix: '个',
+        icon: <FundProjectionScreenOutlined />,
+        color: '#3b82f6',
+        gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
+        bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+        link: '/knowledge',
+        trendText: '累计总量',
+        jumpMoudle: '知识库页',
+      },
+      {
+        title: '总实体数',
+        value: formatCount(dashboardStats?.overview?.entityTotal),
+        suffix: '个',
+        icon: <ClusterOutlined />,
+        color: '#3b82f6',
+        gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
+        bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+        link: '/dashboard',
+        trendText: '累计总量',
+        jumpMoudle: '实体页',
+      },
+    ],
+    [dashboardStats],
+  );
+
+  const lineChartData = useMemo(
+    () => getTrendListByRange(dashboardStats?.trend, timeRange),
+    [dashboardStats?.trend, timeRange],
+  );
+
+  const pieChartData = useMemo(
+    () =>
+      (dashboardStats?.fileTypeCount || []).map((item, index) => ({
+        name: String(item.fileType || 'unknown').toUpperCase(),
+        value: Number(item.count || 0),
+        color: PIE_COLORS[index % PIE_COLORS.length],
+      })),
+    [dashboardStats?.fileTypeCount],
+  );
 
   const timeRangeOptions = [
     { label: '近7天', value: '7' },
@@ -658,6 +669,7 @@ export default function DashboardPage() {
         <Row gutter={[20, 20]}>
           <Col xs={24} lg={14}>
             <Card
+              loading={dashboardLoading}
               title={
                 <div
                   style={{
@@ -703,11 +715,12 @@ export default function DashboardPage() {
                 />
               }
             >
-              <ReactECharts option={getLineChartOption()} style={{ height: 320 }} />
+              <ReactECharts option={getLineChartOption(lineChartData)} style={{ height: 320 }} />
             </Card>
           </Col>
           <Col xs={24} lg={10}>
             <Card
+              loading={dashboardLoading}
               title={
                 <div
                   style={{
@@ -744,7 +757,7 @@ export default function DashboardPage() {
               }}
               styles={{ body: { padding: '20px 24px 24px' } }}
             >
-              <ReactECharts option={getPieChartOption()} style={{ height: 320 }} />
+              <ReactECharts option={getPieChartOption(pieChartData)} style={{ height: 320 }} />
             </Card>
           </Col>
         </Row>
