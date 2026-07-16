@@ -40,6 +40,7 @@ import { getTagPage, type TagItem } from "@/services/biz/tag";
 import { getCatalogTypeList } from "@/services/biz/catalogType";
 import {
   getDocumentAccessModeCount,
+  getDocumentFacet,
   getDocumentFileTypeCount,
   queryDocuments,
   type DocumentQueryParams,
@@ -264,9 +265,22 @@ const extractStringList = (value: any): string[] => {
   return value.map((item) => String(item ?? "")).filter(Boolean);
 };
 
+const extractKnowledgeBaseNames = (item: any): string[] => {
+  if (Array.isArray(item?.knowledgeBaseObj)) {
+    const names = item.knowledgeBaseObj
+      .map((knowledge: any) => String(knowledge?.name ?? "").trim())
+      .filter(Boolean);
+    if (names.length > 0) {
+      return names;
+    }
+  }
+  return extractStringList(item?.knowledgeBaseNames);
+};
+
 const mapDocumentResult = (item: any): SearchResult => {
   const fakeTags = ["行业分析", "重点文档", "自动生成"];
   const fakeEntities = ["特斯拉", "自动驾驶", "中国"];
+  const knowledgeBaseNames = extractKnowledgeBaseNames(item);
 
   return {
     id: String(item?.id ?? item?.documentId ?? item?.fileId ?? Math.random()),
@@ -289,12 +303,12 @@ const mapDocumentResult = (item: any): SearchResult => {
     keywords: extractStringList(item?.keywordsList),
     entities: extractEntityNames(item?.entities),
     tags: extractStringList(item?.fileTagNames),
-    knowledgeBase: item?.knowledgeBaseName ?? "未入知识库",
+    knowledgeBase: knowledgeBaseNames.length > 0 ? knowledgeBaseNames.join("、") : "未入知识库",
   };
 };
 
 const mapDocumentResultFixed = (item: any): SearchResult => {
-  const knowledgeBaseNames = extractStringList(item?.knowledgeBaseNames);
+  const knowledgeBaseNames = extractKnowledgeBaseNames(item);
   const tagNames = extractStringList(item?.fileTagNames);
   const keywordNames = extractStringList(item?.keywordsList);
   const entityNames = extractEntityNames(item?.entities);
@@ -320,12 +334,7 @@ const mapDocumentResultFixed = (item: any): SearchResult => {
     keywords: keywordNames,
     entities: entityNames,
     tags: tagNames,
-    knowledgeBase:
-      knowledgeBaseNames.length > 0
-        ? knowledgeBaseNames.join("、")
-        : Array.isArray(item?.knowledgeBaseId) && item.knowledgeBaseId.length > 0
-          ? `已关联 ${item.knowledgeBaseId.length} 个知识库`
-          : "未入知识库",
+    knowledgeBase: knowledgeBaseNames.length > 0 ? knowledgeBaseNames.join("、") : "未入知识库",
   };
 };
 
@@ -465,32 +474,15 @@ export default function DataSearchPage() {
   const fetchFilterOptions = async () => {
     setFilterOptionsLoading(true);
     try {
-      const [knowledgeResponse, tagResponse, catalogResponse, fileTypeResponse, accessModeResponse]:
+      const [tagResponse, catalogResponse, fileTypeResponse, accessModeResponse]:
         any = await Promise.all([
-          getKnowledgeBaseList({ pageNo: 1, pageSize: 1000 }),
           getTagPage({ pageNo: 1, pageSize: 1000 }),
           getCatalogTypeList(),
           getDocumentFileTypeCount(),
           getDocumentAccessModeCount(),
         ]);
 
-      const knowledgeItems = extractPageList<KnowledgeBaseItem>(knowledgeResponse);
       const tagItems = extractPageList<TagItem>(tagResponse);
-
-      const knowledgeOptions = knowledgeItems.map((item) => ({
-        label: item.name,
-        value: String(item.id),
-        count: Number(item.documentCount ?? 0),
-      }));
-      if (!knowledgeOptions.some((item) => item.label === "未入知识库")) {
-        knowledgeOptions.push({
-          label: "未入知识库",
-          value: "未入知识库",
-          count: 0,
-        });
-      }
-
-      setKnowledgeBaseOptions(knowledgeOptions);
       setTagOptions(
         tagItems.map((item) => ({
           label: item.tag,
@@ -521,17 +513,57 @@ export default function DataSearchPage() {
     }
   };
 
+  const fetchFacetOptions = async (pageNo = 1, size = pageSize) => {
+    try {
+      const response: any = await getDocumentFacet(buildQueryPayload(pageNo, size));
+      const facetData = response?.data ?? response ?? {};
+      const knowledgeOptions = extractList<any>(facetData?.knowledgeBaseCounts).map((item) => ({
+        label: String(item?.name ?? "未知"),
+        value: String(item?.id ?? ""),
+        count: Number(item?.count ?? 0),
+      })).filter((item) => item.value);
+      setKnowledgeBaseOptions(knowledgeOptions);
+      setDocumentTypeOptions(
+        extractList<any>(facetData?.fileTypeCounts)
+          .map(normalizeCountOption)
+          .filter(Boolean) as FilterOption[],
+      );
+    } catch (error) {
+      console.error(error);
+      message.error("获取实时统计失败");
+    }
+  };
+
   const fetchDocuments = async (pageNo = 1, size = pageSize) => {
     const startedAt = Date.now();
     setLoading(true);
     try {
-      const response: any = await queryDocuments(buildQueryPayload(pageNo, size));
+      const payload = buildQueryPayload(pageNo, size);
+      const [response, facetResponse] = await Promise.all([
+        queryDocuments(payload),
+        getDocumentFacet(payload),
+      ]);
       const rows = extractPageList<any>(response).map(mapDocumentResultFixed);
+      const facetData = facetResponse?.data ?? facetResponse ?? {};
       setSearchResults(rows);
       setTotalResults(extractPageTotal(response));
       setCurrentPage(pageNo);
       setPageSize(size);
       setSearchTime(Number(((Date.now() - startedAt) / 1000).toFixed(2)));
+      setKnowledgeBaseOptions(
+        extractList<any>(facetData?.knowledgeBaseCounts)
+          .map((item) => ({
+            label: String(item?.name ?? "未知"),
+            value: String(item?.id ?? ""),
+            count: Number(item?.count ?? 0),
+          }))
+          .filter((item) => item.value),
+      );
+      setDocumentTypeOptions(
+        extractList<any>(facetData?.fileTypeCounts)
+          .map(normalizeCountOption)
+          .filter(Boolean) as FilterOption[],
+      );
     } catch (error) {
       console.error(error);
       message.error("检索失败");

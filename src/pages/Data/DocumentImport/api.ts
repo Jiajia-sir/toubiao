@@ -8,6 +8,8 @@ export interface DocumentPageParams {
   fileType?: string;
   channelId?: number | string;
   status?: string;
+  accessMode?: number | string;
+  knowledgeBaseId?: number | string;
 }
 
 export interface DocumentPageItem {
@@ -21,12 +23,14 @@ export interface DocumentPageItem {
   fileType?: string;
   fileSizeBytes?: number | string;
   knowledgeBaseIds?: Array<number | string>;
+  knowledgeBaseObj?: Array<{ id: number | string; name: string }>;
   knowledgeBaseNames?: Array<string>;
   keywords?: string;
   channelName?: string;
   fileTagNames?: Array<number | string>;
   catalogName?: string;
   status?: number | string;
+  intelligentStatus?: number | string;
   entityCount?: number | string;
   relationCount?: number | string;
   entities?: any[];
@@ -107,6 +111,30 @@ export function createFileBaseData(data: {
 }) {
   return request(`${API_PREFIX}/biz/document/create`, {
     method: 'POST',
+    data,
+  });
+}
+
+export function updateDocument(data: {
+  id: number | string;
+  name: string;
+  catalogId: number | string;
+  knowledgeBaseIds?: Array<number | string>;
+  fileTagIds?: Array<number | string>;
+}) {
+  return request(`${API_PREFIX}/biz/document/update`, {
+    method: 'PUT',
+    data,
+  });
+}
+
+export function batchSetDocumentKnowledgeBase(data: {
+  documentIds: Array<number | string>;
+  knowledgeBaseIds: Array<number | string>;
+  operateType: 'APPEND' | 'REPLACE';
+}) {
+  return request(`${API_PREFIX}/biz/document/knowledge-base/batch-set`, {
+    method: 'PUT',
     data,
   });
 }

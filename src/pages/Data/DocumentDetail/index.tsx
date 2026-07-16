@@ -29,6 +29,7 @@ import {
   Input,
   message,
   Modal,
+  Spin,
   Progress,
   Row,
   Slider,
@@ -48,6 +49,10 @@ import {
 import type { EntityGraphData } from "@/data/entityGraphMock";
 import EntityRelationGraph from "@/components/Graph/EntityRelationGraph";
 import { getDocumentHtmlChunkPage, viewDocument } from "@/services/biz/document-query";
+import {
+  getDocumentKnowledgeGraph,
+  type DocumentKnowledgeGraphResult,
+} from "@/services/biz/graph";
 
 type PreviewBlockType = "meta" | "heading" | "paragraph" | "bullet";
 
@@ -442,6 +447,70 @@ const normalizeGraph = (detail: any, fallback: KnowledgeGraphData) => {
   return fallback;
 };
 
+const extractResultData = <T,>(response: any): T =>
+  (response?.data?.data ?? response?.data ?? response ?? {}) as T;
+
+const buildEntityGraphData = (graphData: DocumentKnowledgeGraphResult | null | undefined): EntityGraphData => {
+  const rawNodes = Array.isArray(graphData?.nodes) ? graphData?.nodes : [];
+  const rawLinks = Array.isArray(graphData?.links) ? graphData?.links : [];
+  const degreeMap = new Map<string, number>();
+
+  rawLinks.forEach((link) => {
+    const sourceId = String(link?.sourceId ?? "");
+    const targetId = String(link?.targetId ?? "");
+    if (sourceId) {
+      degreeMap.set(sourceId, (degreeMap.get(sourceId) || 0) + 1);
+    }
+    if (targetId) {
+      degreeMap.set(targetId, (degreeMap.get(targetId) || 0) + 1);
+    }
+  });
+
+  const centerNodeId =
+    rawNodes
+      .map((node) => ({
+        id: String(node?.id ?? ""),
+        degree: degreeMap.get(String(node?.id ?? "")) || 0,
+      }))
+      .sort((left, right) => right.degree - left.degree)[0]?.id ||
+    String(rawNodes[0]?.id ?? "center");
+
+  return {
+    centerId: centerNodeId,
+    nodes: rawNodes
+      .map((node) => {
+        const nodeId = String(node?.id ?? "");
+        const nodeName = String(node?.name ?? "").trim();
+        if (!nodeId || !nodeName) {
+          return null;
+        }
+        return {
+          id: nodeId,
+          name: nodeName,
+          type: nodeId === centerNodeId ? ("center" as const) : ("entity" as const),
+          desc: node?.description,
+          depth: nodeId === centerNodeId ? 0 : 1,
+        };
+      })
+      .filter(Boolean) as EntityGraphData["nodes"],
+    links: rawLinks
+      .map((link) => {
+        const source = String(link?.sourceId ?? "");
+        const target = String(link?.targetId ?? "");
+        const relation = String(link?.relation ?? "").trim();
+        if (!source || !target || !relation) {
+          return null;
+        }
+        return {
+          source,
+          target,
+          relation,
+        };
+      })
+      .filter(Boolean) as EntityGraphData["links"],
+  };
+};
+
 const buildDocumentDetail = (
   baseDocument: DocumentParseDetail,
   detail: any,
@@ -494,6 +563,8 @@ export default function DataDetailPage() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const [graphOpen, setGraphOpen] = useState(false);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphData, setGraphData] = useState<DocumentKnowledgeGraphResult | null>(null);
   const [previewKeyword, setPreviewKeyword] = useState(searchParams.get("keyword") || "");
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [detailData, setDetailData] = useState<any>(null);
@@ -553,6 +624,12 @@ export default function DataDetailPage() {
     previewLoadingRef.current = false;
     previewScrollLockRef.current = false;
   }, [params.id, detailData?.id, previewKeyword]);
+
+  useEffect(() => {
+    setGraphOpen(false);
+    setGraphLoading(false);
+    setGraphData(null);
+  }, [params.id, detailData?.id]);
 
   useEffect(() => {
     let active = true;
@@ -707,30 +784,27 @@ export default function DataDetailPage() {
     }
   };
 
-  const entityGraphData = useMemo<EntityGraphData>(() => {
-    const centerNode = document.graph.nodes[0];
-    const centerId = centerNode?.name || "中心实体";
-    
-    return {
-      centerId,
-      nodes: document.graph.nodes.map(node => ({
-        id: node.name,
-        name: node.name,
-        type: node.name === centerId ? "center" : "entity",
-        desc: node.description,
-        depth: node.name === centerId ? 0 : 1,
-      })),
-      links: document.graph.links.map(link => {
-        const sourceNode = document.graph.nodes.find(n => n.id === link.source);
-        const targetNode = document.graph.nodes.find(n => n.id === link.target);
-        return {
-          source: sourceNode?.name || link.source,
-          target: targetNode?.name || link.target,
-          relation: link.relation,
-        };
-      })
-    };
-  }, [document.graph]);
+  const entityGraphData = useMemo<EntityGraphData>(() => buildEntityGraphData(graphData), [graphData]);
+
+  const handleOpenDocumentGraph = async () => {
+    if (!params.id && !document.id) {
+      message.warning("未获取到文档ID");
+      return;
+    }
+
+    setGraphOpen(true);
+    setGraphLoading(true);
+    try {
+      const response = await getDocumentKnowledgeGraph(params.id || document.id);
+      setGraphData(extractResultData<DocumentKnowledgeGraphResult>(response));
+    } catch (error) {
+      console.error(error);
+      setGraphData({ nodes: [], links: [] });
+      message.error("获取文档知识图谱失败");
+    } finally {
+      setGraphLoading(false);
+    }
+  };
 
   const handleGraphNodeClick = (nodeName: string) => {
     const query = new URLSearchParams({
@@ -1156,7 +1230,7 @@ export default function DataDetailPage() {
                         shape="circle"
                         icon={<ClusterOutlined />}
                         disabled={entityCount === 0}
-                        onClick={() => setGraphOpen(true)}
+                        onClick={handleOpenDocumentGraph}
                       />
                     </Tooltip>
                   </Space>
@@ -1264,12 +1338,40 @@ export default function DataDetailPage() {
               />
             </div>
           </div>
-          <EntityRelationGraph
-            data={entityGraphData}
-            height={750}
-            labelMaxLength={labelMaxLength}
-            onNodeClick={(node) => handleGraphNodeClick(node.name)}
-          />
+          {graphLoading ? (
+            <div
+              style={{
+                height: 750,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#f8fafc",
+                borderRadius: 16,
+              }}
+            >
+              <Spin tip="知识图谱加载中..." size="large" />
+            </div>
+          ) : entityGraphData.nodes.length > 0 ? (
+            <EntityRelationGraph
+              data={entityGraphData}
+              height={750}
+              labelMaxLength={labelMaxLength}
+              onNodeClick={(node) => handleGraphNodeClick(node.name)}
+            />
+          ) : (
+            <div
+              style={{
+                height: 750,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#f8fafc",
+                borderRadius: 16,
+              }}
+            >
+              <Empty description="当前文档暂无实体关系图谱" />
+            </div>
+          )}
           <Divider style={{ margin: "16px 0 0" }} />
         </Modal>
       </div>
