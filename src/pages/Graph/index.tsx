@@ -17,6 +17,7 @@ import {
   Select,
   Slider,
   Space,
+  Spin,
   Tag,
   message,
 } from "antd";
@@ -38,8 +39,6 @@ import {
 import type { EntityRelationGraphRef } from "@/components/Graph/EntityRelationGraph";
 import EntityRelationGraph from "@/components/Graph/EntityRelationGraph";
 import {
-  createGraphFromEntity,
-  createLargeGraphFromEntity,
   expandGraphWithEntity,
   getNodeDetail,
   getSuggestedEntities,
@@ -52,8 +51,7 @@ import {
   type EntityGraphNodeType,
   type SourceDocument,
 } from "@/data/entityGraphMock";
-
-const DEFAULT_ENTITY = "刘德华";
+import { randomPreviewGraph, searchGraph, type SearchGraphResult } from "@/services/biz/graph";
 
 const typeMeta: Record<
   EntityGraphNodeType,
@@ -75,10 +73,6 @@ function getNodeTypeLabel(type: EntityGraphNodeType) {
 function buildRelationConfidence(link: EntityGraphLink) {
   const score = 0.82 + (hashText(getRelationKey(link)) % 16) / 100;
   return score.toFixed(2);
-}
-
-function buildInitialGraph(entityName: string) {
-  return createGraphFromEntity(entityName);
 }
 
 function collectExpandedNodeIds(graph: EntityGraphData) {
@@ -164,12 +158,6 @@ const MOCK_UPLOAD_TASKS: UploadTask[] = [
   },
 ];
 
-function resolveGraphByMode(entityName: string, mode: WorkspaceMode) {
-  return mode === "full-graph" || mode === "community"
-    ? createLargeGraphFromEntity(entityName, 180)
-    : createGraphFromEntity(entityName);
-}
-
 function buildCommunities(graph: EntityGraphData): GraphCommunity[] {
   const topLevelNodes = graph.nodes.filter((node) => node.parentId === graph.centerId);
   const communityMap = new Map<string, Set<string>>();
@@ -221,6 +209,62 @@ function buildCommunities(graph: EntityGraphData): GraphCommunity[] {
     .slice(0, 8);
 }
 
+function extractResultData<T>(response: any): T {
+  return (response?.data?.data ?? response?.data ?? response ?? {}) as T;
+}
+
+function createEmptyGraph(centerId = ""): EntityGraphData {
+  return {
+    centerId,
+    nodes: [],
+    links: [],
+  };
+}
+
+function buildGraphFromSearchResult(result: SearchGraphResult, fallbackCenterName: string): EntityGraphData {
+  const rawNodes = Array.isArray(result?.nodes) ? result.nodes : [];
+  const rawLinks = Array.isArray(result?.links) ? result.links : [];
+  return {
+    centerId: String(result?.centerId ?? fallbackCenterName),
+    nodes: rawNodes
+      .map((node) => {
+        const nodeId = String(node?.id ?? "").trim();
+        const nodeName = String(node?.name ?? "").trim();
+        if (!nodeId || !nodeName) {
+          return null;
+        }
+        return {
+          id: nodeId,
+          name: nodeName,
+          type: node?.type ?? (nodeId === result?.centerId ? "center" : "entity"),
+          desc: node?.desc,
+          expandable: Boolean(node?.expandable),
+          relationCount: Number(node?.relationCount ?? 0),
+          parentId: node?.parentId,
+          relationFromParent: node?.relationFromParent,
+          depth: Number(node?.depth ?? (node?.type === "center" ? 0 : 1)),
+          branchId: node?.branchId ?? nodeId,
+        };
+      })
+      .filter(Boolean) as EntityGraphData["nodes"],
+    links: rawLinks
+      .map((link) => {
+        const source = String(link?.source ?? "").trim();
+        const target = String(link?.target ?? "").trim();
+        const relation = String(link?.relation ?? "").trim();
+        if (!source || !target || !relation) {
+          return null;
+        }
+        return {
+          source,
+          target,
+          relation,
+        };
+      })
+      .filter(Boolean) as EntityGraphData["links"],
+  };
+}
+
 export default function GraphPage() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -229,24 +273,20 @@ export default function GraphPage() {
   const previousRelationOptionsRef = useRef<string[]>([]);
 
   const incomingEntity = searchParams.get("entity");
-  const initialEntity = incomingEntity || DEFAULT_ENTITY;
+  const initialEntity = incomingEntity || "";
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("auto-upload");
-  const initialGraph = useMemo(() => resolveGraphByMode(initialEntity, "auto-upload"), [initialEntity]);
 
   const [keyword, setKeyword] = useState(initialEntity);
-  const [graphData, setGraphData] = useState<EntityGraphData>(() => initialGraph);
-  const [selectedNodeId, setSelectedNodeId] = useState(initialEntity);
-  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() =>
-    collectExpandedNodeIds(initialGraph),
-  );
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphData, setGraphData] = useState<EntityGraphData>(() => createEmptyGraph(initialEntity));
+  const [selectedNodeId, setSelectedNodeId] = useState("");
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
   const [checkedNodeTypes, setCheckedNodeTypes] = useState<EntityGraphNodeType[]>([
     "center",
     "entity",
     "value",
   ]);
-  const [checkedRelations, setCheckedRelations] = useState<string[]>(() =>
-    collectRelationOptions(initialGraph),
-  );
+  const [checkedRelations, setCheckedRelations] = useState<string[]>([]);
   const [nodeScale, setNodeScale] = useState(1);
   const [linkWidth, setLinkWidth] = useState(1.4);
   const [labelMaxLength, setLabelMaxLength] = useState(6);
@@ -265,9 +305,12 @@ export default function GraphPage() {
   const [relationForm] = Form.useForm<RelationFormValues>();
 
   useEffect(() => {
-    if (!incomingEntity) return;
-    handleSearch(incomingEntity, workspaceMode);
-  }, [incomingEntity]);
+    if (initialEntity) {
+      void handleSearch(initialEntity, workspaceMode);
+      return;
+    }
+    void handleLoadRandomPreview();
+  }, [initialEntity]);
 
   const relationOptions = useMemo(() => collectRelationOptions(graphData), [graphData]);
 
@@ -389,39 +432,87 @@ export default function GraphPage() {
 
   const suggestedEntities = useMemo(() => getSuggestedEntities(), []);
 
-  function handleSearch(entityName = keyword, mode = workspaceMode) {
-    const target = entityName.trim() || DEFAULT_ENTITY;
-    let nextGraph: EntityGraphData;
-
-    try {
-      nextGraph = resolveGraphByMode(target, mode);
-    } catch (error) {
-      nextGraph = createGraphFromEntity(target);
-      setWorkspaceMode("auto-upload");
-      message.error("当前模式加载失败，已回退到默认图谱视图。");
+  async function handleSearch(entityName = keyword, mode = workspaceMode) {
+    const target = entityName.trim();
+    if (!target) {
+      message.warning("请输入实体名称后再检索");
+      return;
     }
+    try {
+      setGraphLoading(true);
+      const response = await searchGraph({ entity: target, mode });
+      const result = extractResultData<SearchGraphResult>(response);
+      const nextGraph = buildGraphFromSearchResult(result, target);
+      const nextRelations = collectRelationOptions(nextGraph);
 
-    const nextRelations = collectRelationOptions(nextGraph);
+      setKeyword(target);
+      setGraphData(nextGraph);
+      setSelectedNodeId(nextGraph.nodes[0]?.id || "");
+      setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
+      setCheckedNodeTypes(["center", "entity", "value"]);
+      setCheckedRelations(nextRelations);
+      setActiveCommunityId(null);
+      setLinkWidth(1.4);
+      previousRelationOptionsRef.current = nextRelations;
+      window.setTimeout(() => graphRef.current?.resetZoom(), 40);
 
-    setKeyword(target);
-    setGraphData(nextGraph);
-    setSelectedNodeId(nextGraph.centerId);
-    setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
-    setCheckedNodeTypes(["center", "entity", "value"]);
-    setCheckedRelations(nextRelations);
-    setActiveCommunityId(null);
-    setLinkWidth(1.4);
-    previousRelationOptionsRef.current = nextRelations;
-    window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+      if (nextGraph.nodes.length === 0) {
+        message.info("未检索到相关图谱实体。");
+      }
+    } catch (error) {
+      console.error(error);
+      setKeyword(target);
+      setGraphData(createEmptyGraph(target));
+      setSelectedNodeId("");
+      setExpandedNodeIds(new Set());
+      setCheckedRelations([]);
+      setActiveCommunityId(null);
+      previousRelationOptionsRef.current = [];
+      message.error("图谱检索失败");
+    } finally {
+      setGraphLoading(false);
+    }
+  }
 
-    if (!hasPresetEntityRecord(target)) {
-      message.info("当前实体使用动态 mock 数据生成，支持继续点击节点展开。");
+  async function handleLoadRandomPreview() {
+    try {
+      setGraphLoading(true);
+      const response = await randomPreviewGraph({ nodeLimit: 10, linkLimit: 8 });
+      const result = extractResultData<SearchGraphResult>(response);
+      const nextGraph = buildGraphFromSearchResult(result, "");
+      const nextRelations = collectRelationOptions(nextGraph);
+
+      setKeyword("");
+      setGraphData(nextGraph);
+      setSelectedNodeId(nextGraph.centerId || nextGraph.nodes[0]?.id || "");
+      setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
+      setCheckedNodeTypes(["center", "entity", "value"]);
+      setCheckedRelations(nextRelations);
+      setActiveCommunityId(null);
+      setLinkWidth(1.4);
+      previousRelationOptionsRef.current = nextRelations;
+      window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+
+      if (nextGraph.nodes.length === 0) {
+        message.info("当前暂无可展示的随机图谱。");
+      }
+    } catch (error) {
+      console.error(error);
+      setGraphData(createEmptyGraph(""));
+      setSelectedNodeId("");
+      setExpandedNodeIds(new Set());
+      setCheckedRelations([]);
+      setActiveCommunityId(null);
+      previousRelationOptionsRef.current = [];
+      message.error("随机图谱加载失败");
+    } finally {
+      setGraphLoading(false);
     }
   }
 
   function switchWorkspaceMode(mode: WorkspaceMode) {
     setWorkspaceMode(mode);
-    handleSearch(keyword, mode);
+    void handleSearch(keyword, mode);
   }
 
   function handleNodeClick(node: EntityGraphNode) {
@@ -430,6 +521,10 @@ export default function GraphPage() {
 
   function handleNodeExpand(node: EntityGraphNode) {
     setSelectedNodeId(node.id);
+    if (node.id.startsWith("entity-") || node.id.startsWith("value-")) {
+      message.info("节点展开接口待接入，当前先支持图谱检索。");
+      return;
+    }
     if (expandedNodeIds.has(node.id)) return;
 
     const result = expandGraphWithEntity(graphData, node.id);
@@ -766,7 +861,7 @@ export default function GraphPage() {
               background: "#2563eb",
               boxShadow: "0 10px 18px rgba(37, 99, 235, 0.18)",
             }}
-            onClick={() => handleSearch()}
+            onClick={() => void handleSearch()}
           >
             开始检索
           </Button>
@@ -971,7 +1066,7 @@ export default function GraphPage() {
                       background: keyword === item ? "#eff6ff" : "#fff",
                       color: keyword === item ? "#2563eb" : "#475569",
                     }}
-                    onClick={() => handleSearch(item)}
+                    onClick={() => void handleSearch(item)}
                   >
                     {item}
                   </Tag>
@@ -1014,6 +1109,9 @@ export default function GraphPage() {
               <Button type="text" icon={<ReloadOutlined />} onClick={() => graphRef.current?.resetZoom()}>
                 重置
               </Button>
+              <Button type="text" icon={<ReloadOutlined />} onClick={() => void handleLoadRandomPreview()}>
+                换一批
+              </Button>
               <Button type="text" icon={<DownloadOutlined />} onClick={handleExport}>
                 导出
               </Button>
@@ -1023,7 +1121,11 @@ export default function GraphPage() {
             </Space>
           </Card>
 
-          {filteredGraphData.nodes.length > 0 ? (
+          {graphLoading ? (
+            <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
+              <Spin size="large" tip="图谱检索中..." />
+            </div>
+          ) : filteredGraphData.nodes.length > 0 ? (
             <EntityRelationGraph
               actionRef={graphRef}
               data={filteredGraphData}

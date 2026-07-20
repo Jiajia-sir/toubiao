@@ -394,7 +394,7 @@ export default function ModelManagePage() {
                   模型管理
                 </div>
                 <div style={{ marginTop: 6, color: "#8c8c8c" }}>
-                  统一维护本地 vLLM、Ollama 和 OpenAI / Claude 兼容模型接入配置。
+                  统一维护本地 vLLM、Ollama等模型接入配置。
                 </div>
               </Col>
               <Col>
