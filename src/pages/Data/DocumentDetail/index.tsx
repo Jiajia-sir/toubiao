@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -1054,8 +1054,8 @@ export default function DataDetailPage() {
                   />
                 </Space>
               }
-              style={{ ...surfaceCardStyle, width: "100%", height: PREVIEW_CARD_HEIGHT }}
-              styles={{ body: { padding: 14, height: PREVIEW_CARD_HEIGHT - 57 } }}
+              style={{ ...surfaceCardStyle, width: "100%", height: PREVIEW_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
+              styles={{ body: { padding: 14, flex: 1, minHeight: 0 } }}
             >
               <div
                 onScroll={handlePreviewScroll}
@@ -1179,8 +1179,8 @@ export default function DataDetailPage() {
               <Card
                 bordered={false}
                 title="元数据信息"
-                style={{ ...surfaceCardStyle, height: META_CARD_HEIGHT }}
-                styles={{ body: { padding: 14, height: META_CARD_HEIGHT - 57, overflowY: "auto" } }}
+                style={{ ...surfaceCardStyle, height: META_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
+                styles={{ body: { padding: 14, flex: 1, overflowY: "auto", minHeight: 0 } }}
               >
                 <InfoList
                   items={[
@@ -1202,8 +1202,8 @@ export default function DataDetailPage() {
                 bordered={false}
                 title="提取关键词"
                 extra={<span style={{ color: "#94a3b8" }}>共 {document.keywords.length} 个</span>}
-                style={{ ...surfaceCardStyle, height: KEYWORD_CARD_HEIGHT }}
-                styles={{ body: { padding: 14, height: KEYWORD_CARD_HEIGHT - 57, overflowY: "auto" } }}
+                style={{ ...surfaceCardStyle, height: KEYWORD_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
+                styles={{ body: { padding: 14, flex: 1, overflowY: "auto", minHeight: 0 } }}
               >
                 {document.keywords.length > 0 ? (
                   <Space wrap size={[8, 10]}>
@@ -1235,8 +1235,8 @@ export default function DataDetailPage() {
                     </Tooltip>
                   </Space>
                 }
-                style={{ ...surfaceCardStyle, height: ENTITY_CARD_HEIGHT }}
-                styles={{ body: { padding: 14, height: ENTITY_CARD_HEIGHT - 57, overflowY: "auto" } }}
+                style={{ ...surfaceCardStyle, height: ENTITY_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
+                styles={{ body: { padding: 14, flex: 1, overflowY: "auto", minHeight: 0 } }}
               >
                 {entityEntries.length > 0 ? (
                   <div style={{ display: "grid", gap: 12 }}>
@@ -1294,8 +1294,8 @@ export default function DataDetailPage() {
                 bordered={false}
                 title="标签分类结果"
                 extra={<span style={{ color: "#94a3b8" }}>共 {document.tags.length} 个</span>}
-                style={{ ...surfaceCardStyle, height: TAG_CARD_HEIGHT }}
-                styles={{ body: { padding: 14, height: TAG_CARD_HEIGHT - 57, overflowY: "auto" } }}
+                style={{ ...surfaceCardStyle, height: TAG_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
+                styles={{ body: { padding: 14, flex: 1, overflowY: "auto", minHeight: 0 } }}
               >
                 {document.tags.length > 0 ? (
                   <Space wrap size={[8, 10]}>
@@ -1495,6 +1495,11 @@ function ColorTag({
         background: palette.bg,
         borderColor: palette.border,
         color: palette.text,
+        whiteSpace: "normal",
+        wordBreak: "break-all",
+        height: "auto",
+        lineHeight: "1.5",
+        display: "inline-block",
       }}
     >
       {children}
