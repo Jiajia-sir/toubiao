@@ -9,45 +9,16 @@ export async function getOperlogList(params?: API.Monitor.OperlogListParams) {
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
     },
-    data: params
-  });
-}
-
-// 查询操作日志记录详细 — 后端无此接口
-export function getOperlog(operId: number) {
-  return request<API.Monitor.OperlogInfoResult>(`${API_PREFIX}/system/operate-log/page`, {
-    method: 'GET'
-  });
-}
-
-// 新增操作日志记录 — 后端无此接口
-export async function addOperlog(params: API.Monitor.Operlog) {
-  return request<API.Result>(`${API_PREFIX}/system/operate-log/page`, {
-    method: 'GET'
-  });
-}
-
-// 修改操作日志记录 — 后端无此接口
-export async function updateOperlog(params: API.Monitor.Operlog) {
-  return request<API.Result>(`${API_PREFIX}/system/operate-log/page`, {
-    method: 'GET'
-  });
-}
-
-// 删除操作日志记录 — 后端无此接口
-export async function removeOperlog(ids: string) {
-  return request<API.Result>(`${API_PREFIX}/system/operate-log/page`, {
-    method: 'GET'
-  });
-}
-
-export async function cleanAllOperlog() {
-  return request<API.Result>(`${API_PREFIX}/system/operate-log/page`, {
-    method: 'GET'
+    data: params,
   });
 }
 
 // 导出操作日志记录
 export function exportOperlog(params?: API.Monitor.OperlogListParams) {
-  return downLoadXlsx(`${API_PREFIX}/system/operate-log/export`, { params }, `operlog_${new Date().getTime()}.xlsx`);
+  return downLoadXlsx(
+    `${API_PREFIX}/system/operate-log/export`,
+    { params },
+    `操作日志_${new Date().getTime()}.xls`,
+    'GET',
+  );
 }

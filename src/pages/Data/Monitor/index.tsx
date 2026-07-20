@@ -32,6 +32,7 @@ import {
   Collapse,
   Popover,
   Slider,
+  Descriptions,
 } from 'antd';
 import type { TabsProps } from 'antd';
 import {
@@ -80,6 +81,26 @@ import EntityRelationGraph, {
 } from '@/components/Graph/EntityRelationGraph';
 import type { KnowledgeGraphData } from '@/data/documentGraph';
 import type { EntityGraphData, EntityGraphNodeType } from '@/data/entityGraphMock';
+import {
+  getDataSourcePage,
+  listDataSourceFields,
+  listDataSourceObjects,
+  previewDataSourceObject,
+  type DataSourceRecord,
+} from '@/services/biz/data-source';
+import {
+  getImportRunPage,
+  getImportStatsOverview,
+  retryImportRun,
+  stopImportRun,
+  triggerImportTask,
+  getImportTaskPage,
+  getImportTaskResult,
+  type ImportRunRecord,
+  type ImportStatsOverview,
+  type ImportTaskResult,
+} from '@/services/biz/structured-import';
+import dayjs from 'dayjs';
 
 const { Search } = Input;
 const { Dragger } = Upload;
@@ -462,6 +483,7 @@ interface DocumentFile {
 
 interface ImportJob {
   id: string;
+  taskId?: number;
   name: string;
   source: string;
   type: 'document' | 'database';
@@ -473,7 +495,9 @@ interface ImportJob {
   recordsProcessed: number;
   recordsSuccess: number;
   recordsError: number;
+  /** 真实落地字节量（来自后端 byteCount，单位 Byte） */
   dataSent: number;
+  /** 当前与 dataSent 同口径：平台入库字节量（Bronze payload） */
   dataReceived: number;
   error?: string;
   alerts: ImportAlert[];
@@ -2292,12 +2316,16 @@ export default function MonitorPage() {
   const [activeAlertKey, setActiveAlertKey] = useState<string[]>(
     initialImportJobs.length > 0 ? [initialImportJobs[0].id] : [],
   );
-  const [dataSources, setDataSources] = useState<DataSource[]>(initialDataSources);
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [documentFiles, setDocumentFiles] = useState<DocumentFile[]>(sampleDocumentFiles);
-  const [importJobs, setImportJobs] = useState<ImportJob[]>(initialImportJobs);
+  const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
   const [docImportTasks, setDocImportTasks] = useState<DocImportTask[]>(initialDocImportTasks);
 
   const [loading, setLoading] = useState(false);
+  const [statsOverview, setStatsOverview] = useState<ImportStatsOverview | null>(null);
+  const [taskResultDrawer, setTaskResultDrawer] = useState(false);
+  const [taskResultLoading, setTaskResultLoading] = useState(false);
+  const [taskResultDetail, setTaskResultDetail] = useState<ImportTaskResult | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [docFolderModalVisible, setDocFolderModalVisible] = useState(false);
   const [docTaskModalVisible, setDocTaskModalVisible] = useState(false);
@@ -2319,7 +2347,180 @@ export default function MonitorPage() {
   const [docTaskForm] = Form.useForm();
   const [syncForm] = Form.useForm();
 
+
   const [selectedSource, setSelectedSource] = useState<DataSource | null>(null);
+  const [liveCatalogMap, setLiveCatalogMap] = useState<Record<string, DatabaseCatalog[]>>({});
+
+  const mapStatusFromLastTest = (status?: number | null): DataSource['status'] => {
+    if (status === 1) return 'connected';
+    if (status === 0) return 'error';
+    return 'disconnected';
+  };
+
+  const mapCategory = (category?: string): DataSource['category'] => {
+    if (category === 'graph' || category === 'document' || category === 'relational') return category;
+    return 'relational';
+  };
+
+  const formatDataSize = (bytes?: number) => {
+    const n = Number(bytes || 0);
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(2)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  };
+
+  const mapRunStatus = (status?: string): ImportJob['status'] => {
+    switch ((status || '').toUpperCase()) {
+      case 'RUNNING':
+      case 'PENDING':
+        return status?.toUpperCase() === 'PENDING' ? 'waiting' : 'running';
+      case 'SUCCESS':
+        return 'completed';
+      case 'FAILED':
+      case 'PARTIAL':
+        return 'error';
+      case 'CANCELLED':
+        return 'paused';
+      case 'CANCELING':
+        return 'paused';
+      default:
+        return 'waiting';
+    }
+  };
+
+  /**
+   * 统一把后端时间字段转成可展示字符串。
+   * 兼容：string / number / Date / LocalDateTime 数组 [y,m,d,h,mi,s]。
+   */
+  const formatDateTime = (value: any): string => {
+    if (value === null || value === undefined || value === '') return '';
+    if (typeof value === 'string') {
+      const d = dayjs(value);
+      return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : value;
+    }
+    if (typeof value === 'number') {
+      const d = dayjs(value);
+      return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : String(value);
+    }
+    if (value instanceof Date) {
+      return dayjs(value).format('YYYY-MM-DD HH:mm:ss');
+    }
+    // Jackson 可能把 LocalDateTime 序列化成数组: [2026,7,17,14,30,0,123456789]
+    if (Array.isArray(value) && value.length >= 3) {
+      const [y, m, d, h = 0, mi = 0, s = 0] = value;
+      const parsed = dayjs(new Date(y, (m || 1) - 1, d || 1, h, mi, s));
+      return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm:ss') : String(value);
+    }
+    try {
+      const d = dayjs(value);
+      if (d.isValid()) return d.format('YYYY-MM-DD HH:mm:ss');
+    } catch {
+      // ignore
+    }
+    return String(value);
+  };
+
+  const toMonitorDataSource = (item: DataSourceRecord): DataSource => {
+    const type = (item.type || 'mysql') as DataSource['type'];
+    return {
+      id: String(item.id),
+      name: item.name,
+      type: (['mysql', 'postgresql', 'sqlite', 'neo4j', 'nebula', 'mongodb'].includes(type)
+        ? type
+        : 'mysql') as DataSource['type'],
+      host: item.host || '-',
+      port: Number(item.port || 0),
+      database: item.databaseName || item.properties?.spaceName || item.properties?.filePath || '-',
+      username: item.username,
+      password: item.password,
+      status: mapStatusFromLastTest(item.lastTestStatus),
+      lastSync: item.lastTestTime ? dayjs(item.lastTestTime).format('YYYY-MM-DD HH:mm:ss') : '-',
+      recordCount: 0,
+      isGraph: item.category === 'graph',
+      category: mapCategory(item.category),
+      env: '分析',
+      latency: 0,
+      owner: '系统',
+      syncMode: 'full',
+      syncFrequency: 'manual',
+      exceptionPolicy: 'retry',
+      description: item.description || item.lastTestMessage || '',
+    };
+  };
+
+  const toImportJob = (run: ImportRunRecord): ImportJob => {
+    const read = Number(run.readCount || 0);
+    const write = Number(run.writeCount || 0);
+    const fail = Number(run.failCount || 0);
+    const processed = write + fail;
+    return {
+      id: String(run.id),
+      taskId: run.taskId ? Number(run.taskId) : undefined,
+      name: run.taskName || `运行#${run.id}`,
+      source: `${run.sourceType || '-'} / 数据源${run.dataSourceId || ''}`,
+      type: 'database',
+      status: mapRunStatus(run.status),
+      progress: Number(run.progressPercent || 0),
+      startTime: formatDateTime(run.startedAt || run.createTime) || '-',
+      endTime: formatDateTime(run.finishedAt) || undefined,
+      recordsTotal: Math.max(read, processed),
+      recordsProcessed: processed,
+      recordsSuccess: write,
+      recordsError: fail,
+      // byteCount 为真实 payload 写入字节累计，不是前端 mock
+      dataSent: Number(run.byteCount || 0),
+      dataReceived: Number(run.byteCount || 0),
+      error: run.errorMessage,
+      alerts: run.errorMessage
+        ? [
+            {
+              id: `run-${run.id}-err`,
+              time: formatDateTime(run.finishedAt || run.startedAt) || formatDateTime(new Date()),
+              level: 'error',
+              content: run.errorMessage,
+            },
+          ]
+        : [],
+    };
+  };
+
+  const loadMonitorRealtimeData = async () => {
+    setLoading(true);
+    try {
+      const [dsRes, runRes, statsRes]: any[] = await Promise.all([
+        getDataSourcePage({ pageNo: 1, pageSize: 100 }),
+        getImportRunPage({ pageNo: 1, pageSize: 50 }),
+        getImportStatsOverview(),
+      ]);
+      const dsList = (dsRes?.data?.list || dsRes?.list || []).map(toMonitorDataSource);
+      const runList = (runRes?.data?.list || runRes?.list || []).map(toImportJob);
+      setDataSources(dsList);
+      setImportJobs(runList);
+      setStatsOverview(statsRes?.data || statsRes || null);
+      if (!selectedSource && dsList.length) {
+        setSelectedSource(dsList[0]);
+      } else if (selectedSource) {
+        const refreshed = dsList.find((item: DataSource) => item.id === selectedSource.id);
+        if (refreshed) setSelectedSource(refreshed);
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('加载监控数据失败，请确认后端服务已启动且已执行 SQL');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMonitorRealtimeData();
+    const timer = setInterval(() => {
+      loadMonitorRealtimeData();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false);
   const [syncDrawerVisible, setSyncDrawerVisible] = useState(false);
   const [syncPolicies, setSyncPolicies] = useState<Record<string, SyncPolicy>>(initialSyncPolicies);
@@ -2350,18 +2551,119 @@ export default function MonitorPage() {
       return;
     }
 
-    const catalogs = databaseCatalogMap[selectedSource.id] || [];
-    const firstCatalog = catalogs[0] || null;
-    const firstObject = firstCatalog?.tables[0] || null;
+    let cancelled = false;
+    const loadCatalog = async () => {
+      try {
+        const res: any = await listDataSourceObjects(selectedSource.id);
+        const objects = (res?.data || res || []) as Array<any>;
+        const tables: DatabaseObjectDetail[] = objects.slice(0, 200).map((obj: any) => {
+          const kindRaw = String(obj.objectKind || 'table').toLowerCase();
+          const kind = (
+            ['table', 'view', 'collection', 'vertex', 'edge'].includes(kindRaw)
+              ? kindRaw
+              : kindRaw === 'node'
+                ? 'vertex'
+                : kindRaw === 'tag'
+                  ? 'vertex'
+                  : 'table'
+          ) as DatabaseObjectDetail['kind'];
+          return {
+            id: obj.objectName,
+            name: obj.objectName,
+            kind,
+            rowCount: '-',
+            storage: selectedSource.type,
+            updatedAt: '-',
+            description: obj.remark || '',
+            fields: [],
+            indexes: [],
+            sampleRows: [],
+          };
+        });
+        if (cancelled) return;
+        const catalog: DatabaseCatalog = {
+          id: `live-${selectedSource.id}`,
+          name: selectedSource.database || selectedSource.name,
+          engine: selectedSource.type,
+          description: selectedSource.description || '实时探查',
+          owner: selectedSource.owner,
+          tables,
+        };
+        setLiveCatalogMap((prev) => ({ ...prev, [selectedSource.id]: [catalog] }));
+        setSelectedCatalogId(catalog.id);
+        setSelectedObjectId(tables[0]?.id || null);
+        setDetailTab('fields');
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) {
+          // 回退 mock 结构，保证页面仍可浏览
+          const catalogs = databaseCatalogMap[selectedSource.id] || [];
+          const firstCatalog = catalogs[0] || null;
+          const firstObject = firstCatalog?.tables[0] || null;
+          setSelectedCatalogId(firstCatalog?.id || null);
+          setSelectedObjectId(firstObject?.id || null);
+        }
+      }
+    };
 
-    setSelectedCatalogId(firstCatalog?.id || null);
-    setSelectedObjectId(firstObject?.id || null);
+    loadCatalog();
     setTableDetailSearch('');
     setCatalogSearch('');
     setObjectSearch('');
     setObjectKindFilter('all');
-    setDetailTab(firstObject?.graph ? 'graph' : 'fields');
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedSource]);
+
+  useEffect(() => {
+    if (!selectedSource || !selectedObjectId) return;
+    let cancelled = false;
+    const loadObjectDetail = async () => {
+      try {
+        const [fieldRes, previewRes]: any[] = await Promise.all([
+          listDataSourceFields(selectedSource.id, selectedObjectId),
+          previewDataSourceObject(selectedSource.id, selectedObjectId, 10),
+        ]);
+        if (cancelled) return;
+        const fields: DatabaseObjectField[] = (fieldRes?.data || fieldRes || []).map((f: any) => ({
+          name: f.fieldName,
+          type: f.fieldType || '-',
+          nullable: f.nullable,
+          keyRole: f.primaryKey ? 'PK' : undefined,
+          description: f.remark || '',
+          sample: '',
+        }));
+        const sampleRows = (previewRes?.data?.rows || previewRes?.rows || []) as Array<
+          Record<string, string | number>
+        >;
+        setLiveCatalogMap((prev) => {
+          const catalogs = prev[selectedSource.id] || [];
+          if (!catalogs.length) return prev;
+          const nextCatalogs = catalogs.map((catalog) => ({
+            ...catalog,
+            tables: catalog.tables.map((table) =>
+              table.id === selectedObjectId
+                ? {
+                    ...table,
+                    fields,
+                    sampleRows,
+                  }
+                : table,
+            ),
+          }));
+          return { ...prev, [selectedSource.id]: nextCatalogs };
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    loadObjectDetail();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSource, selectedObjectId]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -2395,6 +2697,10 @@ export default function MonitorPage() {
 
         setImportJobs((prev) =>
           prev.map((job) => {
+            // 结构化导入由后端真实轮询刷新，禁止前端 mock 改写进度和字节量。
+            if (job.type === 'database') {
+              return job;
+            }
             if (job.status === 'running') {
               const processed = Math.min(
                 job.recordsProcessed + Math.floor(Math.random() * 100),
@@ -3056,6 +3362,25 @@ export default function MonitorPage() {
     message.success('导入任务已启动');
   };
 
+  const openImportJobResult = async (job: ImportJob) => {
+    if (!job.taskId) {
+      message.warning('当前运行缺少任务ID，无法查看结果');
+      return;
+    }
+    setTaskResultDrawer(true);
+    setTaskResultLoading(true);
+    setTaskResultDetail(null);
+    try {
+      const res: any = await getImportTaskResult(job.taskId);
+      setTaskResultDetail(res?.data || res || null);
+    } catch (error) {
+      console.error(error);
+      message.error('加载导入结果失败');
+    } finally {
+      setTaskResultLoading(false);
+    }
+  };
+
   const handlePauseImportJob = (job: ImportJob) => {
     setImportJobs(
       importJobs.map((item) =>
@@ -3065,7 +3390,22 @@ export default function MonitorPage() {
     message.success('导入任务已暂停');
   };
 
-  const handleStopImportJob = (job: ImportJob) => {
+  const handleStopImportJob = async (job: ImportJob) => {
+    if (job.type === 'database') {
+      try {
+        const res: any = await stopImportRun(Number(job.id));
+        if (res?.code === 200 || res?.code === 0 || res?.success === true) {
+          message.success('已发送停止请求，运行线程将尽快结束');
+          await loadMonitorRealtimeData();
+        } else {
+          message.error(res?.msg || '停止失败');
+        }
+      } catch (error) {
+        console.error(error);
+        message.error('停止失败');
+      }
+      return;
+    }
     setImportJobs(
       importJobs.map((item) =>
         item.id === job.id
@@ -3081,7 +3421,18 @@ export default function MonitorPage() {
     message.warning('导入任务已停止');
   };
 
-  const handleRestartImportJob = (job: ImportJob) => {
+  const handleRestartImportJob = async (job: ImportJob) => {
+    if (job.type === 'database') {
+      try {
+        await retryImportRun(job.id);
+        message.success('已提交重跑');
+        await loadMonitorRealtimeData();
+      } catch (error) {
+        console.error(error);
+        message.error('重跑失败');
+      }
+      return;
+    }
     setImportJobs(
       importJobs.map((item) =>
         item.id === job.id
@@ -3127,7 +3478,7 @@ export default function MonitorPage() {
   };
 
   const selectedPreview = selectedSource ? structuredPreviewMap[selectedSource.id] : undefined;
-  const selectedCatalogs = selectedSource ? databaseCatalogMap[selectedSource.id] || [] : [];
+  const selectedCatalogs = selectedSource ? (liveCatalogMap[selectedSource.id] || databaseCatalogMap[selectedSource.id] || []) : [];
   const selectedCatalog =
     selectedCatalogs.find((item) => item.id === selectedCatalogId) || selectedCatalogs[0] || null;
   const selectedDatabaseObject =
@@ -4239,43 +4590,27 @@ export default function MonitorPage() {
       ),
     },
     {
-      title: '发送/接收',
+      title: '数据量',
       key: 'data',
-      width: 140,
+      width: 150,
       render: (_: any, record: ImportJob) => (
         <Space direction="vertical" size={0}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            <ArrowUpOutlined style={{ color: '#16a34a', fontSize: 13 }} />
-            <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 500 }}>
-              {record.status === 'running'
-                ? record.dataSent > 1024 * 1024
-                  ? `${(record.dataSent / 1024 / 1024).toFixed(2)} MB`
-                  : `${record.dataSent} KB`
-                : '0 KB'}
-            </span>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}
-          >
-            <ArrowDownOutlined style={{ color: '#2563eb', fontSize: 13 }} />
-            <span style={{ fontSize: 13, color: '#2563eb', fontWeight: 500 }}>
-              {record.status === 'running'
-                ? record.dataReceived > 1024 * 1024
-                  ? `${(record.dataReceived / 1024 / 1024).toFixed(2)} MB`
-                  : `${record.dataReceived} KB`
-                : '0 KB'}
-            </span>
-          </div>
+          <Tooltip title="入库字节量：后端累计 payload JSON 字节（byteCount）">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <ArrowUpOutlined style={{ color: '#16a34a', fontSize: 13 }} />
+              <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 500 }}>
+                {formatDataSize(record.dataSent)}
+              </span>
+            </div>
+          </Tooltip>
+          <Tooltip title="当前架构下与入库量同口径（Bronze 落地层）">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <ArrowDownOutlined style={{ color: '#2563eb', fontSize: 13 }} />
+              <span style={{ fontSize: 13, color: '#2563eb', fontWeight: 500 }}>
+                {formatDataSize(record.dataReceived)}
+              </span>
+            </div>
+          </Tooltip>
         </Space>
       ),
     },
@@ -4309,32 +4644,27 @@ export default function MonitorPage() {
     {
       title: '操作',
       key: 'action',
-      width: 160,
+      width: 220,
       render: (_: any, record: ImportJob) => (
-        <Space size="small">
-          {/* {record.status === "running" && (
-            <>
-              <Button
-                type="link"
-                size="small"
-                icon={<PauseCircleOutlined />}
-                onClick={() => handlePauseImportJob(record)}
-              >
-                暂停
+        <Space size="small" wrap>
+          {record.type === 'database' && (
+            <Button type="link" size="small" onClick={() => openImportJobResult(record)}>
+              结果
+            </Button>
+          )}
+          {(record.status === 'running' || record.status === 'waiting') && (
+            <Popconfirm
+              title="确认停止该导入运行？"
+              onConfirm={() => handleStopImportJob(record)}
+              okText="确认"
+              cancelText="取消"
+            >
+              <Button type="link" size="small" danger icon={<StopOutlined />}>
+                停止
               </Button>
-              <Popconfirm
-                title="确认停止?"
-                onConfirm={() => handleStopImportJob(record)}
-                okText="确认"
-                cancelText="取消"
-              >
-                <Button type="link" size="small" danger icon={<StopOutlined />}>
-                  停止
-                </Button>
-              </Popconfirm>
-            </>
-          )} */}
-          {['completed', 'error'].includes(record.status) && (
+            </Popconfirm>
+          )}
+          {['completed', 'error', 'paused'].includes(record.status) && (
             <Button
               type="link"
               size="small"
@@ -4674,7 +5004,7 @@ export default function MonitorPage() {
           ) : (
             <div style={{ padding: 4 }}>
               {job.alerts
-                .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+                .sort((a, b) => dayjs(formatDateTime(b.time)).valueOf() - dayjs(formatDateTime(a.time)).valueOf())
                 .slice(0, 8)
                 .map((alert, idx) => {
                   const colors =
@@ -4731,7 +5061,7 @@ export default function MonitorPage() {
                       </Tag>
                       <span style={{ flex: 1, color: '#333' }}>{alert.content}</span>
                       <span style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>
-                        {alert.time.split(' ')[1] || alert.time}
+                        {(() => { const t = formatDateTime(alert.time); return (t.split(' ')[1] || t || '-'); })()}
                       </span>
                     </div>
                   );
@@ -6191,7 +6521,50 @@ export default function MonitorPage() {
         )}
       </Drawer>
 
-      <style>{`
+      
+      <Drawer
+        title="导入结果汇总"
+        width={720}
+        open={taskResultDrawer}
+        onClose={() => {
+          setTaskResultDrawer(false);
+          setTaskResultDetail(null);
+        }}
+      >
+        <Spin spinning={taskResultLoading}>
+          {taskResultDetail ? (
+            <>
+              <Descriptions bordered size="small" column={2}>
+                <Descriptions.Item label="任务">{taskResultDetail.taskName}</Descriptions.Item>
+                <Descriptions.Item label="数据源">{taskResultDetail.dataSourceName || '-'}</Descriptions.Item>
+                <Descriptions.Item label="累计落地条数">{taskResultDetail.totalRecordCount || 0}</Descriptions.Item>
+                <Descriptions.Item label="最近状态">{taskResultDetail.lastRunStatus || '-'}</Descriptions.Item>
+                <Descriptions.Item label="最近读取">{taskResultDetail.lastReadCount || 0}</Descriptions.Item>
+                <Descriptions.Item label="最近写入">{taskResultDetail.lastWriteCount || 0}</Descriptions.Item>
+                <Descriptions.Item label="最近失败">{taskResultDetail.lastFailCount || 0}</Descriptions.Item>
+                <Descriptions.Item label="落地字节">{formatDataSize(taskResultDetail.lastByteCount)}</Descriptions.Item>
+              </Descriptions>
+              <Divider>按对象统计</Divider>
+              <Table
+                size="small"
+                rowKey={(r) => `${r.objectName}-${r.objectKind}`}
+                pagination={false}
+                dataSource={taskResultDetail.objectStats || []}
+                columns={[
+                  { title: '对象', dataIndex: 'objectName' },
+                  { title: '类型', dataIndex: 'objectKind', width: 100 },
+                  { title: '条数', dataIndex: 'recordCount', width: 100 },
+                  { title: '最近抽取', dataIndex: 'lastExtractedAt' },
+                ]}
+              />
+            </>
+          ) : (
+            !taskResultLoading && <Empty description="暂无结果" />
+          )}
+        </Spin>
+      </Drawer>
+
+<style>{`
         @keyframes slideInFromRight {
           from {
             opacity: 0;
