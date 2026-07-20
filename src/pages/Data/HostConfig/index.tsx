@@ -79,6 +79,20 @@ const statusOptions = [
   { label: "停用", value: 0 },
 ];
 
+function formatSearchCreateTime(value: any, index: number) {
+  if (typeof value?.format === "function") {
+    return value.format(index === 0 ? "YYYY-MM-DD 00:00:00" : "YYYY-MM-DD 23:59:59");
+  }
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day} ${index === 0 ? "00:00:00" : "23:59:59"}`;
+  }
+  return value;
+}
+
 function extractPageList(payload: any): any[] {
   return payload?.data?.list || payload?.data?.records || payload?.list || payload?.rows || [];
 }
@@ -127,10 +141,7 @@ export default function HostConfigPage() {
       };
 
       if (filters.createTime && filters.createTime.length === 2) {
-        params.createTime = [
-          filters.createTime[0].startOf("day").format("YYYY-MM-DD HH:mm:ss"),
-          filters.createTime[1].endOf("day").format("YYYY-MM-DD HH:mm:ss"),
-        ];
+        params.createTime = filters.createTime.map((item, index) => formatSearchCreateTime(item, index));
       }
 
       const res: any = await getCollectHostConfigPage(params);
@@ -428,6 +439,8 @@ export default function HostConfigPage() {
               <Col>
                 <RangePicker
                   value={searchState.createTime as any}
+                  showTime
+                  format="YYYY-MM-DD HH:mm:ss"
                   onChange={(dates) =>
                     setSearchState((prev) => ({ ...prev, createTime: (dates as any) || null }))
                   }
