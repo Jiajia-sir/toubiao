@@ -172,7 +172,7 @@ const RoleForm: React.FC<RoleFormProps> = (props) => {
             checkStrictly={true}
             defaultExpandAll={false}
             treeData={menuTree}
-            defaultCheckedKeys={menuCheckedKeys}
+            checkedKeys={menuIds}
             onCheck={(checkedKeys: any) => {             
               return setMenuIds(checkedKeys.checked);
             }}

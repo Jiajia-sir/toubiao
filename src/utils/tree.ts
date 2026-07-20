@@ -108,17 +108,59 @@ export function handleTree<T extends Record<string, any>>(
 export const getPageQuery = () => parse(window.location.href.split('?')[1]);
 
 export function formatTreeData(arrayList: any): DataNode[] {
-  const treeSelectData: DataNode[] = arrayList.map((item: any) => {
-    const node: DataNode = {
-      id: item.id,
-      title: item.label,
-      key: `${item.id}`,
-      value: item.id,
-    } as DataNode;
-    if (item.children) {
-      node.children = formatTreeData(item.children);
-    }
-    return node;
+  const sourceList = Array.isArray(arrayList) ? arrayList : [];
+
+  const createNode = (item: any): DataNode => ({
+    title: item.label,
+    key: `${item.id}`,
+    value: item.id,
   });
-  return treeSelectData;
+
+  const hasNestedChildren = sourceList.some(
+    (item: any) => Array.isArray(item?.children) && item.children.length > 0,
+  );
+
+  if (hasNestedChildren) {
+    return sourceList.map((item: any) => {
+      const node = createNode(item);
+      if (Array.isArray(item.children) && item.children.length > 0) {
+        node.children = formatTreeData(item.children);
+      }
+      return node;
+    });
+  }
+
+  const nodeMap = new Map<string, DataNode>();
+  const rootNodes: DataNode[] = [];
+
+  sourceList.forEach((item: any) => {
+    nodeMap.set(`${item.id}`, createNode(item));
+  });
+
+  sourceList.forEach((item: any) => {
+    const currentNode = nodeMap.get(`${item.id}`);
+    const parentId = item.parentId;
+    const hasParent =
+      typeof parentId !== 'undefined' &&
+      parentId !== null &&
+      `${parentId}` !== '0' &&
+      nodeMap.has(`${parentId}`);
+
+    if (!currentNode) {
+      return;
+    }
+
+    if (hasParent) {
+      const parentNode = nodeMap.get(`${parentId}`);
+      if (!parentNode?.children) {
+        parentNode!.children = [];
+      }
+      parentNode!.children!.push(currentNode);
+      return;
+    }
+
+    rootNodes.push(currentNode);
+  });
+
+  return rootNodes;
 }
