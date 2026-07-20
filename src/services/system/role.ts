@@ -172,7 +172,12 @@ export async function removeRole(ids: string) {
 
 // 导出角色信息
 export function exportRole(params?: API.System.RoleListParams) {
-  return downLoadXlsx(`${API_PREFIX}/system/role/export-excel`, { params }, `role_${new Date().getTime()}.xlsx`);
+  return downLoadXlsx(
+    `${API_PREFIX}/system/role/export-excel`,
+    { params: transformRoleListParams(params) },
+    `role_${new Date().getTime()}.xlsx`,
+    'GET',
+  );
 }
 
 // 获取角色菜单列表
