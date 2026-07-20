@@ -8,7 +8,13 @@ import {
   ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
-import { PlusOutlined, DeleteOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined,
+  DeleteOutlined,
+  ExclamationCircleOutlined,
+  CaretRightOutlined,
+  CaretDownOutlined,
+} from '@ant-design/icons';
 import { getMenuList, removeMenu, addMenu, updateMenu } from '@/services/system/menu';
 import UpdateForm from './edit';
 import { getDictValueEnum } from '@/services/system/dict';
@@ -292,6 +298,24 @@ const MenuTableList: React.FC = () => {
           columns={columns}
           expandable={{
             defaultExpandAllRows: true,
+            expandIcon: ({ expanded, onExpand, record }) => {
+              const hasChildren = Array.isArray((record as API.System.Menu & { children?: API.System.Menu[] }).children)
+                && (record as API.System.Menu & { children?: API.System.Menu[] }).children!.length > 0;
+              if (!hasChildren) {
+                return <span style={{ display: 'inline-block', width: 12 }} />;
+              }
+              return expanded ? (
+                <CaretDownOutlined
+                  style={{ fontSize: 12, color: '#8c8c8c' }}
+                  onClick={(e) => onExpand(record, e)}
+                />
+              ) : (
+                <CaretRightOutlined
+                  style={{ fontSize: 12, color: '#8c8c8c' }}
+                  onClick={(e) => onExpand(record, e)}
+                />
+              );
+            },
           }}
           rowSelection={{
             onChange: (_, selectedRows) => {
