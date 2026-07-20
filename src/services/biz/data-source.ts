@@ -118,3 +118,39 @@ export async function testDataSourceConnection(data: DataSourcePayload) {
     data,
   });
 }
+
+export async function listDataSourceObjects(id: number | string) {
+  return request(`${API_PREFIX}/biz/data-source/objects`, {
+    method: 'GET',
+    params: { id },
+  });
+}
+
+export async function listDataSourceFields(id: number | string, objectName: string) {
+  return request(`${API_PREFIX}/biz/data-source/fields`, {
+    method: 'GET',
+    params: { id, objectName },
+  });
+}
+
+export async function previewDataSourceObject(id: number | string, objectName: string, limit = 20) {
+  return request(`${API_PREFIX}/biz/data-source/preview`, {
+    method: 'GET',
+    params: { id, objectName, limit },
+  });
+}
+
+
+export async function listDataSourceDatabasesById(id: number | string) {
+  return request(`${API_PREFIX}/biz/data-source/databases`, {
+    method: 'GET',
+    params: { id },
+  });
+}
+
+export async function listDataSourceDatabasesByBody(data: DataSourcePayload) {
+  return request(`${API_PREFIX}/biz/data-source/databases`, {
+    method: 'POST',
+    data,
+  });
+}

@@ -65,6 +65,12 @@ export default [
         component: './Data/Source',
       },
       {
+        name: '导入结果',
+        path: '/data/import-result',
+        component: './Data/ImportResult',
+        hideInMenu: true,
+      },
+      {
         name: '鏂囨。瀵煎叆',
         path: '/data/document-import',
         component: './Data/DocumentImport',

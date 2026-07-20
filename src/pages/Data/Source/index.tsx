@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { history } from '@umijs/max';
 import dayjs from 'dayjs';
 import {
   Button,
@@ -18,6 +19,11 @@ import {
   Table,
   Tag,
   Typography,
+  Checkbox,
+  Divider,
+  Spin,
+  Transfer,
+  AutoComplete,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -33,12 +39,21 @@ import {
   deleteDataSource,
   getDataSourcePage,
   getSupportedDataSourceTypes,
+  listDataSourceDatabasesByBody,
+  listDataSourceDatabasesById,
+  listDataSourceFields,
+  listDataSourceObjects,
   testDataSourceConnection,
   updateDataSource,
   type DataSourcePayload,
   type DataSourceRecord,
   type SupportedDataSourceType,
 } from '@/services/biz/data-source';
+import {
+  createImportTask,
+  triggerImportTask,
+  type ImportObjectScope,
+} from '@/services/biz/structured-import';
 
 const { Text, Paragraph } = Typography;
 
@@ -172,6 +187,11 @@ function buildPayload(values: EditFormValues, editRecord?: DataSourceRecord | nu
     return acc;
   }, {});
 
+  // Nebula 兼容：把 databaseName 同步到 properties.spaceName，避免 space 与库名不一致
+  if (values.type === 'nebula' && values.databaseName?.trim() && !properties.spaceName) {
+    properties.spaceName = values.databaseName.trim();
+  }
+
   return {
     id: editRecord?.id,
     name: values.name?.trim(),
@@ -202,6 +222,20 @@ export default function DataSourcePage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [editRecord, setEditRecord] = useState<DataSourceRecord | null>(null);
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importTarget, setImportTarget] = useState<DataSourceRecord | null>(null);
+  const [objectLoading, setObjectLoading] = useState(false);
+  const [fieldLoading, setFieldLoading] = useState(false);
+  const [importSubmitting, setImportSubmitting] = useState(false);
+  const [objectOptions, setObjectOptions] = useState<Array<{ key: string; title: string; kind: string }>>([]);
+  const [selectedObjectKeys, setSelectedObjectKeys] = useState<string[]>([]);
+  const [activeObjectKey, setActiveObjectKey] = useState<string>('');
+  const [fieldOptions, setFieldOptions] = useState<Array<{ label: string; value: string; primaryKey?: boolean }>>([]);
+  const [selectedFieldsMap, setSelectedFieldsMap] = useState<Record<string, string[]>>({});
+  const [keyFieldsMap, setKeyFieldsMap] = useState<Record<string, string[]>>({});
+  const [importForm] = Form.useForm();
+  const [databaseOptions, setDatabaseOptions] = useState<Array<{ label: string; value: string }>>([]);
+  const [dbLoading, setDbLoading] = useState(false);
   const [searchValues, setSearchValues] = useState<SearchFormValues>({
     name: undefined,
     type: undefined,
@@ -262,6 +296,7 @@ export default function DataSourcePage() {
   const openCreateModal = () => {
     const firstType = typeOptions[0];
     setEditRecord(null);
+    setDatabaseOptions([]);
     editForm.setFieldsValue({
       name: '',
       type: firstType?.type,
@@ -281,6 +316,7 @@ export default function DataSourcePage() {
   const openEditModal = (record: DataSourceRecord) => {
     const selectedType = typeOptions.find((item) => item.type === record.type);
     setEditRecord(record);
+    loadDatabaseOptions(undefined, record.id);
     editForm.setFieldsValue({
       name: record.name,
       type: record.type,
@@ -406,6 +442,8 @@ export default function DataSourcePage() {
       const result = extractData<any>(res);
       if (result?.success) {
         message.success(`连接成功，耗时 ${result?.latencyMs ?? 0} ms`);
+        // 连接成功后自动拉取数据库/Space 列表，避免手填库名
+        await loadDatabaseOptions(payload, editRecord?.id);
       } else {
         message.error(result?.message || '连接失败');
       }
@@ -414,6 +452,171 @@ export default function DataSourcePage() {
       message.error('连接测试失败');
     } finally {
       setTesting(false);
+    }
+  };
+
+
+  const extractList = (payload: any) => payload?.data || payload || [];
+
+  const loadDatabaseOptions = async (payload?: DataSourcePayload, dataSourceId?: number) => {
+    setDbLoading(true);
+    try {
+      let res: any;
+      if (dataSourceId) {
+        res = await listDataSourceDatabasesById(dataSourceId);
+      } else if (payload) {
+        res = await listDataSourceDatabasesByBody(payload);
+      } else {
+        setDatabaseOptions([]);
+        return;
+      }
+      const list = (res?.data || res || []) as Array<any>;
+      setDatabaseOptions((list || []).map((item) => ({
+        label: item.label || item.name,
+        value: item.name,
+      })));
+    } catch (error) {
+      console.error(error);
+      message.warning('自动获取数据库列表失败，可手动填写');
+      setDatabaseOptions([]);
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+
+  /**
+   * 打开“配置导入对象”弹窗：探查表/集合/标签，再按对象选择字段。
+   */
+  const openImportModal = async (record: DataSourceRecord) => {
+    setImportTarget(record);
+    setImportModalVisible(true);
+    setSelectedObjectKeys([]);
+    setActiveObjectKey('');
+    setFieldOptions([]);
+    setSelectedFieldsMap({});
+    setKeyFieldsMap({});
+    importForm.setFieldsValue({
+      name: `${record.name}-导入任务`,
+      extractMode: 'FULL',
+      writeMode: 'UPSERT',
+      batchSize: 500,
+      maxRowsPerObject: 100,
+      scheduleType: 'MANUAL',
+      enabled: 1,
+      triggerNow: true,
+    });
+    setObjectLoading(true);
+    try {
+      const res: any = await listDataSourceObjects(record.id);
+      const list = extractList(res) as Array<any>;
+      setObjectOptions(
+        (list || []).map((item) => ({
+          key: item.objectName,
+          title: `${item.objectName}${item.objectKind ? ` (${item.objectKind})` : ''}`,
+          kind: item.objectKind || '',
+        })),
+      );
+    } catch (error) {
+      console.error(error);
+      message.error('探查数据源对象失败，请确认连接可用');
+      setObjectOptions([]);
+    } finally {
+      setObjectLoading(false);
+    }
+  };
+
+  /**
+   * 按对象探查字段，并默认全选字段；主键字段自动勾为 UPSERT key。
+   */
+  const loadFieldsForObject = async (objectName: string) => {
+    if (!importTarget) return;
+    setActiveObjectKey(objectName);
+    setFieldLoading(true);
+    try {
+      const res: any = await listDataSourceFields(importTarget.id, objectName);
+      const list = extractList(res) as Array<any>;
+      const options = (list || []).map((item) => ({
+        label: `${item.fieldName}${item.fieldType ? ` (${item.fieldType})` : ''}${item.primaryKey ? ' [PK]' : ''}`,
+        value: item.fieldName,
+        primaryKey: !!item.primaryKey,
+      }));
+      setFieldOptions(options);
+      setSelectedFieldsMap((prev) => {
+        if (prev[objectName]?.length) return prev;
+        return { ...prev, [objectName]: options.map((o) => o.value) };
+      });
+      setKeyFieldsMap((prev) => {
+        if (prev[objectName]?.length) return prev;
+        const pks = options.filter((o) => o.primaryKey).map((o) => o.value);
+        return { ...prev, [objectName]: pks };
+      });
+    } catch (error) {
+      console.error(error);
+      message.error(`探查字段失败：${objectName}`);
+      setFieldOptions([]);
+    } finally {
+      setFieldLoading(false);
+    }
+  };
+
+  const handleImportSubmit = async () => {
+    if (!importTarget) return;
+    if (!selectedObjectKeys.length) {
+      message.warning('请至少选择一个导入对象（表/集合/标签）');
+      return;
+    }
+    const values = await importForm.validateFields();
+    const objects: ImportObjectScope[] = selectedObjectKeys.map((objectName) => {
+      const meta = objectOptions.find((item) => item.key === objectName);
+      return {
+        objectName,
+        objectKind: meta?.kind || undefined,
+        columns: selectedFieldsMap[objectName] || [],
+        keyFields: keyFieldsMap[objectName] || [],
+      };
+    });
+    const payload = {
+      name: values.name,
+      dataSourceId: importTarget.id,
+      extractMode: 'FULL',
+      scheduleType: 'MANUAL',
+      batchSize: values.batchSize,
+      maxRowsPerObject: values.maxRowsPerObject,
+      writeMode: values.writeMode,
+      enabled: values.enabled,
+      objects,
+      // 当前版本固定全量 + 手动触发，定时/增量入口隐藏
+      cursorConfig: undefined,
+      scheduleConfig: undefined,
+    };
+    setImportSubmitting(true);
+    try {
+      const res: any = await createImportTask(payload);
+      const ok = res?.code === 200 || res?.code === 0 || res?.success === true;
+      if (!ok) {
+        message.error(res?.msg || '创建导入任务失败');
+        return;
+      }
+      const taskId = res?.data ?? res;
+      message.success('导入任务创建成功');
+      if (values.triggerNow) {
+        const triggerRes: any = await triggerImportTask(taskId, 'MANUAL');
+        if (triggerRes?.code === 200 || triggerRes?.code === 0 || triggerRes?.success === true) {
+          message.success(`已触发导入，运行ID：${triggerRes?.data ?? ''}`);
+        } else {
+          message.warning(triggerRes?.msg || '任务已创建，但触发失败');
+        }
+      }
+      setImportModalVisible(false);
+      setImportTarget(null);
+      // 引导去结果页核对
+      history.push(`/data/import-result?taskId=${taskId}`);
+    } catch (error) {
+      console.error(error);
+      message.error('创建导入任务失败');
+    } finally {
+      setImportSubmitting(false);
     }
   };
 
@@ -456,6 +659,15 @@ export default function DataSourcePage() {
       },
     },
     {
+      title: '数据库/空间',
+      key: 'databaseName',
+      width: 160,
+      render: (_, record) => {
+        const db = record.databaseName || record.properties?.spaceName || record.properties?.filePath || '-';
+        return <Text code>{db}</Text>;
+      },
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
@@ -493,7 +705,7 @@ export default function DataSourcePage() {
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 300,
       fixed: 'right',
       render: (_, record) => (
         <Space size={8} wrap>
@@ -502,6 +714,12 @@ export default function DataSourcePage() {
           </Button>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
             编辑
+          </Button>
+          <Button type="link" size="small" onClick={() => openImportModal(record)}>
+            配置导入
+          </Button>
+          <Button type="link" size="small" onClick={() => history.push(`/data/import-result?dataSourceId=${record.id}`)}>
+            导入结果
           </Button>
           <Popconfirm title="确认删除该数据源吗？" onConfirm={() => handleDelete(record.id)}>
             <Button type="link" danger size="small" icon={<DeleteOutlined />}>
@@ -520,9 +738,6 @@ export default function DataSourcePage() {
           <Text strong style={{ fontSize: 18 }}>
             多源结构化数据源管理
           </Text>
-          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            当前阶段仅实现连接资产管理与连通性测试，已覆盖 MySQL、Oracle、PostgreSQL、SQLite、Neo4j、Nebula、MongoDB 七类数据库，并通过类型元数据为后续扩展保留统一入口。
-          </Paragraph>
         </Space>
       </Card>
 
@@ -738,17 +953,30 @@ export default function DataSourcePage() {
               <Col span={12}>
                 <Form.Item
                   name="databaseName"
-                  label="数据库名称"
+                  label="数据库 / Space"
                   rules={
                     currentTypeMeta?.requiredBasicFields.includes('databaseName')
-                      ? [{ required: true, message: '请输入数据库名称' }]
+                      ? [{ required: true, message: '请选择或输入数据库' }]
                       : undefined
                   }
+                  extra="连接成功后可下拉选择；也可手动输入"
                 >
-                  <Input
-                    placeholder={
-                      '例如：ruoyi-vue-pro / admin / neo4j'
+                  <AutoComplete
+                    allowClear
+                    loading={dbLoading}
+                    options={databaseOptions}
+                    placeholder="测试连接后可下拉选择，也可手动输入"
+                    filterOption={(input, option) =>
+                      String(option?.label || option?.value || '')
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
                     }
+                    onFocus={async () => {
+                      if (databaseOptions.length) return;
+                      const values = editForm.getFieldsValue();
+                      const payload = buildPayload(values, editRecord);
+                      await loadDatabaseOptions(payload, editRecord?.id);
+                    }}
                   />
                 </Form.Item>
               </Col>
@@ -817,6 +1045,141 @@ export default function DataSourcePage() {
           ) : null}
         </Form>
       </Modal>
+
+      <Modal
+        title={importTarget ? `配置导入对象 - ${importTarget.name} / 库: ${importTarget.databaseName || importTarget.properties?.spaceName || '-'}` : '配置导入对象'}
+        open={importModalVisible}
+        onCancel={() => {
+          setImportModalVisible(false);
+          setImportTarget(null);
+        }}
+        onOk={handleImportSubmit}
+        confirmLoading={importSubmitting}
+        width={980}
+        destroyOnClose
+        okText="保存任务"
+      >
+        <div style={{ marginBottom: 12, color: '#64748b', fontSize: 13 }}>
+          数据源：
+          <Text strong>{importTarget?.name}</Text>
+          {' / '}
+          <Text code>{importTarget?.type}</Text>
+          {' / 库：'}
+          <Text code>{importTarget?.databaseName || importTarget?.properties?.spaceName || '-'}</Text>
+          <Text type="secondary">（当前固定全量导入、手动触发）</Text>
+        </div>
+        <Form form={importForm} layout="vertical">
+          <Row gutter={16}>
+            <Col span={10}>
+              <Form.Item name="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]}>
+                <Input placeholder="请输入导入任务名称" />
+              </Form.Item>
+            </Col>
+            <Col span={5}>
+              <Form.Item name="writeMode" label="写入模式">
+                <Select
+                  options={[
+                    { label: 'UPSERT 覆盖', value: 'UPSERT' },
+                    { label: 'APPEND 追加', value: 'APPEND' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={5}>
+              <Form.Item name="maxRowsPerObject" label="限流条数" extra="0=不限制">
+                <InputNumber min={0} max={10000000} style={{ width: '100%' }} placeholder="100" />
+              </Form.Item>
+            </Col>
+            <Col span={4}>
+              <Form.Item name="batchSize" label="批大小">
+                <InputNumber min={50} max={5000} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="enabled" label="启用状态">
+                <Select options={[{ label: '启用', value: 1 }, { label: '停用', value: 0 }]} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="triggerNow" label="保存后立即执行" valuePropName="checked">
+                <Checkbox>立即触发</Checkbox>
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+
+
+        <Divider orientation="left">选择对象</Divider>
+        <Spin spinning={objectLoading}>
+          <Transfer
+            dataSource={objectOptions}
+            titles={['可选对象', '已选对象']}
+            targetKeys={selectedObjectKeys}
+            onChange={(next) => {
+              setSelectedObjectKeys(next as string[]);
+              if (next.length && !next.includes(activeObjectKey)) {
+                loadFieldsForObject(String(next[next.length - 1]));
+              }
+            }}
+            onSelectChange={(sourceSelectedKeys, targetSelectedKeys) => {
+              const focused = [...targetSelectedKeys, ...sourceSelectedKeys][0];
+              if (focused) {
+                loadFieldsForObject(String(focused));
+              }
+            }}
+            render={(item) => item.title}
+            listStyle={{ width: 360, height: 280 }}
+            showSearch
+            filterOption={(input, item) => (item.title || '').toLowerCase().includes(input.toLowerCase())}
+          />
+        </Spin>
+
+        <Divider orientation="left">选择字段（当前：{activeObjectKey || '未选择'}）</Divider>
+        <Spin spinning={fieldLoading}>
+          <Checkbox.Group
+            style={{ width: '100%' }}
+            value={activeObjectKey ? selectedFieldsMap[activeObjectKey] || [] : []}
+            onChange={(checked) => {
+              if (!activeObjectKey) return;
+              setSelectedFieldsMap((prev) => ({ ...prev, [activeObjectKey]: checked as string[] }));
+            }}
+          >
+            <Row gutter={[8, 8]}>
+              {fieldOptions.map((field) => (
+                <Col span={8} key={field.value}>
+                  <Checkbox value={field.value}>{field.label}</Checkbox>
+                </Col>
+              ))}
+              {!fieldOptions.length && (
+                <Col span={24}>
+                  <Text type="secondary">请先在上方选择一个对象，系统将自动探查字段</Text>
+                </Col>
+              )}
+            </Row>
+          </Checkbox.Group>
+          {!!fieldOptions.length && (
+            <div style={{ marginTop: 12 }}>
+              <Text type="secondary">主键字段（用于 UPSERT）：</Text>
+              <Select
+                mode="multiple"
+                style={{ width: '100%', marginTop: 8 }}
+                placeholder="可选，默认使用源主键或自动哈希"
+                value={activeObjectKey ? keyFieldsMap[activeObjectKey] || [] : []}
+                options={fieldOptions.map((f) => ({ label: f.value, value: f.value }))}
+                onChange={(vals) => {
+                  if (!activeObjectKey) return;
+                  setKeyFieldsMap((prev) => ({ ...prev, [activeObjectKey]: vals }));
+                }}
+              />
+            </div>
+          )}
+        </Spin>
+      </Modal>
+
+
+
     </Space>
   );
 }
+
+
