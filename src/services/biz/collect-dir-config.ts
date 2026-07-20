@@ -102,3 +102,17 @@ export async function removeCollectDirConfig(id: number | string) {
     params: { id },
   });
 }
+
+export async function startCollectDirTask(id: number | string) {
+  return request(`${API_PREFIX}/biz/collect/startTask`, {
+    method: 'GET',
+    params: { id },
+  });
+}
+
+export async function stopCollectDirTask(id: number | string) {
+  return request(`${API_PREFIX}/biz/collect/stopTask`, {
+    method: 'GET',
+    params: { id },
+  });
+}
