@@ -6,15 +6,17 @@ declare namespace API.System {
     roleName: string;
     roleKey: string;
     roleSort: number;
-    dataScope: string;
+    type?: number;
+    dataScope: string | number;
+    dataScopeDeptIds?: number[];
     menuCheckStrictly: number;
     deptCheckStrictly: number;
-    status: string;
+    status: string | number;
     delFlag: string;
     createBy: string;
-    createTime: Date;
+    createTime: string | number | Date;
     updateBy: string;
-    updateTime: Date;
+    updateTime: string | number | Date;
     remark: string;
   }
 
@@ -35,17 +37,28 @@ declare namespace API.System {
     remark?: string;
     pageSize?: string;
     current?: string;
+    pageNo?: string;
+    beginTime?: string;
+    endTime?: string;
+    'params[beginTime]'?: string;
+    'params[endTime]'?: string;
   }
 
   export interface RoleInfoResult { 
     code: number;
     msg: string;
     data: Role;
+    menuIds?: number[];
+    deptIds?: number[];
   } 
 
    export interface RolePageResult { 
     code: number;
     msg: string;
+    data?: {
+      list?: Array<Role>;
+      total?: number;
+    };
     total: number;
     rows: Array<Role>;
   }

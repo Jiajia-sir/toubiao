@@ -3,6 +3,22 @@ import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
 import { API_PREFIX } from '@/constants';
 
+function normalizeRole(item: Record<string, any>): API.System.Role {
+  return {
+    ...item,
+    roleId: item.roleId ?? item.id,
+    roleName: item.roleName ?? item.name,
+    roleKey: item.roleKey ?? item.code,
+    roleSort: item.roleSort ?? item.sort ?? 0,
+    status: item.status,
+    type: item.type,
+    dataScope: item.dataScope,
+    dataScopeDeptIds: item.dataScopeDeptIds,
+    createTime: item.createTime,
+    updateTime: item.updateTime,
+  } as API.System.Role;
+}
+
 function transformRolePayload(params: API.System.Role) {
   return {
     id: params.roleId,
@@ -18,10 +34,37 @@ function transformRoleListParams(params?: API.System.RoleListParams) {
   if (!params) {
     return params;
   }
+  const normalizedParams = { ...(params as Record<string, any>) };
+
+  if (typeof normalizedParams.current !== 'undefined' && typeof normalizedParams.pageNo === 'undefined') {
+    normalizedParams.pageNo = normalizedParams.current;
+  }
+  delete normalizedParams.current;
+
+  if (
+    typeof normalizedParams['params[beginTime]'] !== 'undefined' &&
+    typeof normalizedParams.beginTime === 'undefined'
+  ) {
+    normalizedParams.beginTime = normalizedParams['params[beginTime]'];
+  }
+  if (
+    typeof normalizedParams['params[endTime]'] !== 'undefined' &&
+    typeof normalizedParams.endTime === 'undefined'
+  ) {
+    normalizedParams.endTime = normalizedParams['params[endTime]'];
+  }
+
+  delete normalizedParams['params[beginTime]'];
+  delete normalizedParams['params[endTime]'];
+
   return {
-    ...params,
-    name: params.roleName,
-    code: params.roleKey,
+    ...normalizedParams,
+    name: normalizedParams.roleName,
+    code: normalizedParams.roleKey,
+    status:
+      typeof normalizedParams.status === 'string' && normalizedParams.status !== ''
+        ? Number(normalizedParams.status)
+        : normalizedParams.status,
   };
 }
 
@@ -34,11 +77,22 @@ async function deleteRoleById(id: string) {
 
 // 查询角色信息列表（分页）
 export async function getRoleList(params?: API.System.RoleListParams) {
-  return request<API.System.RolePageResult>(`${API_PREFIX}/system/role/page`, {
+  const res = await request<API.System.RolePageResult>(`${API_PREFIX}/system/role/page`, {
     method: 'GET',
     headers: { 'Content-Type': ContentType.FORM_URLENCODED },
     params: transformRoleListParams(params)
   });
+  const rows = Array.isArray(res?.data?.list)
+    ? res.data.list.map((item) => normalizeRole(item as Record<string, any>))
+    : Array.isArray(res?.rows)
+      ? res.rows.map((item) => normalizeRole(item as Record<string, any>))
+      : [];
+
+  return {
+    ...res,
+    rows,
+    total: res?.data?.total ?? res?.total ?? rows.length,
+  };
 }
 
 export async function getRoleSimpleList() {

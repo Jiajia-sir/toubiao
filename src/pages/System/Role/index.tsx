@@ -36,6 +36,22 @@ import DataScopeForm from './components/DataScope';
 
 const { confirm } = Modal;
 
+const isSuccessCode = (code?: number) => code === 0 || code === 200 || typeof code === 'undefined';
+
+const formatDateTime = (value?: string | number | Date) => {
+  if (value === null || typeof value === 'undefined' || value === '') {
+    return '-';
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  const pad = (num: number) => `${num}`.padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 /**
  * 添加节点
  *
@@ -186,12 +202,12 @@ const RoleTableList: React.FC = () => {
 
   const showChangeStatusConfirm = (record: API.System.Role) => {
     let text = record.status === '1' ? '启用' : '停用';
-    const newStatus = record.status === '0' ? '1' : '0';
+    const newStatus = `${record.status}` === '0' ? '1' : '0';
     confirm({
       title: `确认要${text}${record.roleName}角色吗？`,
       onOk() {
         changeRoleStatus(record.roleId, newStatus).then((resp) => {
-          if (resp.code === 200) {
+          if (isSuccessCode(resp.code)) {
             messageApi.open({
               type: 'success',
               content: '更新成功！',
@@ -239,7 +255,7 @@ const RoleTableList: React.FC = () => {
       render: (_, record) => {
         return (
           <Switch
-            checked={record.status === '0'}
+            checked={`${record.status}` === '0'}
             checkedChildren="正常"
             unCheckedChildren="停用"
             defaultChecked
@@ -253,13 +269,19 @@ const RoleTableList: React.FC = () => {
       dataIndex: 'createTime',
       valueType: 'dateRange',
       render: (_, record) => {
-        return <span>{record.createTime.toString()} </span>;
+        return <span>{formatDateTime(record.createTime)}</span>;
       },
       search: {
         transform: (value) => {
           return {
-            'params[beginTime]': value[0],
-            'params[endTime]': value[1],
+            'params[beginTime]':
+              value?.[0] && typeof value[0]?.startOf === 'function'
+                ? value[0].startOf('day').format('YYYY-MM-DD HH:mm:ss')
+                : value?.[0],
+            'params[endTime]':
+              value?.[1] && typeof value[1]?.endOf === 'function'
+                ? value[1].endOf('day').format('YYYY-MM-DD HH:mm:ss')
+                : value?.[1],
           };
         },
       },
@@ -278,7 +300,7 @@ const RoleTableList: React.FC = () => {
           hidden={!access.hasPerms('system:role:edit')}
           onClick={() => {
             Promise.all([getMenuTree(), getRole(record.roleId)]).then(([menuResp, roleResp]) => {
-              if (menuResp.code === 200 && roleResp.code === 200) {
+              if (isSuccessCode(menuResp.code) && isSuccessCode(roleResp.code)) {
                 const treeData = formatTreeData(menuResp.data || []);
                 setMenuTree(treeData);
                 setMenuIds((roleResp.menuIds || []).map((item: number) => `${item}`));
@@ -336,14 +358,14 @@ const RoleTableList: React.FC = () => {
             onClick: ({ key }: any) => {
               if (key === 'datascope') {
                 getRole(record.roleId).then((resp) => {
-                  if (resp.code === 200) {
+                  if (isSuccessCode(resp.code)) {
                     setCurrentRow(resp.data);
                     setMenuIds((resp.deptIds || []).map((item: number) => `${item}`));
                     setDataScopeModalOpen(true);
                   }
                 });
                 getDeptTreeSelect(record.roleId).then((resp) => {
-                  if (resp.code === 200) {
+                  if (isSuccessCode(resp.code)) {
                     setMenuTree(formatTreeData(resp.data || []));
                   }
                 });
@@ -387,7 +409,7 @@ const RoleTableList: React.FC = () => {
               hidden={!access.hasPerms('system:role:add')}
               onClick={async () => {
                 getMenuTree().then((res: any) => {
-                  if (res.code === 200) {
+                  if (isSuccessCode(res.code)) {
                     const treeData = formatTreeData(res.data);
                     setMenuTree(treeData);
                     setMenuIds([]);
