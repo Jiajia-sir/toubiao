@@ -149,6 +149,9 @@ export default defineConfig({
     },
   ],
   mfsu: false,
+  // Some third-party bundles now ship BigInt syntax, which esbuild minify
+  // rejects under the current legacy target. Use terser for build stability.
+  jsMinifier: 'terser',
   esbuildMinifyIIFE: true,
   requestRecord: {},
 });
