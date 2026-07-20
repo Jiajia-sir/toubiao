@@ -1125,8 +1125,7 @@ export default function GraphPage() {
             <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
               <Spin size="large" tip="图谱检索中..." />
             </div>
-          ) : filteredGraphData.nodes.length > 0 ? (
-            <EntityRelationGraph
+          ) : filteredGraphData.nodes.length > 0 ? (            <EntityRelationGraph
               actionRef={graphRef}
               data={filteredGraphData}
               selectedNodeId={selectedNodeId}

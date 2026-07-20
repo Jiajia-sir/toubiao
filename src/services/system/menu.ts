@@ -2,6 +2,84 @@ import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
 import { API_PREFIX } from '@/constants';
 
+function mapMenuTypeToLegacy(value: any) {
+  if (value === 1 || value === '1') {
+    return 'M';
+  }
+  if (value === 2 || value === '2') {
+    return 'C';
+  }
+  if (value === 3 || value === '3') {
+    return 'F';
+  }
+  return value;
+}
+
+function normalizeMenuItem(item: any): any {
+  if (!item || typeof item !== 'object') {
+    return item;
+  }
+  const menuId = item.menuId ?? item.id;
+  const menuName = item.menuName ?? item.name;
+  const children = Array.isArray(item.children)
+    ? item.children.map((child: any) => normalizeMenuItem(child))
+    : item.children;
+  return {
+    ...item,
+    menuId,
+    menuName,
+    parentId: typeof item.parentId === 'undefined' || item.parentId === null ? 0 : item.parentId,
+    orderNum: item.orderNum ?? item.sort ?? 0,
+    perms: item.perms ?? item.permission,
+    menuType: item.menuType ?? mapMenuTypeToLegacy(item.type),
+    isCache:
+      typeof item.isCache !== 'undefined'
+        ? item.isCache
+        : typeof item.keepAlive === 'boolean'
+          ? item.keepAlive
+            ? 0
+            : 1
+          : item.isCache,
+    children,
+  };
+}
+
+function extractMenuList(res: any): any[] {
+  if (Array.isArray(res?.data)) {
+    return res.data;
+  }
+  if (Array.isArray(res?.rows)) {
+    return res.rows;
+  }
+  if (Array.isArray(res?.data?.list)) {
+    return res.data.list;
+  }
+  if (Array.isArray(res?.data?.records)) {
+    return res.data.records;
+  }
+  return [];
+}
+
+function flattenMenuList(list: any[]): any[] {
+  const result: any[] = [];
+  const walk = (nodes: any[]) => {
+    (nodes || []).forEach((node) => {
+      if (!node || typeof node !== 'object') {
+        return;
+      }
+      const children = node.children;
+      const next = { ...node };
+      delete next.children;
+      result.push(next);
+      if (Array.isArray(children) && children.length > 0) {
+        walk(children);
+      }
+    });
+  };
+  walk(list);
+  return result;
+}
+
 function mapLegacyMenuType(value: any) {
   if (value === 'M' || value === 1 || value === '1') {
     return 1;
@@ -65,7 +143,7 @@ async function deleteMenuById(id: string, options?: { [key: string]: any }) {
 
 // 查询菜单权限列表
 export async function getMenuList(params?: API.System.MenuListParams, options?: { [key: string]: any }) {
-  return request<API.System.MenuPageResult>(`${API_PREFIX}/system/menu/list`, {
+  const res = await request<API.System.MenuPageResult>(`${API_PREFIX}/system/menu/list`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json;charset=UTF-8',
@@ -73,6 +151,14 @@ export async function getMenuList(params?: API.System.MenuListParams, options?: 
     params: transformMenuListParams(params),
     ...(options || {}),
   });
+  const list = flattenMenuList(extractMenuList(res)).map((item) => normalizeMenuItem(item));
+  return {
+    ...res,
+    data: list,
+    rows: list,
+    total: typeof res.total === 'number' ? res.total : list.length,
+    success: res.code === 200 || res.code === 0 || typeof res.code === 'undefined',
+  };
 }
 
 // 查询菜单权限详细

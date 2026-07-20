@@ -24,27 +24,36 @@ export function buildTreeData(
     childrenList: children || 'children',
   };
 
-  const childrenListMap: any[] = [];
-  const nodeIds: any[] = [];
+  const source = Array.isArray(data) ? data : [];
+  const childrenListMap: Record<string, any[]> = {};
+  const nodeIds: Record<string, any> = {};
   const tree: any[] = [];
-  data.forEach((item) => {
+
+  source.forEach((item) => {
     const d = item;
+    const nodeId = d[config.id];
     const pId = d[config.parentId];
-    if (!childrenListMap[pId]) {
-      childrenListMap[pId] = [];
+    const nodeKey = String(nodeId);
+    const parentKey = String(typeof pId === 'undefined' || pId === null ? 0 : pId);
+
+    if (!childrenListMap[parentKey]) {
+      childrenListMap[parentKey] = [];
     }
-    d.key = d[config.id];
+    d.key = nodeId;
     d.title = d[config.name];
-    d.value = d[config.id];
-    d[config.childrenList] = null;
-    nodeIds[d[config.id]] = d;
-    childrenListMap[pId].push(d);
+    d.value = nodeId;
+    if (Object.prototype.hasOwnProperty.call(d, config.childrenList)) {
+      delete d[config.childrenList];
+    }
+    nodeIds[nodeKey] = d;
+    childrenListMap[parentKey].push(d);
   });
 
-  data.forEach((item: any) => {
+  source.forEach((item: any) => {
     const d = item;
     const pId = d[config.parentId];
-    if (!nodeIds[pId]) {
+    const parentKey = String(typeof pId === 'undefined' || pId === null ? 0 : pId);
+    if (!nodeIds[parentKey]) {
       d[config.parentName] = '';
       tree.push(d);
     }
@@ -52,14 +61,10 @@ export function buildTreeData(
 
   function adaptToChildrenList(item: any) {
     const o = item;
-    if (childrenListMap[o[config.id]]) {
-      if (!o[config.childrenList]) {
-        o[config.childrenList] = [];
-      }
-      o[config.childrenList] = childrenListMap[o[config.id]];
-    }
-    if (o[config.childrenList]) {
-      o[config.childrenList].forEach((child: any) => {
+    const childrenNodes = childrenListMap[String(o[config.id])];
+    if (childrenNodes && childrenNodes.length > 0) {
+      o[config.childrenList] = childrenNodes;
+      childrenNodes.forEach((child: any) => {
         const c = child;
         c[config.parentName] = o[config.name];
         adaptToChildrenList(c);

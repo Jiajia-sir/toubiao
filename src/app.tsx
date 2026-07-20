@@ -262,32 +262,54 @@ function normalizeYudaoEntity(target: any, visited: WeakSet<object>) {
     }
   });
 
+  const isYudaoMenuType =
+    target.type === 1 ||
+    target.type === 2 ||
+    target.type === 3 ||
+    target.type === '1' ||
+    target.type === '2' ||
+    target.type === '3' ||
+    target.type === 'M' ||
+    target.type === 'C' ||
+    target.type === 'F';
+  const isMenu =
+    typeof target.menuType !== 'undefined' ||
+    typeof target.permission !== 'undefined' ||
+    typeof target.componentName !== 'undefined' ||
+    typeof target.alwaysShow !== 'undefined' ||
+    typeof target.keepAlive !== 'undefined' ||
+    (typeof target.parentId !== 'undefined' && isYudaoMenuType) ||
+    (typeof target.parentId !== 'undefined' &&
+      (typeof target.component !== 'undefined' || typeof target.path !== 'undefined') &&
+      typeof target.leaderUserId === 'undefined');
   const isUser =
     typeof target.username !== 'undefined' ||
     typeof target.nickname !== 'undefined' ||
     typeof target.mobile !== 'undefined' ||
-    typeof target.deptName !== 'undefined';
+    (typeof target.deptName !== 'undefined' && !isMenu);
   const isRole =
     typeof target.dataScope !== 'undefined' ||
     (typeof target.code !== 'undefined' &&
       typeof target.menuType === 'undefined' &&
       typeof target.value === 'undefined' &&
       typeof target.username === 'undefined' &&
-      typeof target.leaderUserId === 'undefined');
+      typeof target.leaderUserId === 'undefined' &&
+      !isMenu);
   const isDept =
-    typeof target.leaderUserId !== 'undefined' ||
-    (typeof target.parentId !== 'undefined' &&
-      typeof target.menuType === 'undefined' &&
-      typeof target.component === 'undefined' &&
-      typeof target.dictType === 'undefined');
-  const isMenu =
-    typeof target.menuType !== 'undefined' ||
-    typeof target.permission !== 'undefined' ||
-    typeof target.componentName !== 'undefined' ||
-    typeof target.alwaysShow !== 'undefined';
+    !isMenu &&
+    (typeof target.leaderUserId !== 'undefined' ||
+      (typeof target.parentId !== 'undefined' &&
+        typeof target.menuType === 'undefined' &&
+        typeof target.component === 'undefined' &&
+        typeof target.permission === 'undefined' &&
+        typeof target.keepAlive === 'undefined' &&
+        typeof target.dictType === 'undefined' &&
+        !isYudaoMenuType));
   const isDictData = typeof target.label !== 'undefined' && typeof target.value !== 'undefined';
   const isDictType =
+    !isMenu &&
     typeof target.type !== 'undefined' &&
+    typeof target.parentId === 'undefined' &&
     typeof target.label === 'undefined' &&
     typeof target.value === 'undefined' &&
     typeof target.menuType === 'undefined' &&
@@ -296,6 +318,7 @@ function normalizeYudaoEntity(target: any, visited: WeakSet<object>) {
     !isRole &&
     !isDictType &&
     !isDictData &&
+    !isMenu &&
     typeof target.id !== 'undefined' &&
     typeof target.name !== 'undefined' &&
     typeof target.code === 'undefined' &&

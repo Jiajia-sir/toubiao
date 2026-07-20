@@ -269,22 +269,30 @@ const MenuTableList: React.FC = () => {
               <FormattedMessage id="pages.searchTable.delete" defaultMessage="删除" />
             </Button>,
           ]}
-          request={(params) =>
-            getMenuList({ ...params } as API.System.MenuListParams).then((res) => {
-              const rootMenu = { id: 0, label: '主类目', children: [] as DataNode[], value: 0 };
-              const memuData = buildTreeData(res.data, 'menuId', 'menuName', '', '', '');
-              rootMenu.children = memuData;
-              const treeData: any = [];
-              treeData.push(rootMenu);
-              setMenuTree(treeData);
-              return {
-                data: memuData,
-                total: res.data.length,
-                success: true,
-              };
-            })
-          }
+          pagination={false}
+          request={async (params) => {
+            const res = await getMenuList({ ...params } as API.System.MenuListParams);
+            const list = Array.isArray(res.data) ? res.data : [];
+            const menuData = buildTreeData(list, 'menuId', 'menuName', 'parentId', 'parentName', 'children');
+            const rootMenu = {
+              id: 0,
+              key: 0,
+              label: '主类目',
+              title: '主类目',
+              children: menuData as DataNode[],
+              value: 0,
+            };
+            setMenuTree([rootMenu]);
+            return {
+              data: menuData,
+              total: list.length,
+              success: true,
+            };
+          }}
           columns={columns}
+          expandable={{
+            defaultExpandAllRows: true,
+          }}
           rowSelection={{
             onChange: (_, selectedRows) => {
               setSelectedRows(selectedRows);
