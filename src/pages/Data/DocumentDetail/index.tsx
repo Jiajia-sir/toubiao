@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { history, useLocation, useParams } from "@umijs/max";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { history, useLocation, useParams } from '@umijs/max';
 import {
   AppstoreOutlined,
   ArrowLeftOutlined,
@@ -10,7 +10,7 @@ import {
   ClockCircleOutlined,
   CloudDownloadOutlined,
   ClusterOutlined,
-  FilePdfOutlined,
+  FileOutlined,
   FileTextOutlined,
   KeyOutlined,
   ReloadOutlined,
@@ -18,7 +18,7 @@ import {
   SearchOutlined,
   TagOutlined,
   UserOutlined,
-} from "@ant-design/icons";
+} from '@ant-design/icons';
 import {
   Breadcrumb,
   Button,
@@ -36,8 +36,8 @@ import {
   Space,
   Tag,
   Tooltip,
-} from "antd";
-import { statusConfig } from "@/config/status";
+} from 'antd';
+import { statusConfig } from '@/config/status';
 import {
   entityTypeMeta,
   getDocumentParseDetail,
@@ -45,16 +45,13 @@ import {
   type EntityType,
   type KnowledgeGraphData,
   type ParseStep,
-} from "@/data/documentGraph";
-import type { EntityGraphData } from "@/data/entityGraphMock";
-import EntityRelationGraph from "@/components/Graph/EntityRelationGraph";
-import { getDocumentHtmlChunkPage, viewDocument } from "@/services/biz/document-query";
-import {
-  getDocumentKnowledgeGraph,
-  type DocumentKnowledgeGraphResult,
-} from "@/services/biz/graph";
+} from '@/data/documentGraph';
+import type { EntityGraphData } from '@/data/entityGraphMock';
+import EntityRelationGraph from '@/components/Graph/EntityRelationGraph';
+import { getDocumentHtmlChunkPage, viewDocument } from '@/services/biz/document-query';
+import { getDocumentKnowledgeGraph, type DocumentKnowledgeGraphResult } from '@/services/biz/graph';
 
-type PreviewBlockType = "meta" | "heading" | "paragraph" | "bullet";
+type PreviewBlockType = 'meta' | 'heading' | 'paragraph' | 'bullet';
 
 const CARD_STACK_GAP = 12;
 const META_CARD_HEIGHT = 340;
@@ -72,7 +69,7 @@ const PREVIEW_CARD_HEIGHT =
 const formatFileSize = (bytes: any) => {
   const size = Number(bytes);
   if (!Number.isFinite(size) || size <= 0) {
-    return "-";
+    return '-';
   }
   if (size < 1024) {
     return `${size} B`;
@@ -87,18 +84,18 @@ const formatFileSize = (bytes: any) => {
 };
 
 const formatDateTime = (value: any) => {
-  if (value === null || value === undefined || value === "") {
-    return "-";
+  if (value === null || value === undefined || value === '') {
+    return '-';
   }
-  if (typeof value === "number" || /^\d+$/.test(String(value))) {
+  if (typeof value === 'number' || /^\d+$/.test(String(value))) {
     const date = new Date(Number(value));
     if (!Number.isNaN(date.getTime())) {
       const year = date.getFullYear();
-      const month = `${date.getMonth() + 1}`.padStart(2, "0");
-      const day = `${date.getDate()}`.padStart(2, "0");
-      const hours = `${date.getHours()}`.padStart(2, "0");
-      const minutes = `${date.getMinutes()}`.padStart(2, "0");
-      const seconds = `${date.getSeconds()}`.padStart(2, "0");
+      const month = `${date.getMonth() + 1}`.padStart(2, '0');
+      const day = `${date.getDate()}`.padStart(2, '0');
+      const hours = `${date.getHours()}`.padStart(2, '0');
+      const minutes = `${date.getMinutes()}`.padStart(2, '0');
+      const seconds = `${date.getSeconds()}`.padStart(2, '0');
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     }
   }
@@ -109,13 +106,14 @@ const ensureArray = <T,>(value: T | T[] | null | undefined): T[] => {
   if (Array.isArray(value)) {
     return value;
   }
-  if (value === null || value === undefined || value === "") {
+  if (value === null || value === undefined || value === '') {
     return [];
   }
   return [value];
 };
 
-const extractDetailData = (response: any) => response?.data?.data ?? response?.data ?? response ?? {};
+const extractDetailData = (response: any) =>
+  response?.data?.data ?? response?.data ?? response ?? {};
 
 const extractPageList = <T,>(response: any): T[] => {
   if (Array.isArray(response?.data?.list)) {
@@ -150,23 +148,23 @@ const toTextList = (value: any): string[] => {
   if (Array.isArray(value)) {
     return value
       .map((item) => {
-        if (typeof item === "string") {
+        if (typeof item === 'string') {
           return item.trim();
         }
-        if (typeof item?.name === "string") {
+        if (typeof item?.name === 'string') {
           return item.name.trim();
         }
-        if (typeof item?.label === "string") {
+        if (typeof item?.label === 'string') {
           return item.label.trim();
         }
-        if (typeof item?.value === "string") {
+        if (typeof item?.value === 'string') {
           return item.value.trim();
         }
-        return "";
+        return '';
       })
       .filter(Boolean);
   }
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return value
       .split(/[\n,，;；]/)
       .map((item) => item.trim())
@@ -177,23 +175,23 @@ const toTextList = (value: any): string[] => {
 
 const stripHtml = (value: string) =>
   value
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
     .trim();
 
 const sanitizePreviewHtml = (value: string) =>
-  String(value ?? "")
-    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/\son\w+=(["']).*?\1/gi, "")
-    .replace(/javascript:/gi, "");
+  String(value ?? '')
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+=(["']).*?\1/gi, '')
+    .replace(/javascript:/gi, '');
 
 const normalizePreviewHtml = (value: string) => {
   const sanitizedHtml = sanitizePreviewHtml(value);
-  const styleBlocks = sanitizedHtml.match(/<style[\s\S]*?>[\s\S]*?<\/style>/gi)?.join("") ?? "";
+  const styleBlocks = sanitizedHtml.match(/<style[\s\S]*?>[\s\S]*?<\/style>/gi)?.join('') ?? '';
   const bodyContent = sanitizedHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1];
 
   if (bodyContent) {
@@ -201,21 +199,21 @@ const normalizePreviewHtml = (value: string) => {
   }
 
   return sanitizedHtml
-    .replace(/<!DOCTYPE[^>]*>/gi, "")
-    .replace(/<\/?(html|head|body|meta|title)[^>]*>/gi, "")
+    .replace(/<!DOCTYPE[^>]*>/gi, '')
+    .replace(/<\/?(html|head|body|meta|title)[^>]*>/gi, '')
     .trim();
 };
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const renderHighlightedText = (text: string, keyword: string) => {
-  const plainText = stripHtml(String(text ?? ""));
+  const plainText = stripHtml(String(text ?? ''));
   const normalizedKeyword = keyword.trim();
   if (!normalizedKeyword) {
     return plainText;
   }
 
-  const matcher = new RegExp(`(${escapeRegExp(normalizedKeyword)})`, "gi");
+  const matcher = new RegExp(`(${escapeRegExp(normalizedKeyword)})`, 'gi');
   const parts = plainText.split(matcher);
 
   return parts.map((part, index) =>
@@ -223,9 +221,9 @@ const renderHighlightedText = (text: string, keyword: string) => {
       <mark
         key={`${part}-${index}`}
         style={{
-          background: "linear-gradient(180deg, #fff1b8 0%, #ffe58f 100%)",
-          color: "#7c2d12",
-          padding: "0 2px",
+          background: 'linear-gradient(180deg, #fff1b8 0%, #ffe58f 100%)',
+          color: '#7c2d12',
+          padding: '0 2px',
           borderRadius: 4,
         }}
       >
@@ -238,49 +236,52 @@ const renderHighlightedText = (text: string, keyword: string) => {
 };
 
 const mapEntityType = (value: any): EntityType => {
-  const text = String(value ?? "").toLowerCase();
-  if (text.includes("person") || text.includes("人物") || text.includes("人名")) {
-    return "person";
+  const text = String(value ?? '').toLowerCase();
+  if (text.includes('person') || text.includes('人物') || text.includes('人名')) {
+    return 'person';
   }
   if (
-    text.includes("organization") ||
-    text.includes("company") ||
-    text.includes("组织") ||
-    text.includes("公司")
+    text.includes('organization') ||
+    text.includes('company') ||
+    text.includes('组织') ||
+    text.includes('公司')
   ) {
-    return "organization";
+    return 'organization';
   }
-  if (text.includes("time") || text.includes("date") || text.includes("时间")) {
-    return "time";
+  if (text.includes('time') || text.includes('date') || text.includes('时间')) {
+    return 'time';
   }
-  if (text.includes("product") || text.includes("产品")) {
-    return "product";
+  if (text.includes('product') || text.includes('产品')) {
+    return 'product';
   }
-  if (text.includes("project") || text.includes("项目")) {
-    return "project";
+  if (text.includes('project') || text.includes('项目')) {
+    return 'project';
   }
-  return "term";
+  return 'term';
 };
 
-const mapIntelligentStatus = (value: any): DocumentParseDetail["status"] => {
+const mapIntelligentStatus = (value: any): DocumentParseDetail['status'] => {
   switch (Number(value)) {
     case 2:
-      return "completed";
+      return 'completed';
     case 1:
-      return "running";
+      return 'running';
     case 3:
-      return "failed";
+      return 'failed';
     default:
-      return "pending";
+      return 'pending';
   }
 };
 
 const formatKnowledgeBase = (detail: any, fallback: string) => {
   const names = toTextList(
-    detail?.knowledgeBaseNames ?? detail?.knowledgeBaseName ?? detail?.kbName ?? detail?.knowledgeName,
+    detail?.knowledgeBaseNames ??
+      detail?.knowledgeBaseName ??
+      detail?.kbName ??
+      detail?.knowledgeName,
   );
   if (names.length > 0) {
-    return names.join("、");
+    return names.join('、');
   }
   if (Array.isArray(detail?.knowledgeBaseId) && detail.knowledgeBaseId.length > 0) {
     return `已关联 ${detail.knowledgeBaseId.length} 个知识库`;
@@ -295,7 +296,7 @@ const hasProcessedValue = (value: any) => {
   if (Array.isArray(value)) {
     return true;
   }
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return true;
   }
   return true;
@@ -303,11 +304,11 @@ const hasProcessedValue = (value: any) => {
 
 const buildParseSteps = (detail: any): ParseStep[] => {
   const baseSteps = [
-    { name: "文件上传", status: "completed" as const },
-    { name: "文本提取", status: "completed" as const },
-    { name: "关键词提取", status: "pending" as const },
-    { name: "标签提取", status: "pending" as const },
-    { name: "实体抽取", status: "pending" as const },
+    { name: '文件上传', status: 'completed' as const },
+    { name: '文本提取', status: 'completed' as const },
+    { name: '关键词提取', status: 'pending' as const },
+    { name: '标签提取', status: 'pending' as const },
+    { name: '实体抽取', status: 'pending' as const },
   ];
 
   const intelligentStatus = Number(detail?.intelligentStatus);
@@ -315,27 +316,27 @@ const buildParseSteps = (detail: any): ParseStep[] => {
   if (intelligentStatus === 0) {
     return baseSteps.map((step, index) => ({
       ...step,
-      status: index < 2 ? "completed" : "pending",
+      status: index < 2 ? 'completed' : 'pending',
       completed: index < 2,
-      duration: "--",
+      duration: '--',
     }));
   }
 
   if (intelligentStatus === 2) {
     return baseSteps.map((step) => ({
       ...step,
-      status: "completed",
+      status: 'completed',
       completed: true,
-      duration: "--",
+      duration: '--',
     }));
   }
 
   if (intelligentStatus === 3) {
     return baseSteps.map((step, index) => ({
       ...step,
-      status: index < 2 ? "completed" : "failed",
+      status: index < 2 ? 'completed' : 'failed',
       completed: index < 2,
-      duration: "--",
+      duration: '--',
     }));
   }
 
@@ -344,18 +345,31 @@ const buildParseSteps = (detail: any): ParseStep[] => {
   const entityDone = hasProcessedValue(detail?.entities);
 
   return [
-    { name: "文件上传", status: "completed", completed: true, duration: "--" },
-    { name: "文本提取", status: "completed", completed: true, duration: "--" },
-    { name: "关键词提取", status: keywordDone ? "completed" : "pending", completed: keywordDone, duration: "--" },
-    { name: "标签提取", status: tagDone ? "completed" : "pending", completed: tagDone, duration: "--" },
-    { name: "实体抽取", status: entityDone ? "completed" : "pending", completed: entityDone, duration: "--" },
+    { name: '文件上传', status: 'completed', completed: true, duration: '--' },
+    { name: '文本提取', status: 'completed', completed: true, duration: '--' },
+    {
+      name: '关键词提取',
+      status: keywordDone ? 'completed' : 'pending',
+      completed: keywordDone,
+      duration: '--',
+    },
+    {
+      name: '标签提取',
+      status: tagDone ? 'completed' : 'pending',
+      completed: tagDone,
+      duration: '--',
+    },
+    {
+      name: '实体抽取',
+      status: entityDone ? 'completed' : 'pending',
+      completed: entityDone,
+      duration: '--',
+    },
   ];
 };
 
-const normalizeEntities = (
-  detail: any,
-): DocumentParseDetail["entities"] => {
-  const initial: DocumentParseDetail["entities"] = {
+const normalizeEntities = (detail: any): DocumentParseDetail['entities'] => {
+  const initial: DocumentParseDetail['entities'] = {
     person: [],
     organization: [],
     time: [],
@@ -381,9 +395,9 @@ const normalizeEntities = (
       const type = mapEntityType(item?.type ?? item?.entityType ?? item?.category);
       const names = Array.isArray(item?.entityName)
         ? item.entityName
-        : [item?.name ?? item?.entityName ?? item?.value ?? ""];
+        : [item?.name ?? item?.entityName ?? item?.value ?? ''];
       names
-        .map((name: any) => String(name ?? "").trim())
+        .map((name: any) => String(name ?? '').trim())
         .filter(Boolean)
         .forEach((name: string, nameIndex: number) => {
           initial[type].push({
@@ -393,15 +407,19 @@ const normalizeEntities = (
           });
         });
     });
-  } else if (typeof entitySource === "object") {
+  } else if (typeof entitySource === 'object') {
     Object.entries(entitySource).forEach(([rawType, rawEntities]) => {
       const type = mapEntityType(rawType);
       ensureArray<any>(rawEntities).forEach((item: any, index: number) => {
         const names = Array.isArray(item?.entityName)
           ? item.entityName
-          : [typeof item === "string" ? item : item?.name ?? item?.entityName ?? item?.value ?? ""];
+          : [
+              typeof item === 'string'
+                ? item
+                : (item?.name ?? item?.entityName ?? item?.value ?? ''),
+            ];
         names
-          .map((name: any) => String(name ?? "").trim())
+          .map((name: any) => String(name ?? '').trim())
           .filter(Boolean)
           .forEach((name: string, nameIndex: number) => {
             initial[type].push({
@@ -450,14 +468,16 @@ const normalizeGraph = (detail: any, fallback: KnowledgeGraphData) => {
 const extractResultData = <T,>(response: any): T =>
   (response?.data?.data ?? response?.data ?? response ?? {}) as T;
 
-const buildEntityGraphData = (graphData: DocumentKnowledgeGraphResult | null | undefined): EntityGraphData => {
+const buildEntityGraphData = (
+  graphData: DocumentKnowledgeGraphResult | null | undefined,
+): EntityGraphData => {
   const rawNodes = Array.isArray(graphData?.nodes) ? graphData?.nodes : [];
   const rawLinks = Array.isArray(graphData?.links) ? graphData?.links : [];
   const degreeMap = new Map<string, number>();
 
   rawLinks.forEach((link) => {
-    const sourceId = String(link?.sourceId ?? "");
-    const targetId = String(link?.targetId ?? "");
+    const sourceId = String(link?.sourceId ?? '');
+    const targetId = String(link?.targetId ?? '');
     if (sourceId) {
       degreeMap.set(sourceId, (degreeMap.get(sourceId) || 0) + 1);
     }
@@ -469,35 +489,35 @@ const buildEntityGraphData = (graphData: DocumentKnowledgeGraphResult | null | u
   const centerNodeId =
     rawNodes
       .map((node) => ({
-        id: String(node?.id ?? ""),
-        degree: degreeMap.get(String(node?.id ?? "")) || 0,
+        id: String(node?.id ?? ''),
+        degree: degreeMap.get(String(node?.id ?? '')) || 0,
       }))
       .sort((left, right) => right.degree - left.degree)[0]?.id ||
-    String(rawNodes[0]?.id ?? "center");
+    String(rawNodes[0]?.id ?? 'center');
 
   return {
     centerId: centerNodeId,
     nodes: rawNodes
       .map((node) => {
-        const nodeId = String(node?.id ?? "");
-        const nodeName = String(node?.name ?? "").trim();
+        const nodeId = String(node?.id ?? '');
+        const nodeName = String(node?.name ?? '').trim();
         if (!nodeId || !nodeName) {
           return null;
         }
         return {
           id: nodeId,
           name: nodeName,
-          type: nodeId === centerNodeId ? ("center" as const) : ("entity" as const),
+          type: nodeId === centerNodeId ? ('center' as const) : ('entity' as const),
           desc: node?.description,
           depth: nodeId === centerNodeId ? 0 : 1,
         };
       })
-      .filter(Boolean) as EntityGraphData["nodes"],
+      .filter(Boolean) as EntityGraphData['nodes'],
     links: rawLinks
       .map((link) => {
-        const source = String(link?.sourceId ?? "");
-        const target = String(link?.targetId ?? "");
-        const relation = String(link?.relation ?? "").trim();
+        const source = String(link?.sourceId ?? '');
+        const target = String(link?.targetId ?? '');
+        const relation = String(link?.relation ?? '').trim();
         if (!source || !target || !relation) {
           return null;
         }
@@ -507,7 +527,7 @@ const buildEntityGraphData = (graphData: DocumentKnowledgeGraphResult | null | u
           relation,
         };
       })
-      .filter(Boolean) as EntityGraphData["links"],
+      .filter(Boolean) as EntityGraphData['links'],
   };
 };
 
@@ -536,7 +556,7 @@ const buildDocumentDetail = (
       detail?.title ??
       baseDocument.title,
     type: String(sourceType ?? detail?.fileType ?? detail?.type ?? baseDocument.type).toUpperCase(),
-    size: normalizedSize !== "-" ? normalizedSize : baseDocument.size,
+    size: normalizedSize !== '-' ? normalizedSize : baseDocument.size,
     uploader:
       detail?.creatorName ??
       detail?.creator ??
@@ -565,7 +585,7 @@ export default function DataDetailPage() {
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphData, setGraphData] = useState<DocumentKnowledgeGraphResult | null>(null);
-  const [previewKeyword, setPreviewKeyword] = useState(searchParams.get("keyword") || "");
+  const [previewKeyword, setPreviewKeyword] = useState(searchParams.get('keyword') || '');
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [detailData, setDetailData] = useState<any>(null);
   const [previewPageNo, setPreviewPageNo] = useState(1);
@@ -573,16 +593,18 @@ export default function DataDetailPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewInitialized, setPreviewInitialized] = useState(false);
   const [previewReachedEnd, setPreviewReachedEnd] = useState(false);
-  const [previewChunks, setPreviewChunks] = useState<Array<{ seq: string; value: string; hit?: boolean }>>([]);
+  const [previewChunks, setPreviewChunks] = useState<
+    Array<{ seq: string; value: string; hit?: boolean }>
+  >([]);
   const previewLoadingRef = useRef(false);
   const previewScrollLockRef = useRef(false);
 
-  const baseDocument = getDocumentParseDetail(params.id || "");
-  const sourceTitle = searchParams.get("title");
-  const sourceType = searchParams.get("type");
-  const fromEntity = searchParams.get("fromEntity");
-  const sourceEsId = searchParams.get("esId");
-  const sourceKeyword = searchParams.get("keyword");
+  const baseDocument = getDocumentParseDetail(params.id || '');
+  const sourceTitle = searchParams.get('title');
+  const sourceType = searchParams.get('type');
+  const fromEntity = searchParams.get('fromEntity');
+  const sourceEsId = searchParams.get('esId');
+  const sourceKeyword = searchParams.get('keyword');
 
   useEffect(() => {
     let active = true;
@@ -591,8 +613,8 @@ export default function DataDetailPage() {
       try {
         const response = await viewDocument({
           id: params.id || 0,
-          esId: sourceEsId || "",
-          keyword: sourceKeyword || "",
+          esId: sourceEsId || '',
+          keyword: sourceKeyword || '',
         });
 
         if (!active) {
@@ -603,7 +625,7 @@ export default function DataDetailPage() {
       } catch (error) {
         console.error(error);
         if (active) {
-          message.error("获取文档详情失败");
+          message.error('获取文档详情失败');
         }
       }
     };
@@ -661,7 +683,7 @@ export default function DataDetailPage() {
                 item?.content ??
                 item?.text ??
                 item?.html ??
-                "",
+                '',
             ),
           }))
           .filter((item) => item.value);
@@ -720,10 +742,10 @@ export default function DataDetailPage() {
 
   const detailSummary = useMemo(
     () => ({
-      source: detailData?.channelName || "-",
-      catalog: detailData?.catalogName || "-",
-      directory: detailData?.directoryName || "-",
-      knowledgeBase: document.knowledgeBase || "-",
+      source: detailData?.channelName || '-',
+      catalog: detailData?.catalogName || '-',
+      directory: detailData?.directoryName || '-',
+      knowledgeBase: document.knowledgeBase || '-',
       createdAt: formatDateTime(detailData?.createTime ?? detailData?.fileCreateTime),
       updatedAt: formatDateTime(detailData?.updateTime),
       relationCount: Number(detailData?.relationCount ?? 0),
@@ -734,8 +756,12 @@ export default function DataDetailPage() {
 
   const currentStatus = statusConfig[document.status];
   const entityCount = Object.values(document.entities).flat().length;
-  const completedStepCount = document.parseSteps.filter((step) => step.status === "completed").length;
-  const parseProgress = Math.round((completedStepCount / Math.max(document.parseSteps.length, 1)) * 100);
+  const completedStepCount = document.parseSteps.filter(
+    (step) => step.status === 'completed',
+  ).length;
+  const parseProgress = Math.round(
+    (completedStepCount / Math.max(document.parseSteps.length, 1)) * 100,
+  );
   const entityEntries = useMemo(
     () => Object.entries(document.entities).filter(([, entities]) => entities.length > 0),
     [document.entities],
@@ -745,8 +771,9 @@ export default function DataDetailPage() {
     () =>
       (previewChunks.length > 0
         ? previewChunks
-        : [{ seq: "empty", value: "暂无正文内容", hit: false }]).map((item) => ({
-        type: "paragraph",
+        : [{ seq: 'empty', value: '暂无正文内容', hit: false }]
+      ).map((item) => ({
+        type: 'paragraph',
         value: item.value,
         seq: item.seq,
         hit: item.hit,
@@ -768,7 +795,8 @@ export default function DataDetailPage() {
     return previewBlocks.filter((block) => stripHtml(block.value).toLowerCase().includes(keyword));
   }, [previewBlocks, previewChunks.length, previewKeyword]);
 
-  const previewHasMore = !previewReachedEnd && previewTotal > 0 && previewChunks.length < previewTotal;
+  const previewHasMore =
+    !previewReachedEnd && previewTotal > 0 && previewChunks.length < previewTotal;
 
   const handlePreviewScroll = (event: React.UIEvent<HTMLDivElement>) => {
     const target = event.currentTarget;
@@ -784,11 +812,14 @@ export default function DataDetailPage() {
     }
   };
 
-  const entityGraphData = useMemo<EntityGraphData>(() => buildEntityGraphData(graphData), [graphData]);
+  const entityGraphData = useMemo<EntityGraphData>(
+    () => buildEntityGraphData(graphData),
+    [graphData],
+  );
 
   const handleOpenDocumentGraph = async () => {
     if (!params.id && !document.id) {
-      message.warning("未获取到文档ID");
+      message.warning('未获取到文档ID');
       return;
     }
 
@@ -800,7 +831,7 @@ export default function DataDetailPage() {
     } catch (error) {
       console.error(error);
       setGraphData({ nodes: [], links: [] });
-      message.error("获取文档知识图谱失败");
+      message.error('获取文档知识图谱失败');
     } finally {
       setGraphLoading(false);
     }
@@ -817,85 +848,135 @@ export default function DataDetailPage() {
 
   return (
     <>
-      <div style={{ minHeight: "100%", background: "#f5f7fb", paddingBottom: 12 }}>
-        <div style={{ marginBottom: 10, color: "#8a94a6", fontSize: 13 }}>
+      <div style={{ minHeight: '100%', background: '#f5f7fb', paddingBottom: 12 }}>
+        <div
+          style={{
+            marginBottom: 6,
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '6px 10px',
+            fontSize: 13,
+          }}
+        >
           <Breadcrumb
+            separator={<span style={{ color: '#c0cad8' }}>/</span>}
             items={[
-              { title: "首页" },
-              { title: "知识库" },
-              { title: <span style={{ color: "#1f2937", fontWeight: 600 }}>文件解析详情</span> },
+              { title: '首页' },
+              { title: '知识库' },
+              { title: <span style={{ color: '#1f2937', fontWeight: 600 }}>文件解析详情</span> },
             ]}
           />
         </div>
 
         <div
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 14,
-            marginBottom: 12,
-            flexWrap: "wrap",
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 16,
+            marginBottom: 16,
+            flexWrap: 'wrap',
+            padding: 16,
+            borderRadius: 18,
+            background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
+            border: '1px solid #e6edf7',
+            boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
           }}
         >
-          <div style={{ display: "flex", gap: 12, minWidth: 0, flex: 1 }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 14,
+              minWidth: 0,
+              flex: '1 1 620px',
+              alignItems: 'flex-start',
+            }}
+          >
             <Button
               icon={<ArrowLeftOutlined />}
               onClick={() => history.go(-1)}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                borderColor: "#dbe3ef",
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                borderColor: '#dbe3ef',
+                color: '#475569',
+                background: '#fff',
+                boxShadow: '0 4px 14px rgba(148, 163, 184, 0.12)',
                 flexShrink: 0,
               }}
             />
             <div style={{ minWidth: 0, flex: 1 }}>
-              <Space align="center" size={10} wrap>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#1f2a44", wordBreak: "break-word" }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    lineHeight: 1.35,
+                    color: '#0f172a',
+                    letterSpacing: '-0.01em',
+                    wordBreak: 'break-word',
+                    flex: '1 1 360px',
+                  }}
+                >
                   {renderHighlightedText(document.title, previewKeyword)}
                 </div>
                 <span
                   style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    color: "#16a34a",
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    color: '#15803d',
                     fontSize: 13,
-                    fontWeight: 600,
+                    fontWeight: 700,
+                    padding: '8px 12px',
+                    borderRadius: 999,
+                    background: '#ecfdf5',
+                    border: '1px solid #bbf7d0',
+                    flexShrink: 0,
                   }}
                 >
                   <span
                     style={{
                       width: 8,
                       height: 8,
-                      borderRadius: "50%",
-                      background: "#22c55e",
+                      borderRadius: '50%',
+                      background: '#22c55e',
+                      boxShadow: '0 0 0 4px rgba(34, 197, 94, 0.12)',
                     }}
                   />
                   {currentStatus.text}
                 </span>
-              </Space>
+              </div>
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 16,
-                  flexWrap: "wrap",
-                  marginTop: 8,
-                  color: "#64748b",
-                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                  marginTop: 14,
                 }}
               >
-                <InlineMeta icon={<FilePdfOutlined style={{ color: "#ef4444" }} />} text={`${document.type} 文件`} />
+                <InlineMeta icon={<FileOutlined />} text={`${document.type} 文件`} />
                 <InlineMeta icon={<AppstoreOutlined />} text={document.size} />
-                <InlineMeta icon={<ClockCircleOutlined />} text={`上传时间：${document.uploadedAt}`} />
+                <InlineMeta
+                  icon={<ClockCircleOutlined />}
+                  text={`上传时间：${document.uploadedAt}`}
+                />
                 <InlineMeta icon={<UserOutlined />} text={`上传人：${document.uploader}`} />
                 <InlineMeta icon={<TagOutlined />} text={`来源：${detailSummary.source}`} />
               </div>
               {fromEntity && (
-                <div style={{ marginTop: 8, color: "#94a3b8", fontSize: 12 }}>
-                  {fromEntity ? `来源实体：${fromEntity}` : ""}
+                <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>
+                  {fromEntity ? `来源实体：${fromEntity}` : ''}
                 </div>
               )}
             </div>
@@ -913,10 +994,10 @@ export default function DataDetailPage() {
               icon={<SaveOutlined />}
               style={{
                 ...actionButtonStyle,
-                color: "#fff",
-                borderColor: "#2563eb",
-                background: "#2563eb",
-                boxShadow: "0 10px 18px rgba(37, 99, 235, 0.16)",
+                color: '#fff',
+                borderColor: '#2563eb',
+                background: '#2563eb',
+                boxShadow: '0 10px 18px rgba(37, 99, 235, 0.16)',
               }}
             >
               保存到知识库
@@ -925,18 +1006,18 @@ export default function DataDetailPage() {
         </div>
 
         <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 12 }}>
-          <Col xs={24} xl={10} style={{ display: "flex" }}>
+          <Col xs={24} xl={10} style={{ display: 'flex' }}>
             <Card
               bordered={false}
               title="解析进度"
-              style={{ ...surfaceCardStyle, width: "100%", height: "100%" }}
-              styles={{ header: { minHeight: 44, padding: "0 14px" }, body: { padding: 12 } }}
+              style={{ ...surfaceCardStyle, width: '100%', height: '100%' }}
+              styles={{ header: { minHeight: 44, padding: '0 14px' }, body: { padding: 12 } }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ color: "#334155", fontWeight: 600 }}>整体进度</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ color: '#334155', fontWeight: 600 }}>整体进度</span>
                 <span
                   style={{
-                    color: document.status === "failed" ? "#ef4444" : "#16a34a",
+                    color: document.status === 'failed' ? '#ef4444' : '#16a34a',
                     fontWeight: 700,
                   }}
                 >
@@ -946,17 +1027,17 @@ export default function DataDetailPage() {
               <Progress
                 percent={parseProgress}
                 showInfo={false}
-                strokeColor={document.status === "failed" ? "#ef4444" : "#16a34a"}
-                trailColor={document.status === "failed" ? "#fee2e2" : "#ebf7ef"}
+                strokeColor={document.status === 'failed' ? '#ef4444' : '#16a34a'}
+                trailColor={document.status === 'failed' ? '#fee2e2' : '#ebf7ef'}
               />
               <div
                 style={{
-                  display: "flex",
-                  alignItems: "center",
+                  display: 'flex',
+                  alignItems: 'center',
                   gap: 10,
                   marginTop: 10,
-                  overflowX: "auto",
-                  flexWrap: "nowrap",
+                  overflowX: 'auto',
+                  flexWrap: 'nowrap',
                   paddingBottom: 2,
                 }}
               >
@@ -964,42 +1045,42 @@ export default function DataDetailPage() {
                   <div
                     key={step.name}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
+                      display: 'flex',
+                      alignItems: 'center',
                       gap: 8,
-                      padding: "6px 10px",
+                      padding: '6px 10px',
                       borderRadius: 999,
                       background:
-                        step.status === "completed"
-                          ? "#f0fdf4"
-                          : step.status === "failed"
-                            ? "#fff1f2"
-                            : "#f8fafc",
+                        step.status === 'completed'
+                          ? '#f0fdf4'
+                          : step.status === 'failed'
+                            ? '#fff1f2'
+                            : '#f8fafc',
                       border: `1px solid ${
-                        step.status === "completed"
-                          ? "#bbf7d0"
-                          : step.status === "failed"
-                            ? "#fecdd3"
-                            : "#e2e8f0"
+                        step.status === 'completed'
+                          ? '#bbf7d0'
+                          : step.status === 'failed'
+                            ? '#fecdd3'
+                            : '#e2e8f0'
                       }`,
-                      whiteSpace: "nowrap",
+                      whiteSpace: 'nowrap',
                       flexShrink: 0,
                     }}
                   >
                     <CheckCircleFilled
                       style={{
                         color:
-                          step.status === "completed"
-                            ? "#22c55e"
-                            : step.status === "failed"
-                              ? "#ef4444"
-                              : "#cbd5e1",
+                          step.status === 'completed'
+                            ? '#22c55e'
+                            : step.status === 'failed'
+                              ? '#ef4444'
+                              : '#cbd5e1',
                         fontSize: 13,
                       }}
                     />
                     <span
                       style={{
-                        color: step.status === "failed" ? "#b91c1c" : "#64748b",
+                        color: step.status === 'failed' ? '#b91c1c' : '#64748b',
                         fontSize: 12,
                       }}
                     >
@@ -1011,32 +1092,60 @@ export default function DataDetailPage() {
             </Card>
           </Col>
 
-          <Col xs={24} xl={14} style={{ display: "flex" }}>
+          <Col xs={24} xl={14} style={{ display: 'flex' }}>
             <Card
               bordered={false}
               title="文档统计"
-              style={{ ...surfaceCardStyle, width: "100%", height: "100%" }}
-              styles={{ header: { minHeight: 44, padding: "0 14px" }, body: { padding: 14, height: "100%" } }}
+              style={{ ...surfaceCardStyle, width: '100%', height: '100%' }}
+              styles={{
+                header: { minHeight: 44, padding: '0 14px' },
+                body: { padding: 14, height: '100%' },
+              }}
             >
               <div
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                   gap: 10,
                 }}
               >
-                <StatPanel icon={<KeyOutlined />} color="#ef4444" label="关键词" value={document.keywords.length} />
-                <StatPanel icon={<ClusterOutlined />} color="#0891b2" label="实体数量" value={entityCount} />
-                <StatPanel icon={<TagOutlined />} color="#0ea5e9" label="标签数量" value={document.tags.length} />
-                <StatPanel icon={<SearchOutlined />} color="#6366f1" label="查看次数" value={detailSummary.viewCount} />
-                <StatPanel icon={<AppstoreOutlined />} color="#0f766e" label="关系数量" value={detailSummary.relationCount} />
+                <StatPanel
+                  icon={<KeyOutlined />}
+                  color="#ef4444"
+                  label="关键词"
+                  value={document.keywords.length}
+                />
+                <StatPanel
+                  icon={<ClusterOutlined />}
+                  color="#0891b2"
+                  label="实体数量"
+                  value={entityCount}
+                />
+                <StatPanel
+                  icon={<TagOutlined />}
+                  color="#0ea5e9"
+                  label="标签数量"
+                  value={document.tags.length}
+                />
+                <StatPanel
+                  icon={<SearchOutlined />}
+                  color="#6366f1"
+                  label="查看次数"
+                  value={detailSummary.viewCount}
+                />
+                <StatPanel
+                  icon={<AppstoreOutlined />}
+                  color="#0f766e"
+                  label="关系数量"
+                  value={detailSummary.relationCount}
+                />
               </div>
             </Card>
           </Col>
         </Row>
 
         <Row gutter={[12, 12]} align="stretch">
-          <Col xs={24} xl={16} style={{ display: "flex" }}>
+          <Col xs={24} xl={16} style={{ display: 'flex' }}>
             <Card
               bordered={false}
               title="内容预览"
@@ -1049,29 +1158,47 @@ export default function DataDetailPage() {
                     value={previewKeyword}
                     onChange={(event) => setPreviewKeyword(event.target.value)}
                     placeholder="搜索内容"
-                    prefix={<SearchOutlined style={{ color: "#94a3b8" }} />}
+                    prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
                     style={{ width: 220 }}
                   />
                 </Space>
               }
-              style={{ ...surfaceCardStyle, width: "100%", height: PREVIEW_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
+              style={{
+                ...surfaceCardStyle,
+                width: '100%',
+                height: PREVIEW_CARD_HEIGHT,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
               styles={{ body: { padding: 14, flex: 1, minHeight: 0 } }}
             >
               <div
                 onScroll={handlePreviewScroll}
                 style={{
-                  border: "1px solid #dfe7f2",
+                  border: '1px solid #dfe7f2',
                   borderRadius: 12,
-                  background: "#fbfcff",
-                  padding: "16px 20px",
-                  height: "100%",
-                  overflowY: "auto",
+                  background: '#fbfcff',
+                  padding: '16px 20px',
+                  height: '100%',
+                  overflowY: 'auto',
                 }}
               >
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#1f2a44", marginBottom: 12 }}>
-                  {renderHighlightedText(document.title.replace(/\.(pdf|docx|txt)$/i, ""), previewKeyword)}
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#1f2a44', marginBottom: 12 }}>
+                  {renderHighlightedText(
+                    document.title.replace(/\.(pdf|docx|txt)$/i, ''),
+                    previewKeyword,
+                  )}
                 </div>
-                <div style={{ display: "grid", gap: 4, color: "#64748b", marginBottom: 18, fontSize: 13 }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gap: 4,
+                    color: '#64748b',
+                    marginBottom: 18,
+                    fontSize: 13,
+                  }}
+                >
                   <div>来源：{detailSummary.source}</div>
                   <div>更新时间：{detailSummary.updatedAt}</div>
                   <div>上传人：{document.uploader}</div>
@@ -1132,7 +1259,12 @@ export default function DataDetailPage() {
                 {filteredPreviewBlocks.length > 0 ? (
                   <>
                     {filteredPreviewBlocks.map((block, index) => (
-                      <div key={`${block.seq}-${index}`} style={{ marginBottom: index === filteredPreviewBlocks.length - 1 ? 0 : 18 }}>
+                      <div
+                        key={`${block.seq}-${index}`}
+                        style={{
+                          marginBottom: index === filteredPreviewBlocks.length - 1 ? 0 : 18,
+                        }}
+                      >
                         {block.hit && (
                           <div style={{ marginBottom: 8 }}>
                             <Tag color="processing" style={{ margin: 0 }}>
@@ -1145,55 +1277,65 @@ export default function DataDetailPage() {
                         </PreviewBlock>
                       </div>
                     ))}
-                    <div style={{ display: "grid", gap: 8, marginTop: 20, paddingBottom: 4 }}>
+                    <div style={{ display: 'grid', gap: 8, marginTop: 20, paddingBottom: 4 }}>
                       {previewLoading && (
-                        <div style={{ textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                        <div style={{ textAlign: 'center', color: '#64748b', fontSize: 13 }}>
                           正在加载更多内容...
                         </div>
                       )}
                       {!previewHasMore && previewInitialized && previewChunks.length > 0 && (
-                        <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
                           已加载全部内容
                         </div>
                       )}
                       {!previewLoading && previewHasMore && (
-                        <div style={{ textAlign: "center", color: "#94a3b8", fontSize: 12 }}>
+                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
                           下滑继续加载更多内容
                         </div>
                       )}
                     </div>
                   </>
+                ) : !previewLoading && previewInitialized ? (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="未找到匹配内容"
+                    style={{ marginTop: 48 }}
+                  />
                 ) : (
-                  !previewLoading && previewInitialized ? (
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="未找到匹配内容" style={{ marginTop: 48 }} />
-                  ) : (
-                    <div style={{ textAlign: "center", color: "#64748b", paddingTop: 48 }}>内容加载中...</div>
-                  )
+                  <div style={{ textAlign: 'center', color: '#64748b', paddingTop: 48 }}>
+                    内容加载中...
+                  </div>
                 )}
               </div>
             </Card>
           </Col>
 
-          <Col xs={24} xl={8} style={{ display: "flex" }}>
-            <div style={{ display: "grid", gap: 12, width: "100%" }}>
+          <Col xs={24} xl={8} style={{ display: 'flex' }}>
+            <div style={{ display: 'grid', gap: 12, width: '100%' }}>
               <Card
                 bordered={false}
                 title="元数据信息"
-                style={{ ...surfaceCardStyle, height: META_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
-                styles={{ body: { padding: 14, flex: 1, overflowY: "auto", minHeight: 0 } }}
+                style={{
+                  ...surfaceCardStyle,
+                  height: META_CARD_HEIGHT,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+                styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
               >
                 <InfoList
                   items={[
-                    ["文档标题", document.title.replace(/\.(pdf|docx|txt)$/i, "")],
-                    ["来源", detailSummary.source],
-                    ["上传人", document.uploader],
-                    ["创建时间", detailSummary.createdAt],
-                    ["更新时间", detailSummary.updatedAt],
-                    ["文件格式", document.type],
-                    ["文件大小", document.size],
-                    ["知识库", detailSummary.knowledgeBase],
-                    ["编目", detailSummary.catalog],
-                    ["目录", detailSummary.directory],
+                    ['文档标题', document.title.replace(/\.(pdf|docx|txt)$/i, '')],
+                    ['来源', detailSummary.source],
+                    ['上传人', document.uploader],
+                    ['创建时间', detailSummary.createdAt],
+                    ['更新时间', detailSummary.updatedAt],
+                    ['文件格式', document.type],
+                    ['文件大小', document.size],
+                    ['知识库', detailSummary.knowledgeBase],
+                    ['编目', detailSummary.catalog],
+                    ['目录', detailSummary.directory],
                   ]}
                 />
               </Card>
@@ -1201,14 +1343,23 @@ export default function DataDetailPage() {
               <Card
                 bordered={false}
                 title="提取关键词"
-                extra={<span style={{ color: "#94a3b8" }}>共 {document.keywords.length} 个</span>}
-                style={{ ...surfaceCardStyle, height: KEYWORD_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
-                styles={{ body: { padding: 14, flex: 1, overflowY: "auto", minHeight: 0 } }}
+                extra={<span style={{ color: '#94a3b8' }}>共 {document.keywords.length} 个</span>}
+                style={{
+                  ...surfaceCardStyle,
+                  height: KEYWORD_CARD_HEIGHT,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+                styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
               >
                 {document.keywords.length > 0 ? (
                   <Space wrap size={[8, 10]}>
                     {document.keywords.map((item, index) => (
-                      <ColorTag key={item} palette={keywordPalettes[index % keywordPalettes.length]}>
+                      <ColorTag
+                        key={item}
+                        palette={keywordPalettes[index % keywordPalettes.length]}
+                      >
                         {item}
                       </ColorTag>
                     ))}
@@ -1223,8 +1374,8 @@ export default function DataDetailPage() {
                 title="实体抽取"
                 extra={
                   <Space size={8}>
-                    <span style={{ color: "#94a3b8" }}>共 {entityCount} 个</span>
-                    <Tooltip title={entityCount > 0 ? "查看本文档知识图谱" : "暂无实体可查看"}>
+                    <span style={{ color: '#94a3b8' }}>共 {entityCount} 个</span>
+                    <Tooltip title={entityCount > 0 ? '查看本文档知识图谱' : '暂无实体可查看'}>
                       <Button
                         type="text"
                         shape="circle"
@@ -1235,11 +1386,17 @@ export default function DataDetailPage() {
                     </Tooltip>
                   </Space>
                 }
-                style={{ ...surfaceCardStyle, height: ENTITY_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
-                styles={{ body: { padding: 14, flex: 1, overflowY: "auto", minHeight: 0 } }}
+                style={{
+                  ...surfaceCardStyle,
+                  height: ENTITY_CARD_HEIGHT,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+                styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
               >
                 {entityEntries.length > 0 ? (
-                  <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: 'grid', gap: 12 }}>
                     {entityEntries.map(([type, entities], index) => {
                       const meta = entityTypeMeta[type as keyof typeof entityTypeMeta];
                       return (
@@ -1247,16 +1404,17 @@ export default function DataDetailPage() {
                           key={type}
                           style={{
                             paddingBottom: 12,
-                            borderBottom: index === entityEntries.length - 1 ? "none" : "1px dashed #edf2f7",
+                            borderBottom:
+                              index === entityEntries.length - 1 ? 'none' : '1px dashed #edf2f7',
                           }}
                         >
                           <div
                             style={{
-                              display: "flex",
-                              alignItems: "center",
+                              display: 'flex',
+                              alignItems: 'center',
                               gap: 8,
                               marginBottom: 8,
-                              color: "#334155",
+                              color: '#334155',
                               fontWeight: 600,
                             }}
                           >
@@ -1264,18 +1422,22 @@ export default function DataDetailPage() {
                               style={{
                                 width: 8,
                                 height: 8,
-                                borderRadius: "50%",
+                                borderRadius: '50%',
                                 background: meta.color,
                                 flexShrink: 0,
                               }}
                             />
                             <span>{meta.label}</span>
                           </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                             {entities.map((entity) => (
                               <ColorTag
                                 key={entity.id}
-                                palette={{ bg: meta.bg, border: `${meta.color}22`, text: meta.color }}
+                                palette={{
+                                  bg: meta.bg,
+                                  border: `${meta.color}22`,
+                                  text: meta.color,
+                                }}
                               >
                                 {entity.name}
                               </ColorTag>
@@ -1293,9 +1455,15 @@ export default function DataDetailPage() {
               <Card
                 bordered={false}
                 title="标签分类结果"
-                extra={<span style={{ color: "#94a3b8" }}>共 {document.tags.length} 个</span>}
-                style={{ ...surfaceCardStyle, height: TAG_CARD_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}
-                styles={{ body: { padding: 14, flex: 1, overflowY: "auto", minHeight: 0 } }}
+                extra={<span style={{ color: '#94a3b8' }}>共 {document.tags.length} 个</span>}
+                style={{
+                  ...surfaceCardStyle,
+                  height: TAG_CARD_HEIGHT,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+                styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
               >
                 {document.tags.length > 0 ? (
                   <Space wrap size={[8, 10]}>
@@ -1322,12 +1490,19 @@ export default function DataDetailPage() {
           destroyOnClose
           onCancel={() => setGraphOpen(false)}
         >
-          <div style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ color: "#64748b" }}>
+          <div
+            style={{
+              marginBottom: 12,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <div style={{ color: '#64748b' }}>
               点击任意节点会跳转到“图谱检索”，并自动带入节点名称发起查询。
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, width: 250 }}>
-              <span style={{ color: "#334155", fontSize: 14 }}>节点字数</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: 250 }}>
+              <span style={{ color: '#334155', fontSize: 14 }}>节点字数</span>
               <Slider
                 style={{ flex: 1, margin: 0 }}
                 min={2}
@@ -1342,10 +1517,10 @@ export default function DataDetailPage() {
             <div
               style={{
                 height: 750,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "#f8fafc",
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f8fafc',
                 borderRadius: 16,
               }}
             >
@@ -1362,17 +1537,17 @@ export default function DataDetailPage() {
             <div
               style={{
                 height: 750,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "#f8fafc",
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#f8fafc',
                 borderRadius: 16,
               }}
             >
               <Empty description="当前文档暂无实体关系图谱" />
             </div>
           )}
-          <Divider style={{ margin: "16px 0 0" }} />
+          <Divider style={{ margin: '16px 0 0' }} />
         </Modal>
       </div>
     </>
@@ -1381,13 +1556,13 @@ export default function DataDetailPage() {
 
 const surfaceCardStyle = {
   borderRadius: 18,
-  boxShadow: "0 8px 28px rgba(15, 23, 42, 0.05)",
+  boxShadow: '0 8px 28px rgba(15, 23, 42, 0.05)',
 };
 
 const actionButtonStyle = {
   height: 34,
   borderRadius: 10,
-  borderColor: "#d9e3ef",
+  borderColor: '#d9e3ef',
   paddingInline: 12,
 };
 
@@ -1395,31 +1570,54 @@ const toolbarIconButtonStyle = {
   width: 32,
   height: 32,
   borderRadius: 8,
-  borderColor: "#dbe3ef",
-  color: "#64748b",
+  borderColor: '#dbe3ef',
+  color: '#64748b',
 };
 
 const keywordPalettes = [
-  { bg: "#eef4ff", border: "#dbe7ff", text: "#2563eb" },
-  { bg: "#f3ecff", border: "#eadcff", text: "#7c3aed" },
-  { bg: "#ecfdf5", border: "#d1fae5", text: "#059669" },
-  { bg: "#fff7ed", border: "#fed7aa", text: "#ea580c" },
-  { bg: "#fff1f2", border: "#fecdd3", text: "#ef4444" },
-  { bg: "#f8fafc", border: "#e2e8f0", text: "#475569" },
+  { bg: '#eef4ff', border: '#dbe7ff', text: '#2563eb' },
+  { bg: '#f3ecff', border: '#eadcff', text: '#7c3aed' },
+  { bg: '#ecfdf5', border: '#d1fae5', text: '#059669' },
+  { bg: '#fff7ed', border: '#fed7aa', text: '#ea580c' },
+  { bg: '#fff1f2', border: '#fecdd3', text: '#ef4444' },
+  { bg: '#f8fafc', border: '#e2e8f0', text: '#475569' },
 ];
 
 const tagPalettes = [
-  { bg: "#eef4ff", border: "#dbe7ff", text: "#2563eb" },
-  { bg: "#f5f3ff", border: "#e9d5ff", text: "#7c3aed" },
-  { bg: "#ecfdf5", border: "#d1fae5", text: "#059669" },
-  { bg: "#fff7ed", border: "#fed7aa", text: "#ea580c" },
-  { bg: "#fff1f2", border: "#fecdd3", text: "#ef4444" },
-  { bg: "#ecfeff", border: "#bae6fd", text: "#0284c7" },
+  { bg: '#eef4ff', border: '#dbe7ff', text: '#2563eb' },
+  { bg: '#f5f3ff', border: '#e9d5ff', text: '#7c3aed' },
+  { bg: '#ecfdf5', border: '#d1fae5', text: '#059669' },
+  { bg: '#fff7ed', border: '#fed7aa', text: '#ea580c' },
+  { bg: '#fff1f2', border: '#fecdd3', text: '#ef4444' },
+  { bg: '#ecfeff', border: '#bae6fd', text: '#0284c7' },
 ];
 
-function InlineMeta({ icon, text }: { icon: ReactNode; text: string }) {
+function InlineMeta({
+  icon,
+  text,
+  tinted = false,
+}: {
+  icon: ReactNode;
+  text: string;
+  tinted?: boolean;
+}) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 7,
+        padding: tinted ? '7px 11px' : 0,
+        borderRadius: tinted ? 999 : 0,
+        background: tinted ? '#f8fafc' : 'transparent',
+        border: tinted ? '1px solid #e2e8f0' : 'none',
+        color: '#475569',
+        fontSize: 13,
+        lineHeight: 1.4,
+        whiteSpace: 'normal',
+        boxShadow: tinted ? '0 1px 2px rgba(15, 23, 42, 0.03)' : 'none',
+      }}
+    >
       {icon}
       <span>{text}</span>
     </span>
@@ -1440,37 +1638,49 @@ function StatPanel({
   return (
     <div
       style={{
-        background: "#f8fafc",
-        border: "1px solid #edf2f7",
+        background: '#f8fafc',
+        border: '1px solid #edf2f7',
         borderRadius: 12,
         padding: 10,
         minHeight: 68,
       }}
     >
-      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, color, fontWeight: 600 }}>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color, fontWeight: 600 }}>
         <span style={{ fontSize: 14 }}>{icon}</span>
         <span style={{ fontSize: 13 }}>{label}</span>
       </div>
-      <div style={{ marginTop: 10, fontSize: 20, fontWeight: 700, color: "#1f2937", lineHeight: 1.1 }}>{value}</div>
+      <div
+        style={{ marginTop: 10, fontSize: 20, fontWeight: 700, color: '#1f2937', lineHeight: 1.1 }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
 function InfoList({ items }: { items: Array<[string, string]> }) {
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: 'grid', gap: 12 }}>
       {items.map(([label, value]) => (
         <div
           key={label}
           style={{
-            display: "flex",
-            justifyContent: "space-between",
+            display: 'flex',
+            justifyContent: 'space-between',
             gap: 18,
-            alignItems: "flex-start",
+            alignItems: 'flex-start',
           }}
         >
-          <span style={{ color: "#64748b", flexShrink: 0 }}>{label}</span>
-          <span style={{ color: "#1f2937", fontWeight: 600, textAlign: "right", whiteSpace: "normal", wordBreak: "break-word" }}>
+          <span style={{ color: '#64748b', flexShrink: 0 }}>{label}</span>
+          <span
+            style={{
+              color: '#1f2937',
+              fontWeight: 600,
+              textAlign: 'right',
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+            }}
+          >
             {value}
           </span>
         </div>
@@ -1491,15 +1701,15 @@ function ColorTag({
       style={{
         margin: 0,
         borderRadius: 999,
-        padding: "4px 10px",
+        padding: '4px 10px',
         background: palette.bg,
         borderColor: palette.border,
         color: palette.text,
-        whiteSpace: "normal",
-        wordBreak: "break-all",
-        height: "auto",
-        lineHeight: "1.5",
-        display: "inline-block",
+        whiteSpace: 'normal',
+        wordBreak: 'break-all',
+        height: 'auto',
+        lineHeight: '1.5',
+        display: 'inline-block',
       }}
     >
       {children}
@@ -1516,45 +1726,43 @@ function PreviewBlock({
   children: ReactNode;
   keyword?: string;
 }) {
-  const isHtmlContent = typeof children === "string" && /<\/?[a-z][\s\S]*>/i.test(children);
+  const isHtmlContent = typeof children === 'string' && /<\/?[a-z][\s\S]*>/i.test(children);
   const htmlChildren =
-    typeof children === "string" && isHtmlContent ? normalizePreviewHtml(children) : "";
+    typeof children === 'string' && isHtmlContent ? normalizePreviewHtml(children) : '';
   const resolvedChildren =
-    typeof children === "string"
-      ? isHtmlContent
-        ? (
-          <div
-            className="document-preview-html"
-            dangerouslySetInnerHTML={{ __html: htmlChildren }}
-          />
-        )
-        : renderHighlightedText(children, keyword || "")
-      : children;
+    typeof children === 'string' ? (
+      isHtmlContent ? (
+        <div className="document-preview-html" dangerouslySetInnerHTML={{ __html: htmlChildren }} />
+      ) : (
+        renderHighlightedText(children, keyword || '')
+      )
+    ) : (
+      children
+    );
 
-  if (type === "heading") {
+  if (type === 'heading') {
     return (
-      <h3 style={{ margin: "20px 0 12px", fontSize: 18, color: "#1f2937", fontWeight: 700 }}>
+      <h3 style={{ margin: '20px 0 12px', fontSize: 18, color: '#1f2937', fontWeight: 700 }}>
         {resolvedChildren}
       </h3>
     );
   }
 
-  if (type === "meta") {
-    return <div style={{ color: "#64748b", marginBottom: 4, fontSize: 13 }}>{resolvedChildren}</div>;
+  if (type === 'meta') {
+    return (
+      <div style={{ color: '#64748b', marginBottom: 4, fontSize: 13 }}>{resolvedChildren}</div>
+    );
   }
 
-  if (type === "bullet") {
+  if (type === 'bullet') {
     return (
-      <div style={{ color: "#334155", lineHeight: 1.9, marginBottom: 8 }}>
-        - {resolvedChildren}
-      </div>
+      <div style={{ color: '#334155', lineHeight: 1.9, marginBottom: 8 }}>- {resolvedChildren}</div>
     );
   }
 
   return (
-    <div style={{ color: "#334155", lineHeight: 1.9, margin: 0, fontSize: 15 }}>
+    <div style={{ color: '#334155', lineHeight: 1.9, margin: 0, fontSize: 15 }}>
       {resolvedChildren}
     </div>
   );
 }
-
