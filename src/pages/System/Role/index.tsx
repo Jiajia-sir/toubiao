@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useIntl, FormattedMessage, useAccess, history } from '@umijs/max';
+import React, { useEffect, useRef, useState } from 'react';
+import { useAccess, useIntl, FormattedMessage } from '@umijs/max';
 import { DataNode } from 'antd/es/tree';
-import { Button, message, Modal, Dropdown, FormInstance, Space, Switch } from 'antd';
+import { Button, FormInstance, message, Modal, Switch, Tag } from 'antd';
 import {
   ActionType,
   FooterToolbar,
@@ -9,34 +9,27 @@ import {
   ProColumns,
   ProTable,
 } from '@ant-design/pro-components';
+import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  ExclamationCircleOutlined,
-  DownOutlined,
-} from '@ant-design/icons';
-import {
-  getRoleList,
-  removeRole,
   addRole,
-  updateRole,
-  exportRole,
-  changeRoleStatus,
-  updateRoleDataScope,
-  getDeptTreeSelect,
-  getRole,
   assignRoleMenu,
+  changeRoleStatus,
+  exportRole,
+  getRole,
+  getRoleList,
+  getRoleMenuList,
+  removeRole,
+  updateRole,
 } from '@/services/system/role';
-import UpdateForm from './edit';
 import { getDictValueEnum } from '@/services/system/dict';
-import { formatTreeData } from '@/utils/tree';
 import { getMenuTree } from '@/services/system/menu';
-import DataScopeForm from './components/DataScope';
+import { formatTreeData } from '@/utils/tree';
+import UpdateForm from './edit';
 
 const { confirm } = Modal;
 
 const isSuccessCode = (code?: number) => code === 0 || code === 200 || typeof code === 'undefined';
+const isBuiltinRole = (record?: Partial<API.System.Role>) => `${record?.type ?? ''}` === '1';
 
 const formatDateTime = (value?: string | number | Date) => {
   if (value === null || typeof value === 'undefined' || value === '') {
@@ -52,74 +45,64 @@ const formatDateTime = (value?: string | number | Date) => {
   )}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
-/**
- * 添加节点
- *
- * @param fields
- */
 const handleAdd = async (fields: API.System.Role) => {
-  const hide = message.loading('正在添加');
+  const hide = message.loading('正在新增');
   try {
     const resp = await addRole({ ...fields });
     const roleId = resp?.data;
-    if (resp.code === 200 && roleId && Array.isArray((fields as any).menuIds)) {
+    if (isSuccessCode(resp.code) && roleId && Array.isArray((fields as any).menuIds)) {
       await assignRoleMenu({ roleId, menuIds: (fields as any).menuIds });
     }
     hide();
-    if (resp.code === 200) {
-      message.success('添加成功');
+    if (isSuccessCode(resp.code)) {
+      message.success('新增成功');
     } else {
-      message.error(resp.msg);
+      message.error(resp.msg || '新增失败');
     }
     return true;
   } catch (error) {
     hide();
-    message.error('添加失败请重试！');
+    message.error('新增失败，请重试');
     return false;
   }
 };
 
-/**
- * 更新节点
- *
- * @param fields
- */
 const handleUpdate = async (fields: API.System.Role) => {
   const hide = message.loading('正在更新');
   try {
     const resp = await updateRole(fields);
-    if (resp.code === 200 && fields.roleId && Array.isArray((fields as any).menuIds)) {
+    if (isSuccessCode(resp.code) && fields.roleId && Array.isArray((fields as any).menuIds)) {
       await assignRoleMenu({ roleId: fields.roleId, menuIds: (fields as any).menuIds });
     }
     hide();
-    if (resp.code === 200) {
+    if (isSuccessCode(resp.code)) {
       message.success('更新成功');
     } else {
-      message.error(resp.msg);
+      message.error(resp.msg || '更新失败');
     }
     return true;
   } catch (error) {
     hide();
-    message.error('配置失败请重试！');
+    message.error('更新失败，请重试');
     return false;
   }
 };
 
-/**
- * 删除节点
- *
- * @param selectedRows
- */
 const handleRemove = async (selectedRows: API.System.Role[]) => {
+  const builtinRows = selectedRows.filter((row) => isBuiltinRole(row));
+  if (builtinRows.length > 0) {
+    message.warning('内置角色不能删除');
+    return false;
+  }
+
   const hide = message.loading('正在删除');
-  if (!selectedRows) return true;
   try {
     const resp = await removeRole(selectedRows.map((row) => row.roleId).join(','));
     hide();
-    if (resp.code === 200) {
-      message.success('删除成功，即将刷新');
+    if (isSuccessCode(resp.code)) {
+      message.success('删除成功');
     } else {
-      message.error(resp.msg);
+      message.error(resp.msg || '删除失败');
     }
     return true;
   } catch (error) {
@@ -130,16 +113,19 @@ const handleRemove = async (selectedRows: API.System.Role[]) => {
 };
 
 const handleRemoveOne = async (selectedRow: API.System.Role) => {
+  if (isBuiltinRole(selectedRow)) {
+    message.warning('内置角色不能删除');
+    return false;
+  }
+
   const hide = message.loading('正在删除');
-  if (!selectedRow) return true;
   try {
-    const params = [selectedRow.roleId];
-    const resp = await removeRole(params.join(','));
+    const resp = await removeRole(`${selectedRow.roleId}`);
     hide();
-    if (resp.code === 200) {
-      message.success('删除成功，即将刷新');
+    if (isSuccessCode(resp.code)) {
+      message.success('删除成功');
     } else {
-      message.error(resp.msg);
+      message.error(resp.msg || '删除失败');
     }
     return true;
   } catch (error) {
@@ -149,11 +135,6 @@ const handleRemoveOne = async (selectedRow: API.System.Role) => {
   }
 };
 
-/**
- * 导出数据
- *
- *
- */
 const handleExport = async () => {
   const hide = message.loading('正在导出');
   try {
@@ -171,21 +152,16 @@ const handleExport = async () => {
 const RoleTableList: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
   const formTableRef = useRef<FormInstance>();
-
-  const [modalVisible, setModalVisible] = useState<boolean>(false);
-  const [dataScopeModalOpen, setDataScopeModalOpen] = useState<boolean>(false);
-
   const actionRef = useRef<ActionType>();
+
+  const [modalVisible, setModalVisible] = useState(false);
   const [currentRow, setCurrentRow] = useState<API.System.Role>();
   const [selectedRows, setSelectedRows] = useState<API.System.Role[]>([]);
-
   const [menuTree, setMenuTree] = useState<DataNode[]>();
   const [menuIds, setMenuIds] = useState<string[]>([]);
   const [statusOptions, setStatusOptions] = useState<any>([]);
 
   const access = useAccess();
-
-  /** 国际化配置 */
   const intl = useIntl();
 
   useEffect(() => {
@@ -201,22 +177,29 @@ const RoleTableList: React.FC = () => {
   }, []);
 
   const showChangeStatusConfirm = (record: API.System.Role) => {
-    let text = record.status === '1' ? '启用' : '停用';
-    const newStatus = `${record.status}` === '0' ? '1' : '0';
+    if (isBuiltinRole(record)) {
+      message.warning('内置角色不能修改状态');
+      return;
+    }
+
+    const isEnabled = `${record.status}` === '0';
+    const actionText = isEnabled ? '停用' : '启用';
+    const newStatus = isEnabled ? '1' : '0';
+
     confirm({
-      title: `确认要${text}${record.roleName}角色吗？`,
+      title: `确认要${actionText}${record.roleName}角色吗？`,
       onOk() {
         changeRoleStatus(record.roleId, newStatus).then((resp) => {
           if (isSuccessCode(resp.code)) {
             messageApi.open({
               type: 'success',
-              content: '更新成功！',
+              content: '状态更新成功',
             });
             actionRef.current?.reload();
           } else {
             messageApi.open({
               type: 'error',
-              content: '更新失败！',
+              content: resp.msg || '状态更新失败',
             });
           }
         });
@@ -224,11 +207,36 @@ const RoleTableList: React.FC = () => {
     });
   };
 
-  const columns: ProColumns<API.System.Role>[] = [
+  const openEditModal = (record: API.System.Role) => {
+    if (isBuiltinRole(record)) {
+      message.warning('内置角色不能修改');
+      return;
+    }
+
+    Promise.all([getMenuTree(), getRole(record.roleId), getRoleMenuList(record.roleId)]).then(
+      ([menuResp, roleResp, roleMenuResp]) => {
+        if (
+          isSuccessCode(menuResp.code) &&
+          isSuccessCode(roleResp.code) &&
+          isSuccessCode(roleMenuResp.code)
+        ) {
+          setMenuTree(formatTreeData(menuResp.data || []));
+          setMenuIds(((roleMenuResp.data || []) as number[]).map((item: number) => `${item}`));
+          setModalVisible(true);
+          setCurrentRow(roleResp.data || record);
+        } else {
+          message.warning(menuResp.msg || roleResp.msg || roleMenuResp.msg || '加载失败');
+        }
+      },
+    );
+  };
+
+  const baseColumns: ProColumns<API.System.Role>[] = [
     {
       title: <FormattedMessage id="system.role.role_id" defaultMessage="角色编号" />,
       dataIndex: 'roleId',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.role.role_name" defaultMessage="角色名称" />,
@@ -236,7 +244,7 @@ const RoleTableList: React.FC = () => {
       valueType: 'text',
     },
     {
-      title: <FormattedMessage id="system.role.role_key" defaultMessage="角色权限字符串" />,
+      title: <FormattedMessage id="system.role.role_key" defaultMessage="权限字符" />,
       dataIndex: 'roleKey',
       valueType: 'text',
       hideInSearch: true,
@@ -248,69 +256,53 @@ const RoleTableList: React.FC = () => {
       hideInSearch: true,
     },
     {
+      title: '角色类型',
+      dataIndex: 'type',
+      valueType: 'select',
+      hideInSearch: true,
+      valueEnum: {
+        1: { text: '内置角色' },
+        2: { text: '自定义角色' },
+      },
+      render: (_, record) =>
+        isBuiltinRole(record) ? <Tag color="gold">内置角色</Tag> : <Tag color="blue">自定义角色</Tag>,
+    },
+    {
       title: <FormattedMessage id="system.role.status" defaultMessage="角色状态" />,
       dataIndex: 'status',
       valueType: 'select',
       valueEnum: statusOptions,
-      render: (_, record) => {
-        return (
-          <Switch
-            checked={`${record.status}` === '0'}
-            checkedChildren="正常"
-            unCheckedChildren="停用"
-            defaultChecked
-            onClick={() => showChangeStatusConfirm(record)}
-          />
-        );
-      },
+      render: (_, record) => (
+        <Switch
+          checked={`${record.status}` === '0'}
+          checkedChildren="启用"
+          unCheckedChildren="停用"
+          disabled={isBuiltinRole(record)}
+          onClick={() => showChangeStatusConfirm(record)}
+        />
+      ),
     },
     {
       title: <FormattedMessage id="system.role.create_time" defaultMessage="创建时间" />,
       dataIndex: 'createTime',
-      valueType: 'dateRange',
-      render: (_, record) => {
-        return <span>{formatDateTime(record.createTime)}</span>;
-      },
-      search: {
-        transform: (value) => {
-          return {
-            'params[beginTime]':
-              value?.[0] && typeof value[0]?.startOf === 'function'
-                ? value[0].startOf('day').format('YYYY-MM-DD HH:mm:ss')
-                : value?.[0],
-            'params[endTime]':
-              value?.[1] && typeof value[1]?.endOf === 'function'
-                ? value[1].endOf('day').format('YYYY-MM-DD HH:mm:ss')
-                : value?.[1],
-          };
-        },
-      },
+      valueType: 'text',
+      hideInSearch: true,
+      render: (_, record) => <span>{formatDateTime(record.createTime)}</span>,
     },
     {
       title: <FormattedMessage id="pages.searchTable.titleOption" defaultMessage="操作" />,
       dataIndex: 'option',
-      width: '220px',
+      width: '160px',
       valueType: 'option',
       render: (_, record) => [
         <Button
           type="link"
           size="small"
           key="edit"
-          icon=<EditOutlined />
+          icon={<EditOutlined />}
           hidden={!access.hasPerms('system:role:edit')}
-          onClick={() => {
-            Promise.all([getMenuTree(), getRole(record.roleId)]).then(([menuResp, roleResp]) => {
-              if (isSuccessCode(menuResp.code) && isSuccessCode(roleResp.code)) {
-                const treeData = formatTreeData(menuResp.data || []);
-                setMenuTree(treeData);
-                setMenuIds((roleResp.menuIds || []).map((item: number) => `${item}`));
-                setModalVisible(true);
-                setCurrentRow(roleResp.data || record);
-              } else {
-                message.warning(menuResp.msg || roleResp.msg);
-              }
-            });
-          }}
+          disabled={isBuiltinRole(record)}
+          onClick={() => openEditModal(record)}
         >
           编辑
         </Button>,
@@ -319,8 +311,9 @@ const RoleTableList: React.FC = () => {
           size="small"
           danger
           key="batchRemove"
-          icon=<DeleteOutlined />
+          icon={<DeleteOutlined />}
           hidden={!access.hasPerms('system:role:remove')}
+          disabled={isBuiltinRole(record)}
           onClick={async () => {
             Modal.confirm({
               title: '删除',
@@ -330,9 +323,7 @@ const RoleTableList: React.FC = () => {
               onOk: async () => {
                 const success = await handleRemoveOne(record);
                 if (success) {
-                  if (actionRef.current) {
-                    actionRef.current.reload();
-                  }
+                  actionRef.current?.reload();
                 }
               },
             });
@@ -340,51 +331,46 @@ const RoleTableList: React.FC = () => {
         >
           删除
         </Button>,
-        <Dropdown
-          key="more"
-          menu={{
-            items: [
-              {
-                label: '数据权限',
-                key: 'datascope',
-                disabled: !access.hasPerms('system:role:edit'),
-              },
-              {
-                label: '分配用户',
-                key: 'authUser',
-                disabled: !access.hasPerms('system:role:edit'),
-              },
-            ],
-            onClick: ({ key }: any) => {
-              if (key === 'datascope') {
-                getRole(record.roleId).then((resp) => {
-                  if (isSuccessCode(resp.code)) {
-                    setCurrentRow(resp.data);
-                    setMenuIds((resp.deptIds || []).map((item: number) => `${item}`));
-                    setDataScopeModalOpen(true);
-                  }
-                });
-                getDeptTreeSelect(record.roleId).then((resp) => {
-                  if (isSuccessCode(resp.code)) {
-                    setMenuTree(formatTreeData(resp.data || []));
-                  }
-                });
-              } else if (key === 'authUser') {
-                history.push(`/system/role-auth/user/${record.roleId}`);
-              }
-            },
-          }}
-        >
-          <a onClick={(e) => e.preventDefault()}>
-            <Space>
-              <DownOutlined />
-              更多
-            </Space>
-          </a>
-        </Dropdown>,
       ],
     },
   ];
+
+  const searchColumns: ProColumns<API.System.Role>[] = [
+    {
+      title: '创建时间',
+      dataIndex: 'createTime',
+      valueType: 'dateTimeRange',
+      hideInTable: true,
+      fieldProps: {
+        showTime: true,
+        format: 'YYYY-MM-DD HH:mm:ss',
+      },
+      search: {
+        transform: (value: any) => {
+          if (!Array.isArray(value) || value.length !== 2) {
+            return {};
+          }
+          return {
+            createTime: value.map((item: any, index: number) => {
+              if (typeof item?.format === 'function') {
+                return item.format(index === 0 ? 'YYYY-MM-DD 00:00:00' : 'YYYY-MM-DD 23:59:59');
+              }
+              const date = new Date(item);
+              if (!Number.isNaN(date.getTime())) {
+                const year = date.getFullYear();
+                const month = `${date.getMonth() + 1}`.padStart(2, '0');
+                const day = `${date.getDate()}`.padStart(2, '0');
+                return `${year}-${month}-${day} ${index === 0 ? '00:00:00' : '23:59:59'}`;
+              }
+              return item;
+            }),
+          };
+        },
+      },
+    },
+  ];
+
+  const columns: ProColumns<API.System.Role>[] = [...baseColumns, ...searchColumns];
 
   return (
     <PageContainer>
@@ -410,13 +396,12 @@ const RoleTableList: React.FC = () => {
               onClick={async () => {
                 getMenuTree().then((res: any) => {
                   if (isSuccessCode(res.code)) {
-                    const treeData = formatTreeData(res.data);
-                    setMenuTree(treeData);
+                    setMenuTree(formatTreeData(res.data));
                     setMenuIds([]);
                     setModalVisible(true);
                     setCurrentRow(undefined);
                   } else {
-                    message.warning(res.msg);
+                    message.warning(res.msg || '加载菜单失败');
                   }
                 });
               }}
@@ -430,7 +415,7 @@ const RoleTableList: React.FC = () => {
               hidden={selectedRows?.length === 0 || !access.hasPerms('system:role:remove')}
               onClick={async () => {
                 Modal.confirm({
-                  title: '是否确认删除所选数据项?',
+                  title: '是否确认删除所选数据项？',
                   icon: <ExclamationCircleOutlined />,
                   content: '请谨慎操作',
                   async onOk() {
@@ -440,7 +425,6 @@ const RoleTableList: React.FC = () => {
                       actionRef.current?.reloadAndRest?.();
                     }
                   },
-                  onCancel() {},
                 });
               }}
             >
@@ -460,19 +444,16 @@ const RoleTableList: React.FC = () => {
             </Button>,
           ]}
           request={(params) =>
-            getRoleList({ ...params } as API.System.RoleListParams).then((res) => {
-              const result = {
-                data: res.rows,
-                total: res.total,
-                success: true,
-              };
-              return result;
-            })
+            getRoleList({ ...params } as API.System.RoleListParams).then((res) => ({
+              data: res.rows,
+              total: res.total,
+              success: true,
+            }))
           }
           columns={columns}
           rowSelection={{
-            onChange: (_, selectedRows) => {
-              setSelectedRows(selectedRows);
+            onChange: (_, rows) => {
+              setSelectedRows(rows);
             },
           }}
         />
@@ -522,9 +503,7 @@ const RoleTableList: React.FC = () => {
           if (success) {
             setModalVisible(false);
             setCurrentRow(undefined);
-            if (actionRef.current) {
-              actionRef.current.reload();
-            }
+            actionRef.current?.reload();
           }
         }}
         onCancel={() => {
@@ -536,26 +515,6 @@ const RoleTableList: React.FC = () => {
         menuTree={menuTree || []}
         menuCheckedKeys={menuIds || []}
         statusOptions={statusOptions}
-      />
-      <DataScopeForm
-        onSubmit={async (values: any) => {
-          const success = await updateRoleDataScope(values);
-          if (success) {
-            setDataScopeModalOpen(false);
-            setSelectedRows([]);
-            setCurrentRow(undefined);
-            message.success('配置成功。');
-          }
-        }}
-        onCancel={() => {
-          setDataScopeModalOpen(false);
-          setSelectedRows([]);
-          setCurrentRow(undefined);
-        }}
-        open={dataScopeModalOpen}
-        values={currentRow || {}}
-        deptTree={menuTree || []}
-        deptCheckedKeys={menuIds || []}
       />
       <style>{`
         .ant-pro-page-container .ant-pro-page-container-warp-page-header {

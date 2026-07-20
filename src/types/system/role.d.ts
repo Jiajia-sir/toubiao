@@ -71,8 +71,7 @@ declare namespace API.System {
   export interface RoleMenuResult { 
     code: number;
     msg: string;
-    checkedKeys: number[];
-    menus: Array<RoleMenuNode>;
+    data: number[];
   }
 
 }

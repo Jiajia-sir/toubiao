@@ -3,6 +3,25 @@ import { request } from '@umijs/max';
 import { downLoadXlsx } from '@/utils/downloadfile';
 import { API_PREFIX } from '@/constants';
 
+function buildRoleListQuery(params?: Record<string, any>) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === null || typeof value === 'undefined' || value === '') {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== null && typeof item !== 'undefined' && item !== '') {
+          searchParams.append(key, String(item));
+        }
+      });
+      return;
+    }
+    searchParams.append(key, String(value));
+  });
+  return searchParams.toString();
+}
+
 function normalizeRole(item: Record<string, any>): API.System.Role {
   return {
     ...item,
@@ -54,8 +73,19 @@ function transformRoleListParams(params?: API.System.RoleListParams) {
     normalizedParams.endTime = normalizedParams['params[endTime]'];
   }
 
+  if (
+    (typeof normalizedParams.beginTime !== 'undefined' || typeof normalizedParams.endTime !== 'undefined') &&
+    typeof normalizedParams.createTime === 'undefined'
+  ) {
+    normalizedParams.createTime = [normalizedParams.beginTime, normalizedParams.endTime].filter(
+      (item) => item !== null && typeof item !== 'undefined' && item !== '',
+    );
+  }
+
   delete normalizedParams['params[beginTime]'];
   delete normalizedParams['params[endTime]'];
+  delete normalizedParams.beginTime;
+  delete normalizedParams.endTime;
 
   return {
     ...normalizedParams,
@@ -80,7 +110,8 @@ export async function getRoleList(params?: API.System.RoleListParams) {
   const res = await request<API.System.RolePageResult>(`${API_PREFIX}/system/role/page`, {
     method: 'GET',
     headers: { 'Content-Type': ContentType.FORM_URLENCODED },
-    params: transformRoleListParams(params)
+    params: transformRoleListParams(params),
+    paramsSerializer: (value) => buildRoleListQuery(value as Record<string, any>),
   });
   const rows = Array.isArray(res?.data?.list)
     ? res.data.list.map((item) => normalizeRole(item as Record<string, any>))

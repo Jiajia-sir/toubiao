@@ -28,6 +28,7 @@ const RoleForm: React.FC<RoleFormProps> = (props) => {
   const { menuTree, menuCheckedKeys } = props;
   const [menuIds, setMenuIds] = useState<string[]>([]);
   const { statusOptions } = props;
+  const isBuiltinRole = `${props.values.type ?? ''}` === '1';
 
   useEffect(() => {
     setMenuIds(menuCheckedKeys);
@@ -40,7 +41,7 @@ const RoleForm: React.FC<RoleFormProps> = (props) => {
       dataScope: props.values.dataScope,
       menuCheckStrictly: props.values.menuCheckStrictly,
       deptCheckStrictly: props.values.deptCheckStrictly,
-      status: typeof props.values.status === 'undefined' ? '0' : props.values.status,
+      status: typeof props.values.status === 'undefined' ? '0' : `${props.values.status}`,
       delFlag: props.values.delFlag,
       createBy: props.values.createBy,
       createTime: props.values.createTime,
@@ -156,7 +157,8 @@ const RoleForm: React.FC<RoleFormProps> = (props) => {
             },
           ]}
           fieldProps = {{
-            defaultValue: "0"
+            defaultValue: "0",
+            disabled: isBuiltinRole,
           }}
         />
         <ProForm.Item
