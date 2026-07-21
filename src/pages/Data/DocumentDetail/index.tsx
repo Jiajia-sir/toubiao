@@ -189,6 +189,37 @@ const sanitizePreviewHtml = (value: string) =>
     .replace(/\son\w+=(["']).*?\1/gi, '')
     .replace(/javascript:/gi, '');
 
+const sanitizeEntityHtml = (value: string) => {
+  const sanitized = sanitizePreviewHtml(String(value ?? ''));
+  const normalized = sanitized
+    .replace(/<span\b([^>]*)>/gi, (_match, attrs: string) => {
+      const styleMatch = attrs.match(/\bstyle\s*=\s*(["'])(.*?)\1/i);
+      const styleText = styleMatch?.[2] ?? '';
+      const colorMatch = styleText.match(
+        /(?:^|;)\s*color\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-zA-Z]+)\s*(?=;|$)/i,
+      );
+      if (!colorMatch) {
+        return '<span>';
+      }
+      return `<span style="color:${colorMatch[1]}">`;
+    })
+    .replace(/<\/span>/gi, '</span>')
+    .replace(/<(?!\/?span\b)[^>]+>/gi, '');
+
+  return normalized.trim();
+};
+
+const renderEntityText = (value: string) => {
+  const normalized = sanitizeEntityHtml(value);
+  if (!normalized) {
+    return '';
+  }
+  if (!/<span\b/i.test(normalized)) {
+    return stripHtml(normalized);
+  }
+  return <span dangerouslySetInnerHTML={{ __html: normalized }} />;
+};
+
 const normalizePreviewHtml = (value: string) => {
   const sanitizedHtml = sanitizePreviewHtml(value);
   const styleBlocks = sanitizedHtml.match(/<style[\s\S]*?>[\s\S]*?<\/style>/gi)?.join('') ?? '';
@@ -1439,7 +1470,7 @@ export default function DataDetailPage() {
                                   text: meta.color,
                                 }}
                               >
-                                {entity.name}
+                                {renderEntityText(entity.name)}
                               </ColorTag>
                             ))}
                           </div>

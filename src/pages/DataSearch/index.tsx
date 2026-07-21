@@ -581,6 +581,25 @@ export default function DataSearchPage() {
     fetchDocuments(1, pageSize);
   };
 
+  const handleOpenDocumentDetail = (result: SearchResult) => {
+    const detailQuery = new URLSearchParams();
+    if (result.esId) {
+      detailQuery.set("esId", result.esId);
+    }
+    if (searchText.trim()) {
+      detailQuery.set("keyword", searchText.trim());
+    }
+    if (result.name) {
+      detailQuery.set("title", result.name);
+    }
+    if (result.type) {
+      detailQuery.set("type", result.type);
+    }
+    history.push(
+      `/data/document/${result.id}${detailQuery.toString() ? `?${detailQuery.toString()}` : ""}`,
+    );
+  };
+
   const handleResetFilters = () => {
     setDocumentTypes([]);
     setKnowledgeBaseFilter([]);
@@ -1378,7 +1397,10 @@ export default function DataSearchPage() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                          <a style={{ fontSize: 16, fontWeight: 600, color: "#262626" }}>
+                          <a
+                            onClick={() => handleOpenDocumentDetail(result)}
+                            style={{ fontSize: 16, fontWeight: 600, color: "#262626", cursor: "pointer" }}
+                          >
                             <HighlightHtml html={result.name} />
                           </a>
                           <Tag color={result.knowledgeBase === "未入知识库" ? "default" : "green"}>
@@ -1408,24 +1430,7 @@ export default function DataSearchPage() {
                           type="link"
                           size="small"
                           icon={<EyeOutlined />}
-                          onClick={() => {
-                            const detailQuery = new URLSearchParams();
-                            if (result.esId) {
-                              detailQuery.set("esId", result.esId);
-                            }
-                            if (searchText.trim()) {
-                              detailQuery.set("keyword", searchText.trim());
-                            }
-                            if (result.name) {
-                              detailQuery.set("title", result.name);
-                            }
-                            if (result.type) {
-                              detailQuery.set("type", result.type);
-                            }
-                            history.push(
-                              `/data/document/${result.id}${detailQuery.toString() ? `?${detailQuery.toString()}` : ""}`,
-                            );
-                          }}
+                          onClick={() => handleOpenDocumentDetail(result)}
                         >
                           详情
                         </Button>
