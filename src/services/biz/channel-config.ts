@@ -25,6 +25,25 @@ export interface ChannelConfigPageResult {
   total: number;
 }
 
+function buildChannelConfigPageQuery(params?: Record<string, any>) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === null || typeof value === 'undefined' || value === '') {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== null && typeof item !== 'undefined' && item !== '') {
+          searchParams.append(key, String(item));
+        }
+      });
+      return;
+    }
+    searchParams.append(key, String(value));
+  });
+  return searchParams.toString();
+}
+
 export async function addChannelConfig(data: ChannelConfigParams) {
   return request(`${API_PREFIX}/biz/channel-config/create`, {
     method: 'POST',
@@ -50,5 +69,6 @@ export async function getChannelConfigPage(params: ChannelConfigPageParams) {
   return request(`${API_PREFIX}/biz/channel-config/page`, {
     method: 'GET',
     params,
+    paramsSerializer: (value) => buildChannelConfigPageQuery(value as Record<string, any>),
   });
 }
