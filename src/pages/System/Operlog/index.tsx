@@ -164,7 +164,6 @@ const OperlogTableList: React.FC = () => {
             <Button
               type="primary"
               key="export"
-              hidden={!access.hasPerms('monitor:operlog:export')}
               onClick={async () => {
                 const params = formTableRef.current?.getFieldsValue?.();
                 await handleExport(params as API.Monitor.OperlogListParams);

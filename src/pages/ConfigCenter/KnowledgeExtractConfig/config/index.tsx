@@ -3,7 +3,11 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { history, useSearchParams } from '@umijs/max';
-import { createKnowledgeExtractConfig, getKnowledgeExtractConfigDetail, updateKnowledgeExtractConfig } from '@/services/biz/knowledge-extract-config';
+import {
+  createKnowledgeExtractConfig,
+  getKnowledgeExtractConfigDetail,
+  updateKnowledgeExtractConfig,
+} from '@/services/biz/knowledge-extract-config';
 import { getTagList, type TagItem } from '@/services/biz/tag';
 import {
   getEntityTypeAttributeList,
@@ -81,7 +85,6 @@ const defaultTagOptions = [
 ];
 
 const defaultModelOptions: ModelOption[] = [];
-
 
 const modelPrecisionOptions = [
   { label: '精确抽取', value: '精确抽取' },
@@ -198,8 +201,8 @@ export default function KnowledgeExtractConfigPage() {
     categoryLimit: 10,
     temperature: 0.1,
     topP: 0.3,
-    presencePenalty: 0.4,
-    frequencyPenalty: 0.7,
+    presencePenalty: 0.0,
+    frequencyPenalty: 0.0,
     maxTokens: 512,
   });
   const [testText, setTestText] = useState('');
@@ -231,17 +234,20 @@ export default function KnowledgeExtractConfigPage() {
     const extractSchema = detail?.extractSchema || {};
     const fineAttributeIdsByType =
       extractSchema?.fineAttributeIdsByType || snapshot?.fineAttributeIdsByType || {};
-    const normalizedFineAttributeIdsByType = Object.keys(fineAttributeIdsByType).reduce<Record<string, string[]>>(
-      (acc, key) => {
-        acc[String(key)] = (fineAttributeIdsByType[key] || []).map(String);
-        return acc;
-      },
-      {},
-    );
+    const normalizedFineAttributeIdsByType = Object.keys(fineAttributeIdsByType).reduce<
+      Record<string, string[]>
+    >((acc, key) => {
+      acc[String(key)] = (fineAttributeIdsByType[key] || []).map(String);
+      return acc;
+    }, {});
     Object.keys(normalizedFineAttributeIdsByType).forEach((key) => {
       void loadAttributeOptions(String(key));
     });
-    const coarseEntityTypeIds = (extractSchema?.coarseEntityTypeIds || snapshot?.coarseEntityTypeIds || []).map(String);
+    const coarseEntityTypeIds = (
+      extractSchema?.coarseEntityTypeIds ||
+      snapshot?.coarseEntityTypeIds ||
+      []
+    ).map(String);
     setConfig((prev) => ({
       ...prev,
       id: detail?.id ? String(detail.id) : prev.id,
@@ -253,24 +259,39 @@ export default function KnowledgeExtractConfigPage() {
       tags: (detail?.tags || snapshot?.tags || []).map(String),
       blockSize: Number(detail?.blockSize ?? snapshot?.blockSize ?? prev.blockSize),
       splitMode: (detail?.splitMode || snapshot?.splitMode || prev.splitMode) as '字数' | '段落',
-      granularity: (detail?.granularity || snapshot?.granularity || prev.granularity) as '粗颗粒度' | '细颗粒度',
+      granularity: (detail?.granularity || snapshot?.granularity || prev.granularity) as
+        '粗颗粒度' | '细颗粒度',
       model: detail?.modelName || snapshot?.modelName || prev.model,
-      modelId: detail?.modelId ? Number(detail.modelId) : snapshot?.modelId ? Number(snapshot.modelId) : prev.modelId,
+      modelId: detail?.modelId
+        ? Number(detail.modelId)
+        : snapshot?.modelId
+          ? Number(snapshot.modelId)
+          : prev.modelId,
       categories: snapshot?.categories || prev.categories,
       coarseEntityTypeIds,
       fineAttributeIdsByType: normalizedFineAttributeIdsByType,
-      categoryLimit: Number(extractSchema?.categoryLimit ?? snapshot?.categoryLimit ?? prev.categoryLimit),
+      categoryLimit: Number(
+        extractSchema?.categoryLimit ?? snapshot?.categoryLimit ?? prev.categoryLimit,
+      ),
       temperature: Number(detail?.temperature ?? snapshot?.temperature ?? prev.temperature),
       topP: Number(detail?.topP ?? snapshot?.topP ?? prev.topP),
-      presencePenalty: Number(detail?.presencePenalty ?? snapshot?.presencePenalty ?? prev.presencePenalty),
-      frequencyPenalty: Number(detail?.frequencyPenalty ?? snapshot?.frequencyPenalty ?? prev.frequencyPenalty),
+      presencePenalty: Number(
+        detail?.presencePenalty ?? snapshot?.presencePenalty ?? prev.presencePenalty,
+      ),
+      frequencyPenalty: Number(
+        detail?.frequencyPenalty ?? snapshot?.frequencyPenalty ?? prev.frequencyPenalty,
+      ),
       maxTokens: Number(detail?.maxTokens ?? snapshot?.maxTokens ?? prev.maxTokens),
     }));
     setModelPrecision(extractSchema?.modelPrecision || snapshot?.modelPrecision || '精确抽取');
     setTempEnabled(Boolean(detail?.temperatureEnabled ?? snapshot?.temperatureEnabled ?? true));
     setTopPEnabled(Boolean(detail?.topPEnabled ?? snapshot?.topPEnabled ?? true));
-    setPresencePenaltyEnabled(Boolean(detail?.presencePenaltyEnabled ?? snapshot?.presencePenaltyEnabled ?? true));
-    setFrequencyPenaltyEnabled(Boolean(detail?.frequencyPenaltyEnabled ?? snapshot?.frequencyPenaltyEnabled ?? false));
+    setPresencePenaltyEnabled(
+      Boolean(detail?.presencePenaltyEnabled ?? snapshot?.presencePenaltyEnabled ?? true),
+    );
+    setFrequencyPenaltyEnabled(
+      Boolean(detail?.frequencyPenaltyEnabled ?? snapshot?.frequencyPenaltyEnabled ?? false),
+    );
     setMaxTokensEnabled(Boolean(detail?.maxTokensEnabled ?? snapshot?.maxTokensEnabled ?? false));
     setGeneratedPrompt(detail?.generatedPrompt || snapshot?.generatedPrompt || '');
     const firstTypeId = Object.keys(normalizedFineAttributeIdsByType)[0];
@@ -393,7 +414,9 @@ export default function KnowledgeExtractConfigPage() {
               return exists
                 ? {
                     ...prev,
-                    model: options.find((option) => option.value === prev.modelId)?.modelName || prev.model,
+                    model:
+                      options.find((option) => option.value === prev.modelId)?.modelName ||
+                      prev.model,
                   }
                 : { ...prev, modelId: options[0].value, model: options[0].modelName };
             });
@@ -478,15 +501,10 @@ export default function KnowledgeExtractConfigPage() {
     });
   };
 
-  const updateFineAttributeSelection = (
-    entityTypeId: string,
-    values: Array<string | number>,
-  ) => {
+  const updateFineAttributeSelection = (entityTypeId: string, values: Array<string | number>) => {
     const currentIds = config.fineAttributeIdsByType[entityTypeId] || [];
     const otherCount = selectedFineAttributeCount - currentIds.length;
-    const nextIds = values
-      .map(String)
-      .slice(0, Math.max(0, config.categoryLimit - otherCount));
+    const nextIds = values.map(String).slice(0, Math.max(0, config.categoryLimit - otherCount));
     setConfig({
       ...config,
       fineAttributeIdsByType: {
@@ -672,7 +690,8 @@ export default function KnowledgeExtractConfigPage() {
     prompt += `【精度模式】${precision}\n\n`;
 
     if (granularity === '粗颗粒度') {
-      const categoryText = selectedCoarseEntityTypes.map((item) => item.name).join('、') || '未选择';
+      const categoryText =
+        selectedCoarseEntityTypes.map((item) => item.name).join('、') || '未选择';
       prompt += `【抽取类别】${categoryText}\n\n`;
     } else {
       prompt += `【抽取类别】按以下实体类型及属性抽取：\n\n`;
@@ -1035,7 +1054,8 @@ export default function KnowledgeExtractConfigPage() {
                       </Button>
                       <span style={{ color: '#666', marginLeft: 4 }}>个</span>
                       <span style={{ color: '#1677ff', fontSize: 12 }}>
-                        已选择 {selectedCoarseEntityTypes.length} / {config.categoryLimit} 个类别，还可添加{' '}
+                        已选择 {selectedCoarseEntityTypes.length} / {config.categoryLimit}{' '}
+                        个类别，还可添加{' '}
                         {Math.max(0, config.categoryLimit - selectedCoarseEntityTypes.length)} 个
                       </span>
                     </Space>
@@ -1044,7 +1064,9 @@ export default function KnowledgeExtractConfigPage() {
                   <Checkbox.Group
                     style={{ width: '100%' }}
                     value={config.coarseEntityTypeIds}
-                    onChange={(values) => updateCoarseEntityTypeIds(values as Array<string | number>)}
+                    onChange={(values) =>
+                      updateCoarseEntityTypeIds(values as Array<string | number>)
+                    }
                   >
                     <Row gutter={[8, 8]}>
                       {entityTypeOptions.map((entityType) => {
@@ -1118,7 +1140,8 @@ export default function KnowledgeExtractConfigPage() {
                       </Button>
                       <span style={{ color: '#666', marginLeft: 4 }}>个</span>
                       <span style={{ color: '#1677ff', fontSize: 12 }}>
-                        已选择 {selectedFineAttributeCount} / {config.categoryLimit} 个属性，还可添加{' '}
+                        已选择 {selectedFineAttributeCount} / {config.categoryLimit}{' '}
+                        个属性，还可添加{' '}
                         {Math.max(0, config.categoryLimit - selectedFineAttributeCount)} 个
                       </span>
                     </Space>
@@ -1145,11 +1168,15 @@ export default function KnowledgeExtractConfigPage() {
                           key: entityTypeId,
                           label: entityType.name,
                           children: isLoading ? (
-                            <div style={{ color: '#8c8c8c', textAlign: 'center', padding: '24px 0' }}>
+                            <div
+                              style={{ color: '#8c8c8c', textAlign: 'center', padding: '24px 0' }}
+                            >
                               属性加载中...
                             </div>
                           ) : attributes.length === 0 ? (
-                            <div style={{ color: '#8c8c8c', textAlign: 'center', padding: '24px 0' }}>
+                            <div
+                              style={{ color: '#8c8c8c', textAlign: 'center', padding: '24px 0' }}
+                            >
                               当前实体类型下暂无属性
                             </div>
                           ) : (
@@ -1157,7 +1184,10 @@ export default function KnowledgeExtractConfigPage() {
                               style={{ width: '100%' }}
                               value={selectedIds}
                               onChange={(values) =>
-                                updateFineAttributeSelection(entityTypeId, values as Array<string | number>)
+                                updateFineAttributeSelection(
+                                  entityTypeId,
+                                  values as Array<string | number>,
+                                )
                               }
                             >
                               <Row gutter={[8, 8]}>
@@ -1575,7 +1605,7 @@ export default function KnowledgeExtractConfigPage() {
                 <div style={{ marginBottom: 8 }}>
                   <Slider
                     min={128}
-                    max={4096}
+                    max={32768}
                     step={128}
                     value={config.maxTokens}
                     onChange={(value) => setConfig({ ...config, maxTokens: value })}
@@ -1588,12 +1618,12 @@ export default function KnowledgeExtractConfigPage() {
                   />
                 </div>
                 <div style={{ color: '#8c8c8c', fontSize: 12 }}>
-                  限制单次生成的最大token数量，较短值控制成本，较长值提供更完整内容，建议范围：256-2048
+                  限制单次生成的最大token数量，较短值控制成本，较长值提供更完整内容，建议范围：256-32768
                 </div>
                 {maxTokensEnabled && (
                   <InputNumber
                     min={128}
-                    max={4096}
+                    max={32768}
                     step={128}
                     value={config.maxTokens}
                     onChange={(value) =>
@@ -2100,16 +2130,16 @@ export default function KnowledgeExtractConfigPage() {
               </div>
 
               {!isReadOnly && (
-              <Button
-                type="primary"
-                block
-                icon={<SaveOutlined />}
-                onClick={handleSave}
-                loading={loading}
-                style={{ height: 44, fontSize: 15, fontWeight: 500 }}
-              >
-                {config.id ? '更新配置' : '保存配置'}
-              </Button>
+                <Button
+                  type="primary"
+                  block
+                  icon={<SaveOutlined />}
+                  onClick={handleSave}
+                  loading={loading}
+                  style={{ height: 44, fontSize: 15, fontWeight: 500 }}
+                >
+                  {config.id ? '更新配置' : '保存配置'}
+                </Button>
               )}
             </Space>
           </Card>
@@ -2145,15 +2175,3 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
   },
 };
-
-
-
-
-
-
-
-
-
-
-
-
