@@ -320,6 +320,38 @@ const formatKnowledgeBase = (detail: any, fallback: string) => {
   return fallback;
 };
 
+const extractKnowledgeBases = (detail: any): Array<{ id: string; name: string }> => {
+  if (Array.isArray(detail?.knowledgeBaseObj) && detail.knowledgeBaseObj.length > 0) {
+    return detail.knowledgeBaseObj
+      .map((knowledge: any) => ({
+        id: String(knowledge?.id ?? knowledge?.knowledgeBaseId ?? ''),
+        name: String(knowledge?.name ?? '').trim(),
+      }))
+      .filter((knowledge: { id: string; name: string }) => knowledge.id && knowledge.name);
+  }
+
+  const ids = Array.isArray(detail?.knowledgeBaseIds)
+    ? detail.knowledgeBaseIds
+    : Array.isArray(detail?.knowledgeBaseId)
+      ? detail.knowledgeBaseId
+      : detail?.knowledgeBaseId !== undefined && detail?.knowledgeBaseId !== null
+        ? [detail.knowledgeBaseId]
+        : [];
+  const names = toTextList(
+    detail?.knowledgeBaseNames ??
+      detail?.knowledgeBaseName ??
+      detail?.kbName ??
+      detail?.knowledgeName,
+  );
+
+  return names
+    .map((name, index) => ({
+      id: String(ids[index] ?? ''),
+      name,
+    }))
+    .filter((knowledge) => knowledge.id && knowledge.name);
+};
+
 const hasProcessedValue = (value: any) => {
   if (value === null || value === undefined) {
     return false;
@@ -775,8 +807,8 @@ export default function DataDetailPage() {
     () => ({
       source: detailData?.channelName || '-',
       catalog: detailData?.catalogName || '-',
-      directory: detailData?.directoryName || '-',
       knowledgeBase: document.knowledgeBase || '-',
+      knowledgeBases: extractKnowledgeBases(detailData),
       createdAt: formatDateTime(detailData?.createTime ?? detailData?.fileCreateTime),
       updatedAt: formatDateTime(detailData?.updateTime),
       relationCount: Number(detailData?.relationCount ?? 0),
@@ -1364,9 +1396,26 @@ export default function DataDetailPage() {
                     ['更新时间', detailSummary.updatedAt],
                     ['文件格式', document.type],
                     ['文件大小', document.size],
-                    ['知识库', detailSummary.knowledgeBase],
+                    [
+                      '知识库',
+                      detailSummary.knowledgeBases.length > 0 ? (
+                        <Space size={[6, 6]} wrap style={{ justifyContent: 'flex-end' }}>
+                          {detailSummary.knowledgeBases.map((knowledge) => (
+                            <Tag
+                              key={knowledge.id}
+                              color="green"
+                              style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                              onClick={() => history.push(`/knowledge/detail/${knowledge.id}`)}
+                            >
+                              {knowledge.name}
+                            </Tag>
+                          ))}
+                        </Space>
+                      ) : (
+                        detailSummary.knowledgeBase
+                      ),
+                    ],
                     ['编目', detailSummary.catalog],
-                    ['目录', detailSummary.directory],
                   ]}
                 />
               </Card>
@@ -1689,7 +1738,7 @@ function StatPanel({
   );
 }
 
-function InfoList({ items }: { items: Array<[string, string]> }) {
+function InfoList({ items }: { items: Array<[string, ReactNode]> }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {items.map(([label, value]) => (

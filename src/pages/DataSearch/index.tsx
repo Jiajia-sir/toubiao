@@ -71,6 +71,7 @@ type SearchResult = {
   esId: string;
   name: string;
   type: string;
+  accessMode: string;
   source: string;
   uploader: string;
   uploadTime: string;
@@ -81,6 +82,7 @@ type SearchResult = {
   entities: string[];
   tags: string[];
   knowledgeBase: string;
+  knowledgeBases: Array<{ id: string; name: string }>;
 };
 
 const DEFAULT_VISIBLE_FILTER_COUNT = 4;
@@ -238,6 +240,31 @@ const sanitizeHighlightHtml = (value: string) =>
     .replace(/\son\w+=(["']).*?\1/gi, "")
     .replace(/javascript:/gi, "");
 
+const stripEntityHtml = (value: any) =>
+  String(value ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const resolveAccessModeType = (item: any) => {
+  const rawAccessMode = String(item?.accessMode ?? item?.sourceType ?? item?.mode ?? "").trim();
+  if (rawAccessMode === "1" || rawAccessMode === "2") {
+    return rawAccessMode;
+  }
+  const sourceText = String(item?.channelName ?? item?.accessMode ?? item?.source ?? "").toLowerCase();
+  if (sourceText.includes("自动")) {
+    return "1";
+  }
+  if (sourceText.includes("页面") || sourceText.includes("手动") || sourceText.includes("上传")) {
+    return "2";
+  }
+  return "";
+};
+
 const extractEntityNames = (value: any): string[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -277,16 +304,45 @@ const extractKnowledgeBaseNames = (item: any): string[] => {
   return extractStringList(item?.knowledgeBaseNames);
 };
 
+const extractKnowledgeBases = (item: any): Array<{ id: string; name: string }> => {
+  if (Array.isArray(item?.knowledgeBaseObj) && item.knowledgeBaseObj.length > 0) {
+    return item.knowledgeBaseObj
+      .map((knowledge: any) => ({
+        id: String(knowledge?.id ?? knowledge?.knowledgeBaseId ?? ""),
+        name: String(knowledge?.name ?? "").trim(),
+      }))
+      .filter((knowledge: { id: string; name: string }) => knowledge.id && knowledge.name);
+  }
+
+  const ids = Array.isArray(item?.knowledgeBaseIds)
+    ? item.knowledgeBaseIds
+    : Array.isArray(item?.knowledgeBaseId)
+      ? item.knowledgeBaseId
+      : item?.knowledgeBaseId !== undefined && item?.knowledgeBaseId !== null
+        ? [item.knowledgeBaseId]
+        : [];
+  const names = extractStringList(item?.knowledgeBaseNames ?? item?.knowledgeBaseName);
+
+  return names
+    .map((name, index) => ({
+      id: String(ids[index] ?? ""),
+      name,
+    }))
+    .filter((knowledge) => knowledge.id && knowledge.name);
+};
+
 const mapDocumentResult = (item: any): SearchResult => {
   const fakeTags = ["行业分析", "重点文档", "自动生成"];
   const fakeEntities = ["特斯拉", "自动驾驶", "中国"];
   const knowledgeBaseNames = extractKnowledgeBaseNames(item);
+  const knowledgeBases = extractKnowledgeBases(item);
 
   return {
     id: String(item?.id ?? item?.documentId ?? item?.fileId ?? Math.random()),
     esId: String(item?.esId ?? item?._id ?? item?.docEsId ?? ""),
     name: item?.name ?? item?.fileName ?? item?.documentName ?? "-",
     type: String(item?.fileType ?? item?.type ?? "DOCX").toUpperCase(),
+    accessMode: resolveAccessModeType(item),
     source: item?.channelName ?? item?.accessMode ?? item?.source ?? "-",
     uploader: item?.creatorName ?? item?.creator ?? item?.uploader ?? item?.createBy ?? "-",
     uploadTime: formatDateTime(item?.createTime ?? item?.uploadTime),
@@ -304,11 +360,13 @@ const mapDocumentResult = (item: any): SearchResult => {
     entities: extractEntityNames(item?.entities),
     tags: extractStringList(item?.fileTagNames),
     knowledgeBase: knowledgeBaseNames.length > 0 ? knowledgeBaseNames.join("、") : "未入知识库",
+    knowledgeBases,
   };
 };
 
 const mapDocumentResultFixed = (item: any): SearchResult => {
   const knowledgeBaseNames = extractKnowledgeBaseNames(item);
+  const knowledgeBases = extractKnowledgeBases(item);
   const tagNames = extractStringList(item?.fileTagNames);
   const keywordNames = extractStringList(item?.keywordsList);
   const entityNames = extractEntityNames(item?.entities);
@@ -325,6 +383,7 @@ const mapDocumentResultFixed = (item: any): SearchResult => {
     esId: String(item?.esId ?? item?._id ?? item?.docEsId ?? ""),
     name: item?.name ?? item?.fileName ?? item?.documentName ?? "-",
     type: String(item?.fileType ?? item?.type ?? "DOCX").toUpperCase(),
+    accessMode: resolveAccessModeType(item),
     source: item?.channelName ?? item?.accessMode ?? item?.source ?? "-",
     uploader: item?.creatorName ?? item?.creator ?? item?.uploader ?? item?.createBy ?? "-",
     uploadTime: formatDateTime(item?.createTime ?? item?.uploadTime),
@@ -335,6 +394,7 @@ const mapDocumentResultFixed = (item: any): SearchResult => {
     entities: entityNames,
     tags: tagNames,
     knowledgeBase: knowledgeBaseNames.length > 0 ? knowledgeBaseNames.join("、") : "未入知识库",
+    knowledgeBases,
   };
 };
 
@@ -353,6 +413,8 @@ export default function DataSearchPage() {
   const [knowledgeBaseFilter, setKnowledgeBaseFilter] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
+  const [entitySourceMode, setEntitySourceMode] = useState<"page" | "auto">("auto");
+  const [entityKeyword, setEntityKeyword] = useState("");
   const [catalogFilter, setCatalogFilter] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<[string, string] | null>(null);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -425,6 +487,43 @@ export default function DataSearchPage() {
     ? filteredCatalogOptions
     : filteredCatalogOptions.slice(0, DEFAULT_VISIBLE_FILTER_COUNT);
 
+  const pageUploadEntities = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          searchResults
+            .filter((item) => item.accessMode === "2")
+            .flatMap((item) => item.entities.map((entity) => stripEntityHtml(entity))),
+        ),
+      ).filter(Boolean),
+    [searchResults],
+  );
+
+  const autoReadEntities = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          searchResults
+            .filter((item) => item.accessMode === "1")
+            .flatMap((item) => item.entities.map((entity) => stripEntityHtml(entity))),
+        ),
+      ).filter(Boolean),
+    [searchResults],
+  );
+
+  const currentEntityOptions = useMemo(
+    () => (entitySourceMode === "page" ? pageUploadEntities : autoReadEntities),
+    [autoReadEntities, entitySourceMode, pageUploadEntities],
+  );
+
+  const filteredEntityOptions = useMemo(
+    () =>
+      currentEntityOptions.filter((item) =>
+        item.toLowerCase().includes(entityKeyword.trim().toLowerCase()),
+      ),
+    [currentEntityOptions, entityKeyword],
+  );
+
   const buildAdvanceSearch = () =>
     customConditions
       .filter((item) => item.field && item.operator && item.value.trim())
@@ -442,7 +541,11 @@ export default function DataSearchPage() {
       })
       .join(" ");
 
-  const buildQueryPayload = (pageNo: number, size: number): DocumentQueryParams => ({
+  const buildQueryPayload = (
+    pageNo: number,
+    size: number,
+    overrides?: Partial<Pick<DocumentQueryParams, "entityNames">>,
+  ): DocumentQueryParams => ({
     pageNo,
     pageSize: size,
     keyword: searchText.trim(),
@@ -467,7 +570,7 @@ export default function DataSearchPage() {
     directoryIds: [],
     accessModes: sourceFilter ? [sourceFilter] : [],
     entityTypes: [],
-    entityNames: [],
+    entityNames: overrides?.entityNames ?? selectedEntities,
     createTime: dateRange ?? [],
   });
 
@@ -534,11 +637,15 @@ export default function DataSearchPage() {
     }
   };
 
-  const fetchDocuments = async (pageNo = 1, size = pageSize) => {
+  const fetchDocuments = async (
+    pageNo = 1,
+    size = pageSize,
+    overrides?: Partial<Pick<DocumentQueryParams, "entityNames">>,
+  ) => {
     const startedAt = Date.now();
     setLoading(true);
     try {
-      const payload = buildQueryPayload(pageNo, size);
+      const payload = buildQueryPayload(pageNo, size, overrides);
       const [response, facetResponse] = await Promise.all([
         queryDocuments(payload),
         getDocumentFacet(payload),
@@ -581,6 +688,14 @@ export default function DataSearchPage() {
     fetchDocuments(1, pageSize);
   };
 
+  const handleEntityClick = (entity: string) => {
+    const nextSelected = selectedEntities.includes(entity)
+      ? selectedEntities.filter((item) => item !== entity)
+      : [...selectedEntities, entity];
+    setSelectedEntities(nextSelected);
+    fetchDocuments(1, pageSize, { entityNames: nextSelected });
+  };
+
   const handleOpenDocumentDetail = (result: SearchResult) => {
     const detailQuery = new URLSearchParams();
     if (result.esId) {
@@ -605,6 +720,7 @@ export default function DataSearchPage() {
     setKnowledgeBaseFilter([]);
     setSelectedTags([]);
     setSelectedEntities([]);
+    setEntityKeyword("");
     setCatalogFilter([]);
     setDateRange(null);
     setSourceFilter(null);
@@ -860,34 +976,87 @@ export default function DataSearchPage() {
       label: <span style={{ fontWeight: 600 }}>关键实体</span>,
       children: (
         <div>
-          {Object.entries(entityOptions).map(([category, entities]) => (
-            <div key={category} style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: "#8c8c8c", marginBottom: 6 }}>
-                {category}
-              </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <Button
+              size="small"
+              type={entitySourceMode === "page" ? "primary" : "default"}
+              onClick={() => setEntitySourceMode("page")}
+              style={{ flex: 1 }}
+            >
+              页面上传
+            </Button>
+            <Button
+              size="small"
+              type={entitySourceMode === "auto" ? "primary" : "default"}
+              onClick={() => setEntitySourceMode("auto")}
+              style={{ flex: 1 }}
+            >
+              自动读取
+            </Button>
+          </div>
+          <Input
+            allowClear
+            size="small"
+            placeholder={entitySourceMode === "page" ? "搜索页面上传实体" : "搜索自动读取实体"}
+            prefix={<SearchOutlined />}
+            value={entityKeyword}
+            onChange={(e) => setEntityKeyword(e.target.value)}
+            style={{ marginBottom: 12 }}
+          />
+          <div
+            style={{
+              marginBottom: 8,
+              display: "flex",
+              justifyContent: "space-between",
+              color: "#8c8c8c",
+              fontSize: 12,
+            }}
+          >
+            <span>{entitySourceMode === "page" ? "页面上传实体" : "自动读取实体"}</span>
+            <span>{filteredEntityOptions.length} 个</span>
+          </div>
+          {selectedEntities.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: "#8c8c8c", marginBottom: 6 }}>当前检索实体</div>
               <Space wrap size={4}>
-                {entities.map((entity) => {
-                  const active = selectedEntities.includes(entity);
-                  return (
-                    <Tag
-                      key={entity}
-                      color={active ? "blue" : "default"}
-                      style={{ cursor: "pointer" }}
-                      onClick={() =>
-                        setSelectedEntities((prev) =>
-                          prev.includes(entity)
-                            ? prev.filter((item) => item !== entity)
-                            : [...prev, entity],
-                        )
-                      }
-                    >
-                      {entity}
-                    </Tag>
-                  );
-                })}
+                {selectedEntities.map((entity) => (
+                  <Tag
+                    key={entity}
+                    color="blue"
+                    closable
+                    onClose={(event) => {
+                      event.preventDefault();
+                      handleEntityClick(entity);
+                    }}
+                  >
+                    {entity}
+                  </Tag>
+                ))}
               </Space>
             </div>
-          ))}
+          )}
+          {filteredEntityOptions.length > 0 ? (
+            <Space wrap size={[4, 8]}>
+              {filteredEntityOptions.map((entity) => {
+                const active = selectedEntities.includes(entity);
+                return (
+                  <Tag
+                    key={entity}
+                    color={active ? "blue" : "default"}
+                    style={{ cursor: "pointer", marginInlineEnd: 0 }}
+                    onClick={() => handleEntityClick(entity)}
+                  >
+                    {entity}
+                  </Tag>
+                );
+              })}
+            </Space>
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={entitySourceMode === "page" ? "暂无页面上传实体" : "暂无自动读取实体"}
+            />
+          )}
         </div>
       ),
     },
@@ -1396,16 +1565,33 @@ export default function DataSearchPage() {
                         )}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
                           <a
                             onClick={() => handleOpenDocumentDetail(result)}
                             style={{ fontSize: 16, fontWeight: 600, color: "#262626", cursor: "pointer" }}
                           >
                             <HighlightHtml html={result.name} />
                           </a>
-                          <Tag color={result.knowledgeBase === "未入知识库" ? "default" : "green"}>
-                            {result.knowledgeBase}
-                          </Tag>
+                          {result.knowledgeBases.length > 0 ? (
+                            <Space size={[6, 6]} wrap>
+                              <span style={{ fontSize: 12, color: "#8c8c8c" }}>关联知识库:</span>
+                              {result.knowledgeBases.map((knowledge) => (
+                                <Tag
+                                  key={knowledge.id}
+                                  color="green"
+                                  style={{ cursor: "pointer", marginInlineEnd: 0 }}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    history.push(`/knowledge/detail/${knowledge.id}`);
+                                  }}
+                                >
+                                  {knowledge.name}
+                                </Tag>
+                              ))}
+                            </Space>
+                          ) : (
+                            <Tag color="default">未关联知识库</Tag>
+                          )}
                         </div>
                         <div
                           style={{
