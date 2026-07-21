@@ -46,7 +46,7 @@ const OperlogTableList: React.FC = () => {
 
   const columns: ProColumns<API.Monitor.Operlog>[] = [
     {
-      title: <FormattedMessage id="monitor.operlog.oper_id" defaultMessage="日志主键" />,
+      title: <FormattedMessage id="monitor.operlog.oper_id" defaultMessage="日志ID" />,
       dataIndex: 'operId',
       valueType: 'text',
       hideInSearch: true,

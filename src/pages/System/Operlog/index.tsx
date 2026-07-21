@@ -21,6 +21,35 @@ const handleExport = async (params?: API.Monitor.OperlogListParams) => {
   }
 };
 
+const toTimestampRange = (value: any) => {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return undefined;
+  }
+
+  const range = value
+    .map((item, index) => {
+      if (!item) {
+        return undefined;
+      }
+      if (typeof item === 'string') {
+        const normalized = item.includes(' ')
+          ? item
+          : `${item} ${index === 0 ? '00:00:00' : '23:59:59'}`;
+        const parsed = new Date(normalized.replace(/-/g, '/')).getTime();
+        return Number.isFinite(parsed) ? parsed : undefined;
+      }
+      if (typeof item?.valueOf === 'function') {
+        const valueOfResult = item.valueOf();
+        return Number.isFinite(valueOfResult) ? valueOfResult : undefined;
+      }
+      const numericValue = Number(item);
+      return Number.isFinite(numericValue) ? numericValue : undefined;
+    })
+    .filter((item) => item !== undefined);
+
+  return range.length === 2 ? range : undefined;
+};
+
 const OperlogTableList: React.FC = () => {
   const formTableRef = useRef<FormInstance>();
   const actionRef = useRef<ActionType>();
@@ -36,52 +65,52 @@ const OperlogTableList: React.FC = () => {
 
   const columns: ProColumns<API.Monitor.Operlog>[] = [
     {
-      title: <FormattedMessage id="monitor.operlog.oper_id" defaultMessage="日志ID" />,
+      title: '日志ID',
       dataIndex: 'id',
       valueType: 'text',
       hideInSearch: true,
     },
     {
-      title: <FormattedMessage id="monitor.operlog.title" defaultMessage="操作模块" />,
+      title: '操作模块',
       dataIndex: 'type',
       valueType: 'text',
     },
     {
-      title: <FormattedMessage id="monitor.operlog.business_type" defaultMessage="业务类型" />,
+      title: '业务类型',
       dataIndex: 'subType',
       valueType: 'text',
     },
     {
-      title: <FormattedMessage id="monitor.operlog.action" defaultMessage="详细操作" />,
+      title: '详细操作',
       dataIndex: 'action',
       valueType: 'text',
       hideInSearch: true,
     },
     {
-      title: <FormattedMessage id="monitor.operlog.request_method" defaultMessage="请求方式" />,
+      title: '请求方式',
       dataIndex: 'requestMethod',
       valueType: 'text',
       hideInSearch: true,
     },
     {
-      title: <FormattedMessage id="monitor.operlog.oper_name" defaultMessage="操作人员" />,
+      title: '操作人员',
       dataIndex: 'userName',
       valueType: 'text',
       hideInSearch: true,
     },
     {
-      title: <FormattedMessage id="monitor.operlog.oper_name" defaultMessage="操作人员" />,
+      title: '操作人员',
       hideInTable: true,
       dataIndex: 'nickname',
       valueType: 'text',
     },
     {
-      title: <FormattedMessage id="monitor.operlog.oper_ip" defaultMessage="主机地址" />,
+      title: '主机地址',
       dataIndex: 'userIp',
       valueType: 'text',
     },
     {
-      title: <FormattedMessage id="monitor.operlog.status" defaultMessage="操作状态" />,
+      title: '操作状态',
       dataIndex: 'isFail',
       valueType: 'select',
       valueEnum:
@@ -94,7 +123,22 @@ const OperlogTableList: React.FC = () => {
       hideInSearch: true,
     },
     {
-      title: <FormattedMessage id="monitor.operlog.oper_time" defaultMessage="操作时间" />,
+      title: '操作日志',
+      dataIndex: 'createTime',
+      valueType: 'dateRange',
+      hideInTable: true,
+      fieldProps: {
+        showTime: true,
+        format: 'YYYY-MM-DD HH:mm:ss',
+      },
+      search: {
+        transform: (value) => ({
+          createTime: toTimestampRange(value),
+        }),
+      },
+    },
+    {
+      title: '操作时间',
       dataIndex: 'createTime',
       valueType: 'dateTime',
       hideInSearch: true,
@@ -120,6 +164,7 @@ const OperlogTableList: React.FC = () => {
             <Button
               type="primary"
               key="export"
+              hidden={!access.hasPerms('monitor:operlog:export')}
               onClick={async () => {
                 const params = formTableRef.current?.getFieldsValue?.();
                 await handleExport(params as API.Monitor.OperlogListParams);
@@ -130,7 +175,10 @@ const OperlogTableList: React.FC = () => {
             </Button>,
           ]}
           request={(params) =>
-            getOperlogList({ ...params } as API.Monitor.OperlogListParams).then((res: any) => ({
+            getOperlogList({
+              ...params,
+              createTime: toTimestampRange(params.createTime),
+            } as API.Monitor.OperlogListParams).then((res: any) => ({
               data: res.data?.list || [],
               total: res.data?.total || 0,
               success: true,

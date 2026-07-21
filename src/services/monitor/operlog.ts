@@ -15,10 +15,5 @@ export async function getOperlogList(params?: API.Monitor.OperlogListParams) {
 
 // 导出操作日志记录
 export function exportOperlog(params?: API.Monitor.OperlogListParams) {
-  return downLoadXlsx(
-    `${API_PREFIX}/system/operate-log/export`,
-    { params },
-    `操作日志_${new Date().getTime()}.xls`,
-    'GET',
-  );
+  return downLoadXlsx(`${API_PREFIX}/system/operate-log/export`, { params }, `操作日志.xls`, 'GET');
 }
