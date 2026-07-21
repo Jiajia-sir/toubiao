@@ -24,14 +24,18 @@ import type { ColumnsType } from "antd/es/table";
 import {
   DeleteOutlined,
   EditOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  StopOutlined,
 } from "@ant-design/icons";
 import {
   createCollectDirConfig,
   getCollectDirConfigPage,
   removeCollectDirConfig,
+  startCollectDirTask,
+  stopCollectDirTask,
   updateCollectDirConfig,
   type CollectDirConfigItem,
   type CollectDirConfigPageParams,
@@ -47,7 +51,7 @@ import { getTagPage, type TagItem } from "@/services/biz/tag";
 
 const { RangePicker } = DatePicker;
 
-type StatusValue = 0 | 1 | 2;
+type StatusValue = 0 | 1;
 type ToggleValue = 0 | 1;
 
 interface SearchFormState {
@@ -94,14 +98,28 @@ const defaultSearchState: SearchFormState = {
 };
 
 const toggleOptions = [
-  { label: "开启", value: 1 },
-  { label: "关闭", value: 0 },
+  { label: "启用", value: 0 },
+  { label: "停用", value: 1 },
 ];
 
 const statusOptions = [
-  { label: "启用", value: 1, color: "success" },
-  { label: "停用", value: 0, color: "default" },
+  { label: "启动", value: 0, color: "success" },
+  { label: "停用", value: 1, color: "default" },
 ];
+
+function formatSearchCreateTime(value: any, index: number) {
+  if (typeof value?.format === "function") {
+    return value.format(index === 0 ? "YYYY-MM-DD 00:00:00" : "YYYY-MM-DD 23:59:59");
+  }
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day} ${index === 0 ? "00:00:00" : "23:59:59"}`;
+  }
+  return value;
+}
 
 function extractPageList(payload: any): any[] {
   return payload?.data?.list || payload?.data?.records || payload?.list || payload?.rows || [];
@@ -166,7 +184,7 @@ function getStatusTag(status?: number) {
 }
 
 function renderToggleTag(value: number) {
-  return value === 1 ? <Tag color="success">开启</Tag> : <Tag>关闭</Tag>;
+  return value === 0 ? <Tag color="success">启用</Tag> : <Tag>停用</Tag>;
 }
 
 export default function DirConfigPage() {
@@ -249,10 +267,7 @@ export default function DirConfigPage() {
       };
 
       if (filters.createTime && filters.createTime.length === 2) {
-        params.createTime = [
-          filters.createTime[0].startOf("day").format("YYYY-MM-DD HH:mm:ss"),
-          filters.createTime[1].endOf("day").format("YYYY-MM-DD HH:mm:ss"),
-        ];
+        params.createTime = filters.createTime.map((item, index) => formatSearchCreateTime(item, index));
       }
 
       const res: any = await getCollectDirConfigPage(params);
@@ -378,6 +393,22 @@ export default function DirConfigPage() {
     }
   };
 
+  const handleToggleTaskStatus = async (record: CollectDirConfigItem) => {
+    try {
+      const res: any =
+        record.status === 0 ? await stopCollectDirTask(record.id) : await startCollectDirTask(record.id);
+      if (res?.code === 200 || res?.success === true) {
+        message.success(record.status === 0 ? "线路已停止" : "线路已启动");
+        fetchData(page, searchState);
+      } else {
+        message.error(res?.msg || (record.status === 0 ? "停止失败" : "启动失败"));
+      }
+    } catch (error) {
+      console.error(error);
+      message.error(record.status === 0 ? "停止失败" : "启动失败");
+    }
+  };
+
   const handleSearch = () => {
     setPage(1);
     fetchData(1, searchState);
@@ -458,13 +489,25 @@ export default function DirConfigPage() {
     {
       title: "操作",
       key: "action",
-      width: 180,
+      width: 260,
       fixed: "right",
       render: (_, record) => (
         <Space size={4} wrap>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
             编辑
           </Button>
+          <Popconfirm
+            title={record.status === 0 ? "确认停止该线路任务吗？" : "确认启动该线路任务吗？"}
+            onConfirm={() => handleToggleTaskStatus(record)}
+          >
+            <Button
+              type="link"
+              size="small"
+              icon={record.status === 0 ? <StopOutlined /> : <PlayCircleOutlined />}
+            >
+              {record.status === 0 ? "停止" : "启动"}
+            </Button>
+          </Popconfirm>
           <Popconfirm title="确认删除该线路配置吗？" onConfirm={() => handleDelete(record.id)}>
             <Button type="link" size="small" danger icon={<DeleteOutlined />}>
               删除
@@ -568,6 +611,8 @@ export default function DirConfigPage() {
               <Col>
                 <RangePicker
                   value={searchState.createTime as any}
+                  showTime
+                  format="YYYY-MM-DD HH:mm:ss"
                   onChange={(dates) =>
                     setSearchState((prev) => ({ ...prev, createTime: (dates as any) || null }))
                   }
@@ -657,7 +702,12 @@ export default function DirConfigPage() {
                 label="来源渠道"
                 rules={[{ required: true, message: "请选择来源渠道" }]}
               >
-                <Select options={channelOptions} placeholder="请选择来源渠道" showSearch optionFilterProp="label" />
+                <Select
+                  options={channelOptions}
+                  placeholder="请选择来源渠道"
+                  showSearch
+                  optionFilterProp="label"
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -673,10 +723,7 @@ export default function DirConfigPage() {
 
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item
-                name="knowledgeBaseIds"
-                label="知识库"
-              >
+              <Form.Item name="knowledgeBaseIds" label="知识库">
                 <Select
                   mode="multiple"
                   allowClear
@@ -688,10 +735,7 @@ export default function DirConfigPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item
-                name="fileTagIds"
-                label="文件标签"
-              >
+              <Form.Item name="fileTagIds" label="文件标签">
                 <Select
                   mode="multiple"
                   allowClear

@@ -1,6 +1,25 @@
 import { request } from '@umijs/max';
 import { API_PREFIX } from '@/constants';
 
+function buildCollectHostConfigPageQuery(params?: Record<string, any>) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === null || typeof value === 'undefined' || value === '') {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== null && typeof item !== 'undefined' && item !== '') {
+          searchParams.append(key, String(item));
+        }
+      });
+      return;
+    }
+    searchParams.append(key, String(value));
+  });
+  return searchParams.toString();
+}
+
 export interface CollectHostConfigPayload {
   id?: number;
   hostName: string;
@@ -51,6 +70,7 @@ export async function getCollectHostConfigPage(params: CollectHostConfigPagePara
   return request(`${API_PREFIX}/biz/collect-host-config/page`, {
     method: 'GET',
     params,
+    paramsSerializer: (value) => buildCollectHostConfigPageQuery(value as Record<string, any>),
   });
 }
 

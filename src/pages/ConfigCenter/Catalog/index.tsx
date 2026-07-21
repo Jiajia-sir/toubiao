@@ -40,6 +40,19 @@ import {
   removeCatalogType,
 } from "@/services/biz/catalogType";
 
+const formatCreateTimeRange = (
+  value: [dayjs.Dayjs, dayjs.Dayjs] | null,
+): [string, string] | undefined => {
+  if (!Array.isArray(value) || value.length !== 2 || !value[0] || !value[1]) {
+    return undefined;
+  }
+
+  return [
+    value[0].startOf("day").format("YYYY-MM-DD HH:mm:ss"),
+    value[1].endOf("day").format("YYYY-MM-DD HH:mm:ss"),
+  ];
+};
+
 interface CatalogItem {
   id: string;
   name: string;
@@ -77,7 +90,7 @@ export default function CatalogPage() {
   const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
   const [searchName, setSearchName] = useState("");
   const [searchCreator, setSearchCreator] = useState("");
-  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const pageSize = 10;
@@ -104,7 +117,7 @@ export default function CatalogPage() {
         pageNo: currentPage,
         pageSize,
         name: searchName || undefined,
-        createTime: dateRange || undefined,
+        createTime: formatCreateTimeRange(dateRange),
       });
       if (res && res.code === 200) {
         setCatalogs(res.data?.list || res.rows || []);
@@ -381,18 +394,14 @@ export default function CatalogPage() {
 
               <Col>
                 <DatePicker.RangePicker
+                  value={dateRange as any}
                   placeholder={["开始日期", "结束日期"]}
+                  showTime
+                  format="YYYY-MM-DD HH:mm:ss"
                   onChange={(dates) => {
-                    if (dates) {
-                      setDateRange([
-                        dates[0]?.format("YYYY-MM-DD") || "",
-                        dates[1]?.format("YYYY-MM-DD") || "",
-                      ]);
-                    } else {
-                      setDateRange(null);
-                    }
+                    setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null);
                   }}
-                  style={{ width: 240 }}
+                  style={{ width: 380 }}
                 />
               </Col>
               {/* <Col>

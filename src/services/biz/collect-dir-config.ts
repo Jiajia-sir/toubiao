@@ -1,6 +1,25 @@
 import { request } from '@umijs/max';
 import { API_PREFIX } from '@/constants';
 
+function buildCollectDirConfigPageQuery(params?: Record<string, any>) {
+  const searchParams = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value === null || typeof value === 'undefined' || value === '') {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== null && typeof item !== 'undefined' && item !== '') {
+          searchParams.append(key, String(item));
+        }
+      });
+      return;
+    }
+    searchParams.append(key, String(value));
+  });
+  return searchParams.toString();
+}
+
 export interface CollectDirConfigPayload {
   id?: number;
   name: string;
@@ -73,12 +92,27 @@ export async function getCollectDirConfigPage(params: CollectDirConfigPageParams
   return request(`${API_PREFIX}/biz/collect-dir-config/page`, {
     method: 'GET',
     params,
+    paramsSerializer: (value) => buildCollectDirConfigPageQuery(value as Record<string, any>),
   });
 }
 
 export async function removeCollectDirConfig(id: number | string) {
   return request(`${API_PREFIX}/biz/collect-dir-config/delete`, {
     method: 'DELETE',
+    params: { id },
+  });
+}
+
+export async function startCollectDirTask(id: number | string) {
+  return request(`${API_PREFIX}/biz/collect/startTask`, {
+    method: 'GET',
+    params: { id },
+  });
+}
+
+export async function stopCollectDirTask(id: number | string) {
+  return request(`${API_PREFIX}/biz/collect/stopTask`, {
+    method: 'GET',
     params: { id },
   });
 }

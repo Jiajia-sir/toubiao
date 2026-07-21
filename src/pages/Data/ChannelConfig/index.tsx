@@ -30,6 +30,19 @@ import type { ChannelConfigItem } from '@/services/biz/channel-config';
 
 const { RangePicker } = DatePicker;
 
+const formatCreateTimeRange = (
+  value: [dayjs.Dayjs, dayjs.Dayjs] | null,
+): [string, string] | undefined => {
+  if (!Array.isArray(value) || value.length !== 2 || !value[0] || !value[1]) {
+    return undefined;
+  }
+
+  return [
+    value[0].startOf('day').format('YYYY-MM-DD HH:mm:ss'),
+    value[1].endOf('day').format('YYYY-MM-DD HH:mm:ss'),
+  ];
+};
+
 export default function ChannelConfigPage() {
   const [data, setData] = useState<ChannelConfigItem[]>([]);
   const [searchName, setSearchName] = useState("");
@@ -51,16 +64,8 @@ export default function ChannelConfigPage() {
         pageNo: currentPage,
         pageSize,
         name: name || undefined,
+        createTime: formatCreateTimeRange(createTime),
       };
-      
-      if (createTime && createTime.length === 2) {
-        params.createTime = [
-          createTime[0].startOf('day').format('YYYY-MM-DD HH:mm:ss'),
-          createTime[1].endOf('day').format('YYYY-MM-DD HH:mm:ss')
-        ];
-      } else {
-        params.createTime = [];
-      }
 
       const res: any = await getChannelConfigPage(params);
       if (res && res.code === 200) {
@@ -288,8 +293,11 @@ export default function ChannelConfigPage() {
               <Col>
                 <RangePicker 
                   value={searchCreateTime as any} 
+                  placeholder={['开始时间', '结束时间']}
+                  showTime
+                  format="YYYY-MM-DD HH:mm:ss"
                   onChange={(dates) => setSearchCreateTime(dates as any)}
-                  style={{ width: 260 }}
+                  style={{ width: 380 }}
                 />
               </Col>
               <Col>
