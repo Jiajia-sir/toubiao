@@ -46,60 +46,21 @@ import {
   hashText,
   type EntityGraphData,
   type EntityGraphLink,
-  type EntityNodeDetail,
   type EntityGraphNode,
   type EntityGraphNodeType,
+  type EntityNodeDetail,
   type SourceDocument,
 } from "@/data/entityGraphMock";
 import { randomPreviewGraph, searchGraph, type SearchGraphResult } from "@/services/biz/graph";
+import { getEntityTypePage, type EntityTypeItem } from "@/services/biz/entity-type";
 
-const typeMeta: Record<
-  EntityGraphNodeType,
-  { label: string; color: string; countColor: string }
-> = {
+const typeMeta: Record<EntityGraphNodeType, { label: string; color: string; countColor: string }> = {
   center: { label: "中心实体", color: "#2563eb", countColor: "#dbeafe" },
-  entity: { label: "相关实体", color: "#7c3aed", countColor: "#ede9fe" },
+  entity: { label: "关联实体", color: "#7c3aed", countColor: "#ede9fe" },
   value: { label: "属性值", color: "#0f766e", countColor: "#ccfbf1" },
 };
 
-function getRelationKey(link: EntityGraphLink) {
-  return `${link.source}__${link.relation}__${link.target}`;
-}
-
-function getNodeTypeLabel(type: EntityGraphNodeType) {
-  return typeMeta[type].label;
-}
-
-function buildRelationConfidence(link: EntityGraphLink) {
-  const score = 0.82 + (hashText(getRelationKey(link)) % 16) / 100;
-  return score.toFixed(2);
-}
-
-function collectExpandedNodeIds(graph: EntityGraphData) {
-  return new Set(graph.links.map((link) => link.source));
-}
-
-function collectRelationOptions(graph: EntityGraphData) {
-  return Array.from(new Set(graph.links.map((link) => link.relation)));
-}
-
-function parseTagInput(value?: string) {
-  return (value || "")
-    .split(/[,，\s]+/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-type WorkspaceMode = "auto-upload" | "manual-upload" | "full-graph" | "community";
-
-interface UploadTask {
-  id: string;
-  name: string;
-  status: "running" | "waiting" | "done";
-  source: "auto" | "manual";
-  entityCount: number;
-  updatedAt: string;
-}
+type WorkspaceMode = "auto-upload" | "manual-upload";
 
 interface GraphCommunity {
   id: string;
@@ -131,32 +92,41 @@ interface RelationFormValues {
   relation: string;
 }
 
-const MOCK_UPLOAD_TASKS: UploadTask[] = [
-  {
-    id: "auto-1",
-    name: "政策法规周报增量包",
-    status: "running",
-    source: "auto",
-    entityCount: 124,
-    updatedAt: "09:40",
-  },
-  {
-    id: "auto-2",
-    name: "项目归档资料夜间扫描",
-    status: "waiting",
-    source: "auto",
-    entityCount: 86,
-    updatedAt: "08:15",
-  },
-  {
-    id: "manual-1",
-    name: "客户调研纪要.docx",
-    status: "done",
-    source: "manual",
-    entityCount: 42,
-    updatedAt: "昨天 18:24",
-  },
-];
+function getRelationKey(link: EntityGraphLink) {
+  return `${link.source}__${link.relation}__${link.target}`;
+}
+
+function getNodeTypeLabel(type: EntityGraphNodeType) {
+  return typeMeta[type].label;
+}
+
+function buildRelationConfidence(link: EntityGraphLink) {
+  const score = 0.82 + (hashText(getRelationKey(link)) % 16) / 100;
+  return score.toFixed(2);
+}
+
+function collectExpandedNodeIds(graph: EntityGraphData) {
+  return new Set(graph.links.map((link) => link.source));
+}
+
+function parseTagInput(value?: string) {
+  return (value || "")
+    .split(/[,，\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function extractResultData<T>(response: any): T {
+  return (response?.data?.data ?? response?.data ?? response ?? {}) as T;
+}
+
+function createEmptyGraph(centerId = ""): EntityGraphData {
+  return {
+    centerId,
+    nodes: [],
+    links: [],
+  };
+}
 
 function buildCommunities(graph: EntityGraphData): GraphCommunity[] {
   const topLevelNodes = graph.nodes.filter((node) => node.parentId === graph.centerId);
@@ -167,14 +137,18 @@ function buildCommunities(graph: EntityGraphData): GraphCommunity[] {
   });
 
   graph.nodes.forEach((node) => {
-    if (node.id === graph.centerId) return;
+    if (node.id === graph.centerId) {
+      return;
+    }
     const communityId = node.branchId || node.parentId || node.id;
     const targetId = communityMap.has(communityId)
       ? communityId
       : topLevelNodes[0]?.id || graph.centerId;
+
     if (!communityMap.has(targetId)) {
       communityMap.set(targetId, new Set([graph.centerId]));
     }
+
     communityMap.get(targetId)!.add(node.id);
   });
 
@@ -195,6 +169,7 @@ function buildCommunities(graph: EntityGraphData): GraphCommunity[] {
           (!idSet.has(link.source) && idSet.has(link.target)),
       ).length;
       const denominator = Math.max(ids.length - 1, 1);
+
       return {
         id: communityId,
         name: seedNode?.name || communityId,
@@ -209,21 +184,10 @@ function buildCommunities(graph: EntityGraphData): GraphCommunity[] {
     .slice(0, 8);
 }
 
-function extractResultData<T>(response: any): T {
-  return (response?.data?.data ?? response?.data ?? response ?? {}) as T;
-}
-
-function createEmptyGraph(centerId = ""): EntityGraphData {
-  return {
-    centerId,
-    nodes: [],
-    links: [],
-  };
-}
-
 function buildGraphFromSearchResult(result: SearchGraphResult, fallbackCenterName: string): EntityGraphData {
   const rawNodes = Array.isArray(result?.nodes) ? result.nodes : [];
   const rawLinks = Array.isArray(result?.links) ? result.links : [];
+
   return {
     centerId: String(result?.centerId ?? fallbackCenterName),
     nodes: rawNodes
@@ -233,6 +197,7 @@ function buildGraphFromSearchResult(result: SearchGraphResult, fallbackCenterNam
         if (!nodeId || !nodeName) {
           return null;
         }
+
         return {
           id: nodeId,
           name: nodeName,
@@ -255,11 +220,7 @@ function buildGraphFromSearchResult(result: SearchGraphResult, fallbackCenterNam
         if (!source || !target || !relation) {
           return null;
         }
-        return {
-          source,
-          target,
-          relation,
-        };
+        return { source, target, relation };
       })
       .filter(Boolean) as EntityGraphData["links"],
   };
@@ -270,32 +231,26 @@ export default function GraphPage() {
   const searchParams = new URLSearchParams(location.search);
   const graphRef = useRef<EntityRelationGraphRef>(null);
   const graphCanvasRef = useRef<HTMLElement | null>(null);
-  const previousRelationOptionsRef = useRef<string[]>([]);
 
   const incomingEntity = searchParams.get("entity");
   const initialEntity = incomingEntity || "";
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("auto-upload");
 
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("auto-upload");
   const [keyword, setKeyword] = useState(initialEntity);
   const [graphLoading, setGraphLoading] = useState(false);
+  const [entityTypeLoading, setEntityTypeLoading] = useState(false);
   const [graphData, setGraphData] = useState<EntityGraphData>(() => createEmptyGraph(initialEntity));
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
-  const [checkedNodeTypes, setCheckedNodeTypes] = useState<EntityGraphNodeType[]>([
-    "center",
-    "entity",
-    "value",
-  ]);
-  const [checkedRelations, setCheckedRelations] = useState<string[]>([]);
+  const [entityTypes, setEntityTypes] = useState<EntityTypeItem[]>([]);
+  const [activeEntityTypeName, setActiveEntityTypeName] = useState<string | null>(null);
+  const [entityNameKeyword, setEntityNameKeyword] = useState("");
+  const [activeCommunityId, setActiveCommunityId] = useState<string | null>(null);
   const [nodeScale, setNodeScale] = useState(1);
   const [linkWidth, setLinkWidth] = useState(1.4);
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [showNodes, setShowNodes] = useState(true);
   const [showLinks, setShowLinks] = useState(true);
-  const [showNodeLabels, setShowNodeLabels] = useState(true);
-  const [showRelationLabels, setShowRelationLabels] = useState(true);
-  const [uploadTasks, setUploadTasks] = useState<UploadTask[]>(MOCK_UPLOAD_TASKS);
-  const [activeCommunityId, setActiveCommunityId] = useState<string | null>(null);
   const [entityOverrides, setEntityOverrides] = useState<Record<string, EntityOverride>>({});
   const [entityModalOpen, setEntityModalOpen] = useState(false);
   const [entityModalMode, setEntityModalMode] = useState<"add" | "edit">("edit");
@@ -312,104 +267,91 @@ export default function GraphPage() {
     void handleLoadRandomPreview();
   }, [initialEntity]);
 
-  const relationOptions = useMemo(() => collectRelationOptions(graphData), [graphData]);
-
   useEffect(() => {
-    const previous = previousRelationOptionsRef.current;
-    const appended = relationOptions.filter((item) => !previous.includes(item));
-    if (appended.length > 0) {
-      setCheckedRelations((prev) => Array.from(new Set([...prev, ...appended])));
-    }
-    previousRelationOptionsRef.current = relationOptions;
-  }, [relationOptions]);
+    void loadEntityTypes();
+  }, []);
 
-  const typeCounts = useMemo(
-    () =>
-      graphData.nodes.reduce(
-        (acc, node) => {
-          acc[node.type] += 1;
-          return acc;
-        },
-        { center: 0, entity: 0, value: 0 } as Record<EntityGraphNodeType, number>,
-      ),
-    [graphData.nodes],
-  );
-
-  const relationCounts = useMemo(() => {
-    const result = new Map<string, number>();
-    graphData.links.forEach((link) => {
-      result.set(link.relation, (result.get(link.relation) || 0) + 1);
+  const entityNameOptions = useMemo(() => {
+    const keywordValue = entityNameKeyword.trim().toLowerCase();
+    return graphData.nodes.filter((node) => {
+      if (node.type === "value") {
+        return false;
+      }
+      const detailTags = getNodeDetail(node.name).tag;
+      if (activeEntityTypeName && !detailTags.includes(activeEntityTypeName) && node.name !== activeEntityTypeName) {
+        return false;
+      }
+      if (!keywordValue) {
+        return true;
+      }
+      return node.name.toLowerCase().includes(keywordValue);
     });
-    return result;
-  }, [graphData.links]);
+  }, [activeEntityTypeName, entityNameKeyword, graphData.nodes]);
 
   const communities = useMemo(() => buildCommunities(graphData), [graphData]);
   const activeCommunity = useMemo(
     () => communities.find((community) => community.id === activeCommunityId) || null,
     [activeCommunityId, communities],
   );
-  const visibleUploadTasks = useMemo(() => {
-    if (workspaceMode === "auto-upload") {
-      return uploadTasks.filter((task) => task.source === "auto");
-    }
-    if (workspaceMode === "manual-upload") {
-      return uploadTasks.filter((task) => task.source === "manual");
-    }
-    return uploadTasks;
-  }, [uploadTasks, workspaceMode]);
 
   const filteredGraphData = useMemo(() => {
-    const visibleNodeIds = new Set(
-      graphData.nodes
-        .filter((node) => checkedNodeTypes.includes(node.type))
-        .map((node) => node.id),
-    );
-    const communityNodeIds =
-      workspaceMode === "community" && activeCommunity
-        ? new Set(activeCommunity.nodeIds)
-        : null;
+    const hasTypeFilter = Boolean(activeEntityTypeName);
+    const hasNameFilter = Boolean(entityNameKeyword.trim());
+    const focusIds = new Set(entityNameOptions.map((node) => node.id));
+    const communityNodeIds = activeCommunity
+      ? new Set([...activeCommunity.nodeIds, graphData.centerId])
+      : null;
 
+    const nodes = graphData.nodes.filter((node) => {
+      if (communityNodeIds && !communityNodeIds.has(node.id)) {
+        return false;
+      }
+      if (node.id === graphData.centerId || node.type === "center") {
+        return true;
+      }
+      if (!hasTypeFilter && !hasNameFilter) {
+        return true;
+      }
+      if (hasTypeFilter && !focusIds.has(node.id)) {
+        return false;
+      }
+      if (!hasNameFilter) {
+        return true;
+      }
+      return focusIds.has(node.id);
+    });
+
+    const nodeIds = new Set(nodes.map((node) => node.id));
     return {
       centerId: graphData.centerId,
-      nodes: graphData.nodes.filter(
-        (node) =>
-          visibleNodeIds.has(node.id) &&
-          (!communityNodeIds || communityNodeIds.has(node.id) || node.id === graphData.centerId),
-      ),
+      nodes,
       links: graphData.links.filter(
-        (link) =>
-          visibleNodeIds.has(link.source) &&
-          visibleNodeIds.has(link.target) &&
-          checkedRelations.includes(link.relation) &&
-          (!communityNodeIds ||
-            ((communityNodeIds.has(link.source) || link.source === graphData.centerId) &&
-              (communityNodeIds.has(link.target) || link.target === graphData.centerId))),
+        (link) => nodeIds.has(link.source) && nodeIds.has(link.target),
       ),
     };
-  }, [activeCommunity, checkedNodeTypes, checkedRelations, graphData, workspaceMode]);
+  }, [activeCommunity, activeEntityTypeName, entityNameKeyword, entityNameOptions, graphData]);
 
   const selectedNode = useMemo(
     () => graphData.nodes.find((node) => node.id === selectedNodeId) ?? null,
     [graphData.nodes, selectedNodeId],
   );
 
-  const selectedDetail = useMemo(
-    () => {
-      const nodeName = selectedNode?.name || graphData.centerId;
-      const baseDetail = getNodeDetail(nodeName);
-      const override = entityOverrides[nodeName];
-      return {
-        ...baseDetail,
-        desc: override?.desc ?? baseDetail.desc,
-        tag: override?.tag ?? baseDetail.tag,
-        avp: override?.avp ?? baseDetail.avp,
-      } as EntityNodeDetail;
-    },
-    [entityOverrides, graphData.centerId, selectedNode?.name],
-  );
+  const selectedDetail = useMemo(() => {
+    const nodeName = selectedNode?.name || graphData.centerId;
+    const baseDetail = getNodeDetail(nodeName);
+    const override = entityOverrides[nodeName];
+    return {
+      ...baseDetail,
+      desc: override?.desc ?? baseDetail.desc,
+      tag: override?.tag ?? baseDetail.tag,
+      avp: override?.avp ?? baseDetail.avp,
+    } as EntityNodeDetail;
+  }, [entityOverrides, graphData.centerId, selectedNode?.name]);
 
   const selectedRelations = useMemo(() => {
-    if (!selectedNode) return [];
+    if (!selectedNode) {
+      return [];
+    }
     return graphData.links.filter(
       (link) => link.source === selectedNode.id || link.target === selectedNode.id,
     );
@@ -432,32 +374,49 @@ export default function GraphPage() {
 
   const suggestedEntities = useMemo(() => getSuggestedEntities(), []);
 
+  async function loadEntityTypes() {
+    try {
+      setEntityTypeLoading(true);
+      const response = await getEntityTypePage({
+        pageNo: 1,
+        pageSize: 100,
+      });
+      const result = extractResultData<{ list?: EntityTypeItem[]; records?: EntityTypeItem[] }>(response);
+      setEntityTypes(result?.list || result?.records || []);
+    } catch (error) {
+      console.error(error);
+      setEntityTypes([]);
+      message.error("实体类型加载失败");
+    } finally {
+      setEntityTypeLoading(false);
+    }
+  }
+
   async function handleSearch(entityName = keyword, mode = workspaceMode) {
     const target = entityName.trim();
     if (!target) {
       message.warning("请输入实体名称后再检索");
       return;
     }
+
     try {
       setGraphLoading(true);
       const response = await searchGraph({ entity: target, mode });
       const result = extractResultData<SearchGraphResult>(response);
       const nextGraph = buildGraphFromSearchResult(result, target);
-      const nextRelations = collectRelationOptions(nextGraph);
 
       setKeyword(target);
       setGraphData(nextGraph);
       setSelectedNodeId(nextGraph.nodes[0]?.id || "");
       setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
-      setCheckedNodeTypes(["center", "entity", "value"]);
-      setCheckedRelations(nextRelations);
+      setActiveEntityTypeName(null);
+      setEntityNameKeyword("");
       setActiveCommunityId(null);
       setLinkWidth(1.4);
-      previousRelationOptionsRef.current = nextRelations;
       window.setTimeout(() => graphRef.current?.resetZoom(), 40);
 
       if (nextGraph.nodes.length === 0) {
-        message.info("未检索到相关图谱实体。");
+        message.info("未检索到相关图谱实体");
       }
     } catch (error) {
       console.error(error);
@@ -465,9 +424,9 @@ export default function GraphPage() {
       setGraphData(createEmptyGraph(target));
       setSelectedNodeId("");
       setExpandedNodeIds(new Set());
-      setCheckedRelations([]);
+      setActiveEntityTypeName(null);
+      setEntityNameKeyword("");
       setActiveCommunityId(null);
-      previousRelationOptionsRef.current = [];
       message.error("图谱检索失败");
     } finally {
       setGraphLoading(false);
@@ -480,31 +439,29 @@ export default function GraphPage() {
       const response = await randomPreviewGraph({ nodeLimit: 10, linkLimit: 8 });
       const result = extractResultData<SearchGraphResult>(response);
       const nextGraph = buildGraphFromSearchResult(result, "");
-      const nextRelations = collectRelationOptions(nextGraph);
 
       setKeyword("");
       setGraphData(nextGraph);
       setSelectedNodeId(nextGraph.centerId || nextGraph.nodes[0]?.id || "");
       setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
-      setCheckedNodeTypes(["center", "entity", "value"]);
-      setCheckedRelations(nextRelations);
+      setActiveEntityTypeName(null);
+      setEntityNameKeyword("");
       setActiveCommunityId(null);
       setLinkWidth(1.4);
-      previousRelationOptionsRef.current = nextRelations;
       window.setTimeout(() => graphRef.current?.resetZoom(), 40);
 
       if (nextGraph.nodes.length === 0) {
-        message.info("当前暂无可展示的随机图谱。");
+        message.info("当前暂无可展示的图谱数据");
       }
     } catch (error) {
       console.error(error);
       setGraphData(createEmptyGraph(""));
       setSelectedNodeId("");
       setExpandedNodeIds(new Set());
-      setCheckedRelations([]);
+      setActiveEntityTypeName(null);
+      setEntityNameKeyword("");
       setActiveCommunityId(null);
-      previousRelationOptionsRef.current = [];
-      message.error("随机图谱加载失败");
+      message.error("图谱加载失败");
     } finally {
       setGraphLoading(false);
     }
@@ -512,24 +469,20 @@ export default function GraphPage() {
 
   function switchWorkspaceMode(mode: WorkspaceMode) {
     setWorkspaceMode(mode);
-    void handleSearch(keyword, mode);
-  }
-
-  function handleNodeClick(node: EntityGraphNode) {
-    setSelectedNodeId(node.id);
+    if (keyword.trim()) {
+      void handleSearch(keyword, mode);
+    }
   }
 
   function handleNodeExpand(node: EntityGraphNode) {
     setSelectedNodeId(node.id);
-    if (node.id.startsWith("entity-") || node.id.startsWith("value-")) {
-      message.info("节点展开接口待接入，当前先支持图谱检索。");
+    if (!node.expandable || expandedNodeIds.has(node.id)) {
       return;
     }
-    if (expandedNodeIds.has(node.id)) return;
 
     const result = expandGraphWithEntity(graphData, node.id);
     if (!result.expanded) {
-      message.info("该节点暂时没有更多可展开关系。");
+      message.info("该节点暂无更多可展开关系");
       return;
     }
 
@@ -541,6 +494,37 @@ export default function GraphPage() {
     });
   }
 
+  function handleNodeClick(node: EntityGraphNode) {
+    setSelectedNodeId(node.id);
+    if (node.expandable && !expandedNodeIds.has(node.id)) {
+      handleNodeExpand(node);
+    }
+  }
+
+  function handleEntityTypeChange(typeName: string | null) {
+    setActiveEntityTypeName(typeName);
+    setEntityNameKeyword("");
+  }
+
+  function handleEntityNameSelect(node: EntityGraphNode) {
+    setSelectedNodeId(node.id);
+    if (node.expandable && !expandedNodeIds.has(node.id)) {
+      handleNodeExpand(node);
+    }
+    window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+  }
+
+  function handleFocusCommunity(community: GraphCommunity) {
+    setActiveCommunityId(community.id);
+    setSelectedNodeId(community.seedNodeId);
+    window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+  }
+
+  function handleClearCommunity() {
+    setActiveCommunityId(null);
+    window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+  }
+
   function handleOpenDocument(doc: SourceDocument) {
     const query = new URLSearchParams({
       title: doc.title,
@@ -549,36 +533,6 @@ export default function GraphPage() {
       fromEntity: selectedNode?.name || graphData.centerId,
     });
     history.push(`/data/document/${encodeURIComponent(doc.id)}?${query.toString()}`);
-  }
-
-  function handleAutoUpload() {
-    setUploadTasks((prev) =>
-      prev.map((task, index) =>
-        task.source === "auto"
-          ? {
-              ...task,
-              status: index === 0 ? "done" : "running",
-              updatedAt: "刚刚",
-              entityCount: task.entityCount + 8,
-            }
-          : task,
-      ),
-    );
-    message.success("自动上传任务已刷新，并同步最新增量实体。");
-  }
-
-  function handleFocusCommunity(community: GraphCommunity) {
-    setWorkspaceMode("community");
-    if (workspaceMode !== "community") {
-      handleSearch(keyword, "community");
-    }
-    if (!graphData.nodes.some((node) => node.id === community.seedNodeId)) {
-      message.warning("当前社区节点未加载完成，请重试。");
-      return;
-    }
-    setActiveCommunityId(community.id);
-    setSelectedNodeId(community.seedNodeId);
-    window.setTimeout(() => graphRef.current?.resetZoom(), 40);
   }
 
   function openAddEntityModal() {
@@ -594,7 +548,9 @@ export default function GraphPage() {
   }
 
   function openEditEntityModal() {
-    if (!selectedNode) return;
+    if (!selectedNode) {
+      return;
+    }
     entityForm.setFieldsValue({
       name: selectedNode.name,
       type: selectedNode.type,
@@ -609,15 +565,17 @@ export default function GraphPage() {
   async function handleSubmitEntity() {
     const values = await entityForm.validateFields();
     const nextName = values.name.trim();
-    if (!nextName) return;
+    if (!nextName) {
+      return;
+    }
 
     if (entityModalMode === "add") {
       if (values.type === "center") {
-        message.warning("新增实体不支持设置为中心实体。");
+        message.warning("新增实体不支持设置为中心实体");
         return;
       }
       if (graphData.nodes.some((node) => node.id === nextName)) {
-        message.warning("实体名称已存在，请使用不同名称。");
+        message.warning("实体名称已存在");
         return;
       }
 
@@ -651,22 +609,25 @@ export default function GraphPage() {
       setEntityOverrides((prev) => ({
         ...prev,
         [nextName]: {
-          desc: values.desc.trim() || `${nextName} 的自定义实体描述。`,
+          desc: values.desc.trim() || `${nextName} 的自定义实体描述`,
           tag: parseTagInput(values.tagsText),
           avp: [],
         },
       }));
       setSelectedNodeId(nextName);
       setEntityModalOpen(false);
-      message.success("实体已新增。");
+      message.success("实体已新增");
       return;
     }
 
-    if (!selectedNode) return;
+    if (!selectedNode) {
+      return;
+    }
+
     const prevName = selectedNode.id;
     const renamed = prevName !== nextName;
     if (renamed && graphData.nodes.some((node) => node.id === nextName)) {
-      message.warning("目标实体名称已存在，请更换。");
+      message.warning("目标实体名称已存在");
       return;
     }
 
@@ -712,13 +673,15 @@ export default function GraphPage() {
     });
     setSelectedNodeId(nextName);
     setEntityModalOpen(false);
-    message.success("实体已更新。");
+    message.success("实体已更新");
   }
 
   function handleDeleteEntity() {
-    if (!selectedNode) return;
+    if (!selectedNode) {
+      return;
+    }
     if (selectedNode.id === graphData.centerId) {
-      message.warning("中心实体不允许删除。");
+      message.warning("中心实体不允许删除");
       return;
     }
 
@@ -734,14 +697,19 @@ export default function GraphPage() {
       return next;
     });
     setSelectedNodeId(graphData.centerId);
-    message.success("实体已删除。");
+    message.success("实体已删除");
   }
 
   function openAddRelationModal() {
-    if (!selectedNode) return;
+    if (!selectedNode) {
+      return;
+    }
     relationForm.setFieldsValue({
       source: selectedNode.id,
-      target: graphData.centerId === selectedNode.id ? graphData.nodes.find((node) => node.id !== selectedNode.id)?.id || "" : graphData.centerId,
+      target:
+        graphData.centerId === selectedNode.id
+          ? graphData.nodes.find((node) => node.id !== selectedNode.id)?.id || ""
+          : graphData.centerId,
       relation: "",
     });
     setEditingRelationKey(null);
@@ -766,9 +734,11 @@ export default function GraphPage() {
       relation: values.relation.trim(),
     };
 
-    if (!nextRelation.relation) return;
+    if (!nextRelation.relation) {
+      return;
+    }
     if (nextRelation.source === nextRelation.target) {
-      message.warning("关系两端不能是同一实体。");
+      message.warning("关系两端不能是同一个实体");
       return;
     }
 
@@ -778,14 +748,19 @@ export default function GraphPage() {
             getRelationKey(link) === editingRelationKey ? nextRelation : link,
           )
         : [...prev.links, nextRelation];
-      const uniqueLinks = links.filter(
-        (link, index, array) => array.findIndex((item) => getRelationKey(item) === getRelationKey(link)) === index,
-      );
-      return { ...prev, links: uniqueLinks };
+
+      return {
+        ...prev,
+        links: links.filter(
+          (link, index, array) =>
+            array.findIndex((item) => getRelationKey(item) === getRelationKey(link)) === index,
+        ),
+      };
     });
+
     setRelationModalOpen(false);
     setEditingRelationKey(null);
-    message.success(editingRelationKey ? "关系已更新。" : "关系已新增。");
+    message.success(editingRelationKey ? "关系已更新" : "关系已新增");
   }
 
   function handleDeleteRelation(link: EntityGraphLink) {
@@ -794,7 +769,7 @@ export default function GraphPage() {
       ...prev,
       links: prev.links.filter((item) => getRelationKey(item) !== relationKey),
     }));
-    message.success("关系已删除。");
+    message.success("关系已删除");
   }
 
   function handleExport() {
@@ -803,14 +778,16 @@ export default function GraphPage() {
     });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${graphData.centerId}-graph.json`;
+    link.download = `${graphData.centerId || "graph"}-graph.json`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
 
   async function handleFullscreen() {
     const canvas = graphCanvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      return;
+    }
     if (document.fullscreenElement) {
       await document.exitFullscreen();
       return;
@@ -824,8 +801,7 @@ export default function GraphPage() {
         style={{
           height: "calc(100vh - 112px)",
           display: "grid",
-          gridTemplateColumns: "300px 1fr 350px",
-          gap: 0,
+          gridTemplateColumns: "320px 1fr 350px",
           background: "#f7f9fc",
           borderRadius: 16,
           overflow: "hidden",
@@ -843,12 +819,13 @@ export default function GraphPage() {
           <div style={{ fontSize: 15, fontWeight: 700, color: "#1f2937", marginBottom: 14 }}>
             图谱检索
           </div>
+
           <Input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            onPressEnter={() => handleSearch()}
+            onPressEnter={() => void handleSearch()}
             prefix={<SearchOutlined style={{ color: "#94a3b8" }} />}
-            placeholder="搜索实体或关系"
+            placeholder="搜索实体名称"
             allowClear
             style={{ height: 40 }}
           />
@@ -865,84 +842,196 @@ export default function GraphPage() {
           >
             开始检索
           </Button>
-          <div style={{ display: "grid", gap: 10, marginTop: 16, marginBottom: 26 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>工作区模式</div>
-              <ModeSelectCard
-                title="自动上传"
-                description="面向批量增量文件，自动抽取实体并刷新图谱。"
-                active={workspaceMode === "auto-upload"}
-                accent="#2563eb"
-                onClick={() => switchWorkspaceMode("auto-upload")}
-                extra={
-                  <Button type="primary" size="small" onClick={handleAutoUpload}>
-                    立即同步
-                  </Button>
-                }
-              />
-              <ModeSelectCard
-                title="手动上传"
-                description="仅筛选手动上传来源的图谱数据与任务记录。"
-                active={workspaceMode === "manual-upload"}
-                accent="#0f766e"
-                onClick={() => switchWorkspaceMode("manual-upload")}
-              />
-              <ModeSelectCard
-                title="整个图谱展示"
-                description="切换到全量图谱视图，展示更多关联路径与分支。"
-                active={workspaceMode === "full-graph"}
-                accent="#7c3aed"
-                onClick={() => switchWorkspaceMode("full-graph")}
-              />
-              <ModeSelectCard
-                title="社区网络发现"
-                description="基于全图分支自动识别社区，查看桥接关系与团簇密度。"
-                active={workspaceMode === "community"}
-                accent="#b45309"
-                onClick={() => switchWorkspaceMode("community")}
-              />
-              <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>上传任务</div>
-              <div style={{ display: "grid", gap: 10 }}>
-                {visibleUploadTasks.slice(0, 4).map((task) => (
-                  <UploadTaskCard key={task.id} task={task} />
-                ))}
-                {visibleUploadTasks.length === 0 ? (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="当前过滤条件下暂无上传任务"
-                  />
-                ) : null}
-              </div>
-            </div>
+
+          <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>文档类型</div>
+            <ModeSelectCard
+              title="自动上传"
+              description="查看自动上传来源对应的知识图谱数据。"
+              active={workspaceMode === "auto-upload"}
+              accent="#2563eb"
+              onClick={() => switchWorkspaceMode("auto-upload")}
+            />
+            <ModeSelectCard
+              title="手动上传"
+              description="查看页面上传来源对应的知识图谱数据。"
+              active={workspaceMode === "manual-upload"}
+              accent="#0f766e"
+              onClick={() => switchWorkspaceMode("manual-upload")}
+            />
+          </div>
+
           <SectionBlock title="实体类型">
-            <Checkbox.Group
-              style={{ display: "grid", gap: 12 }}
-              value={checkedNodeTypes}
-              onChange={(value) => setCheckedNodeTypes(value as EntityGraphNodeType[])}
-            >
-              {(["center", "entity", "value"] as EntityGraphNodeType[]).map((type) => (
-                <Checkbox key={type} value={type}>
-                  <span style={{ color: typeMeta[type].color, fontWeight: 600 }}>
-                    {typeMeta[type].label}
-                  </span>
-                  <span style={{ color: "#64748b" }}> ({typeCounts[type]})</span>
-                </Checkbox>
-              ))}
-            </Checkbox.Group>
+            <div style={{ display: "grid", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => handleEntityTypeChange(null)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: activeEntityTypeName === null ? "1px solid #2563eb" : "1px solid #e2e8f0",
+                  background: activeEntityTypeName === null ? "#eff6ff" : "#fff",
+                  color: activeEntityTypeName === null ? "#2563eb" : "#1f2937",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>全部类型</span>
+                <span style={{ fontSize: 12, color: "#94a3b8" }}>清除筛选</span>
+              </button>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 8,
+                  maxHeight: 260,
+                  overflowY: "auto",
+                  paddingRight: 4,
+                }}
+              >
+                {entityTypes.map((item) => {
+                  const active = activeEntityTypeName === item.name;
+                  return (
+                    <button
+                      key={String(item.id)}
+                      type="button"
+                      onClick={() => handleEntityTypeChange(item.name)}
+                      title={item.name}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-start",
+                        gap: 4,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: active ? "1px solid #2563eb" : "1px solid #e2e8f0",
+                        background: active ? "#eff6ff" : "#fff",
+                        cursor: "pointer",
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: "100%",
+                          color: active ? "#2563eb" : "#1f2937",
+                          fontWeight: 600,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.name}
+                      </span>
+                      <span style={{ fontSize: 11, color: item.description ? "#64748b" : "#94a3b8" }}>
+                        {item.description || "点击筛选"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {entityTypeLoading ? <Spin size="small" /> : null}
+              {!entityTypeLoading && entityTypes.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无实体类型" />
+              ) : null}
+            </div>
           </SectionBlock>
 
-          <SectionBlock title="关系类型">
-            <Checkbox.Group
-              style={{ display: "grid", gap: 12 }}
-              value={checkedRelations}
-              onChange={(value) => setCheckedRelations(value as string[])}
+          <SectionBlock title="实体名称">
+            <Input
+              value={entityNameKeyword}
+              onChange={(event) => setEntityNameKeyword(event.target.value)}
+              prefix={<SearchOutlined style={{ color: "#94a3b8" }} />}
+              placeholder="输入实体名称筛选"
+              allowClear
+              style={{ height: 40 }}
+            />
+
+            <div
+              style={{
+                marginTop: 12,
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 8,
+                maxHeight: 260,
+                overflowY: "auto",
+                paddingRight: 4,
+              }}
             >
-              {relationOptions.map((relation) => (
-                <Checkbox key={relation} value={relation}>
-                  <span style={{ color: "#334155" }}>{relation}</span>
-                  <span style={{ color: "#64748b" }}> ({relationCounts.get(relation) || 0})</span>
-                </Checkbox>
+              {entityNameOptions.map((node) => (
+                <button
+                  key={node.id}
+                  type="button"
+                  onClick={() => handleEntityNameSelect(node)}
+                  title={node.name}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "stretch",
+                    gap: 6,
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    border:
+                      selectedNodeId === node.id
+                        ? `1px solid ${typeMeta[node.type].color}`
+                        : "1px solid #e2e8f0",
+                    background:
+                      selectedNodeId === node.id ? `${typeMeta[node.type].color}12` : "#fff",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    minWidth: 0,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minWidth: 0,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <EntityTypeDot type={node.type} />
+                    <span
+                      style={{
+                        color: "#1f2937",
+                        fontWeight: 600,
+                        fontSize: 13,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        minWidth: 0,
+                        display: "block",
+                        flex: 1,
+                      }}
+                    >
+                      {node.name}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      color: "#94a3b8",
+                      fontSize: 11,
+                      lineHeight: 1,
+                      textAlign: "left",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {node.expandable && !expandedNodeIds.has(node.id) ? "点击展开" : "已展示"}
+                  </span>
+                </button>
               ))}
-            </Checkbox.Group>
+              {entityNameOptions.length === 0 ? (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前筛选下暂无实体" />
+              ) : null}
+            </div>
           </SectionBlock>
 
           <SectionBlock title="显示设置">
@@ -970,25 +1059,16 @@ export default function GraphPage() {
               value={labelMaxLength}
               onChange={setLabelMaxLength}
             />
-            <SliderRow
-              label="已展开层级"
-              min={1}
-              max={5}
-              step={1}
-              value={Math.min(Math.max(graphSummary.expandedCount, 1), 5)}
-              onChange={() => {}}
-              disabled
-            />
             <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
               <CheckboxOptionRow
                 label="显示节点"
-                hint="控制图谱节点显隐"
+                hint="控制图谱节点显示"
                 checked={showNodes}
                 onChange={setShowNodes}
               />
               <CheckboxOptionRow
                 label="显示关系"
-                hint="控制关系连线显隐"
+                hint="控制关系连线显示"
                 checked={showLinks}
                 onChange={setShowLinks}
               />
@@ -998,59 +1078,17 @@ export default function GraphPage() {
           <SectionBlock title="图谱概览">
             <div
               style={{
-                background: "#fafbfc",
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 8,
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  paddingBottom: 8,
-                  borderBottom: "1px solid #edf1f5",
-                }}
-              >
-                <div style={{ color: "#64748b", fontSize: 12, flexShrink: 0 }}>当前中心</div>
-                <div
-                  style={{
-                    color: "#0f172a",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    lineHeight: 1.3,
-                    wordBreak: "break-all",
-                    textAlign: "right",
-                  }}
-                >
-                  {graphData.centerId}
-                </div>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 8,
-                  marginTop: 8,
-                }}
-              >
-                <OverviewMetricCard label="节点总数" value={String(graphSummary.nodeCount)} accent="#2563eb" />
-                <OverviewMetricCard
-                  label="关系总数"
-                  value={String(graphSummary.relationCount)}
-                  accent="#7c3aed"
-                />
-                <OverviewMetricCard
-                  label="已展开节点"
-                  value={String(graphSummary.expandedCount)}
-                  accent="#0f766e"
-                />
-                <OverviewMetricCard
-                  label="当前可见"
-                  value={String(graphSummary.visibleCount)}
-                  accent="#b45309"
-                />
-              </div>
+              <OverviewMetricCard label="节点总数" value={String(graphSummary.nodeCount)} accent="#2563eb" />
+              <OverviewMetricCard label="关系总数" value={String(graphSummary.relationCount)} accent="#7c3aed" />
+              <OverviewMetricCard label="已展开" value={String(graphSummary.expandedCount)} accent="#0f766e" />
+              <OverviewMetricCard label="当前可见" value={String(graphSummary.visibleCount)} accent="#b45309" />
             </div>
+
             <div style={{ marginTop: 14 }}>
               <div style={{ color: "#64748b", fontSize: 12, marginBottom: 10 }}>推荐检索</div>
               <Space wrap size={[8, 10]}>
@@ -1125,7 +1163,8 @@ export default function GraphPage() {
             <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
               <Spin size="large" tip="图谱检索中..." />
             </div>
-          ) : filteredGraphData.nodes.length > 0 ? (            <EntityRelationGraph
+          ) : filteredGraphData.nodes.length > 0 ? (
+            <EntityRelationGraph
               actionRef={graphRef}
               data={filteredGraphData}
               selectedNodeId={selectedNodeId}
@@ -1209,6 +1248,7 @@ export default function GraphPage() {
                       </Space>
                     </div>
                   </Space>
+
                   <div
                     style={{
                       marginTop: 16,
@@ -1221,19 +1261,20 @@ export default function GraphPage() {
                   >
                     {selectedDetail.desc}
                   </div>
+
                   <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
                     <DetailGridRow label="实体名称" value={selectedNode.name} />
                     <DetailGridRow label="节点类型" value={getNodeTypeLabel(selectedNode.type)} />
                     <DetailGridRow
                       label="来源方式"
-                      value={hasPresetEntityRecord(selectedNode.name) ? "预置 mock 数据" : "动态扩展 mock 数据"}
+                      value={hasPresetEntityRecord(selectedNode.name) ? "预置数据" : "动态图谱扩展"}
                     />
                     <DetailGridRow
                       label="展开来源"
                       value={
                         selectedNode.parentId
                           ? `${selectedNode.parentId} / ${selectedNode.relationFromParent || "关联"}`
-                          : "搜索中心节点"
+                          : "检索中心节点"
                       }
                     />
                   </div>
@@ -1291,13 +1332,11 @@ export default function GraphPage() {
                       );
                     })
                   ) : (
-                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点击节点后加载关联关系" />
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前实体暂无关系" />
                   )}
                 </PanelSection>
 
-                <PanelSection
-                  title="属性信息"
-                >
+                <PanelSection title="属性信息">
                   {selectedDetail.avp.slice(0, 5).map(([label, value], index) => (
                     <div
                       key={`${label}-${value}-${index}`}
@@ -1307,7 +1346,7 @@ export default function GraphPage() {
                         gap: 12,
                         padding: "10px 0",
                         borderBottom:
-                          index === selectedDetail.avp.slice(0, 12).length - 1
+                          index === selectedDetail.avp.slice(0, 5).length - 1
                             ? "none"
                             : "1px solid #eef2f7",
                       }}
@@ -1318,14 +1357,22 @@ export default function GraphPage() {
                   ))}
                 </PanelSection>
 
-                <PanelSection title="来源文档">
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>社区网络发现</div>
-                  <div style={{ color: "#64748b", fontSize: 12, marginTop: 4, marginBottom: 10 }}>
+                <PanelSection
+                  title="社区网络发现"
+                  extra={
+                    activeCommunity ? (
+                      <Button size="small" type="link" onClick={handleClearCommunity}>
+                        清除聚焦
+                      </Button>
+                    ) : null
+                  }
+                >
+                  <div style={{ color: "#64748b", fontSize: 12, marginBottom: 10 }}>
                     {activeCommunity
-                      ? `当前聚焦 ${activeCommunity.name} 社区`
+                      ? `当前聚焦：${activeCommunity.name}`
                       : "基于当前图谱结构自动识别高关联社区"}
                   </div>
-                  <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+                  <div style={{ display: "grid", gap: 10 }}>
                     {communities.slice(0, 4).map((community) => (
                       <CommunityCard
                         key={community.id}
@@ -1335,12 +1382,12 @@ export default function GraphPage() {
                       />
                     ))}
                     {communities.length === 0 ? (
-                      <Empty
-                        image={Empty.PRESENTED_IMAGE_SIMPLE}
-                        description="当前图谱规模较小，展开更多节点后可进行社区发现"
-                      />
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前图谱规模较小，暂无社区发现结果" />
                     ) : null}
                   </div>
+                </PanelSection>
+
+                <PanelSection title="来源文档">
                   {selectedDetail.sourceDocuments.map((doc) => (
                     <div
                       key={doc.id}
@@ -1354,7 +1401,6 @@ export default function GraphPage() {
                         padding: 10,
                         marginBottom: 10,
                         cursor: "pointer",
-                        transition: "all 0.2s ease",
                       }}
                     >
                       <div
@@ -1407,7 +1453,6 @@ export default function GraphPage() {
               <Button style={{ width: "100%", height: 40, borderRadius: 10 }} onClick={openAddEntityModal}>
                 新增实体
               </Button>
-              {/* disabled={!selectedNode || expandedNodeIds.has(selectedNode.id)} */}
               <Button
                 style={{ width: "100%", height: 40, borderRadius: 10 }}
                 type={selectedNode?.id === graphData.centerId ? "primary" : "default"}
@@ -1425,6 +1470,7 @@ export default function GraphPage() {
           </div>
         </aside>
       </div>
+
       <Modal
         title={entityModalMode === "add" ? "新增实体" : "编辑实体"}
         open={entityModalOpen}
@@ -1440,7 +1486,7 @@ export default function GraphPage() {
             <Select
               options={[
                 { label: "中心实体", value: "center" },
-                { label: "相关实体", value: "entity" },
+                { label: "关联实体", value: "entity" },
                 { label: "属性值", value: "value" },
               ]}
             />
@@ -1452,10 +1498,11 @@ export default function GraphPage() {
             <Input placeholder="多个标签用逗号分隔" />
           </Form.Item>
           <Form.Item name="relation" label={entityModalMode === "add" ? "与当前节点关系" : "父级关系"}>
-            <Input placeholder="例如：关联、属于、合作" />
+            <Input placeholder="例如：关联、属于、包含" />
           </Form.Item>
         </Form>
       </Modal>
+
       <Modal
         title={editingRelationKey ? "编辑关系" : "新增关系"}
         open={relationModalOpen}
@@ -1513,7 +1560,6 @@ function SliderRow({
   step,
   value,
   onChange,
-  disabled,
 }: {
   label: string;
   min: number;
@@ -1521,12 +1567,11 @@ function SliderRow({
   step: number;
   value: number;
   onChange: (value: number) => void;
-  disabled?: boolean;
 }) {
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ color: "#64748b", marginBottom: 6 }}>{label}</div>
-      <Slider min={min} max={max} step={step} value={value} onChange={onChange} disabled={disabled} />
+      <Slider min={min} max={max} step={step} value={value} onChange={onChange} />
     </div>
   );
 }
@@ -1608,14 +1653,12 @@ function ModeSelectCard({
   description,
   active,
   accent,
-  extra,
   onClick,
 }: {
   title: string;
   description: string;
   active: boolean;
   accent: string;
-  extra?: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -1631,54 +1674,9 @@ function ModeSelectCard({
         cursor: "pointer",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ color: "#0f172a", fontWeight: 700 }}>{title}</div>
-        {extra}
-      </div>
+      <div style={{ color: "#0f172a", fontWeight: 700 }}>{title}</div>
       <div style={{ color: "#64748b", fontSize: 12, lineHeight: 1.6, marginTop: 6 }}>{description}</div>
     </button>
-  );
-}
-
-function UploadTaskCard({ task }: { task: UploadTask }) {
-  const statusMap: Record<UploadTask["status"], { label: string; color: string; background: string }> =
-    {
-      running: { label: "运行中", color: "#2563eb", background: "#dbeafe" },
-      waiting: { label: "等待中", color: "#b45309", background: "#fef3c7" },
-      done: { label: "已完成", color: "#0f766e", background: "#ccfbf1" },
-    };
-  const status = statusMap[task.status];
-
-  return (
-    <div
-      style={{
-        border: "1px solid #e2e8f0",
-        borderRadius: 12,
-        background: "#fff",
-        padding: 12,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ color: "#0f172a", fontWeight: 600, minWidth: 0, flex: 1 }}>{task.name}</div>
-        <span
-          style={{
-            padding: "2px 8px",
-            borderRadius: 999,
-            color: status.color,
-            background: status.background,
-            fontSize: 12,
-            whiteSpace: "nowrap",
-          }}
-        >
-          {status.label}
-        </span>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 8, color: "#64748b", fontSize: 12 }}>
-        <span>{task.source === "auto" ? "自动上传" : "手动上传"}</span>
-        <span>{task.entityCount} 个实体</span>
-        <span>{task.updatedAt}</span>
-      </div>
-    </div>
   );
 }
 
@@ -1762,8 +1760,12 @@ function DetailGridRow({ label, value }: { label: string; value: string }) {
 }
 
 function EntityIcon({ type }: { type: EntityGraphNodeType }): ReactNode {
-  if (type === "center") return <SearchOutlined />;
-  if (type === "entity") return <UserOutlined />;
+  if (type === "center") {
+    return <SearchOutlined />;
+  }
+  if (type === "entity") {
+    return <UserOutlined />;
+  }
   return <TagsOutlined />;
 }
 
