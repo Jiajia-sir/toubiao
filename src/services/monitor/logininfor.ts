@@ -23,13 +23,16 @@ function normalizeLogininforRecord(record: any): API.Monitor.Logininfor {
 }
 
 export async function getLogininforList(params?: API.Monitor.LogininforListParams) {
-  const response = await request<API.Monitor.LogininforPageResult>(`${API_PREFIX}/system/login-log/page`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json;charset=UTF-8',
+  const response = await request<API.Monitor.LogininforPageResult>(
+    `${API_PREFIX}/system/login-log/page`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json;charset=UTF-8',
+      },
+      params,
     },
-    params,
-  });
+  );
 
   return {
     ...response,
@@ -62,7 +65,7 @@ export async function removeLogininfor(ids: string) {
 }
 
 export function exportLogininfor(params?: API.Monitor.LogininforListParams) {
-  return downLoadXlsx(`${API_PREFIX}/system/login-log/export`, { params }, `logininfor_${new Date().getTime()}.xlsx`);
+  return downLoadXlsx(`${API_PREFIX}/system/login-log/export`, { params }, `登录日志.xls`, 'GET');
 }
 
 export function unlockLogininfor(userName: string) {
