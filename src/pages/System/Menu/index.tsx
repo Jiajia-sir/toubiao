@@ -144,12 +144,12 @@ const MenuTableList: React.FC = () => {
       dataIndex: 'menuName',
       valueType: 'text',
     },
-    {
-      title: <FormattedMessage id="system.menu.icon" defaultMessage="菜单图标" />,
-      dataIndex: 'icon',
-      valueType: 'text',
-      hideInSearch: true,
-    },
+    // {
+    //   title: <FormattedMessage id="system.menu.icon" defaultMessage="菜单图标" />,
+    //   dataIndex: 'icon',
+    //   valueType: 'text',
+    //   hideInSearch: true,
+    // },
     {
       title: <FormattedMessage id="system.menu.order_num" defaultMessage="显示顺序" />,
       dataIndex: 'orderNum',
@@ -279,7 +279,14 @@ const MenuTableList: React.FC = () => {
           request={async (params) => {
             const res = await getMenuList({ ...params } as API.System.MenuListParams);
             const list = Array.isArray(res.data) ? res.data : [];
-            const menuData = buildTreeData(list, 'menuId', 'menuName', 'parentId', 'parentName', 'children');
+            const menuData = buildTreeData(
+              list,
+              'menuId',
+              'menuName',
+              'parentId',
+              'parentName',
+              'children',
+            );
             const rootMenu = {
               id: 0,
               key: 0,
@@ -299,8 +306,11 @@ const MenuTableList: React.FC = () => {
           expandable={{
             defaultExpandAllRows: true,
             expandIcon: ({ expanded, onExpand, record }) => {
-              const hasChildren = Array.isArray((record as API.System.Menu & { children?: API.System.Menu[] }).children)
-                && (record as API.System.Menu & { children?: API.System.Menu[] }).children!.length > 0;
+              const hasChildren =
+                Array.isArray(
+                  (record as API.System.Menu & { children?: API.System.Menu[] }).children,
+                ) &&
+                (record as API.System.Menu & { children?: API.System.Menu[] }).children!.length > 0;
               if (!hasChildren) {
                 return <span style={{ display: 'inline-block', width: 12 }} />;
               }

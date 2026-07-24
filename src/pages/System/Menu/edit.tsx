@@ -7,7 +7,7 @@ import {
   ProFormTreeSelect,
   ProFormSelect,
 } from '@ant-design/pro-components';
-import { Form, Modal} from 'antd';
+import { Form, Modal } from 'antd';
 import { useIntl, FormattedMessage } from '@umijs/max';
 import { DataNode } from 'antd/es/tree';
 import { createIcon } from '@/utils/IconUtil';
@@ -27,7 +27,6 @@ export type MenuFormProps = {
 };
 
 const MenuForm: React.FC<MenuFormProps> = (props) => {
-
   const [form] = Form.useForm();
 
   const [menuTypeId, setMenuTypeId] = useState<any>('M');
@@ -93,7 +92,8 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
         grid={true}
         submitter={false}
         layout="horizontal"
-        onFinish={handleFinish}>
+        onFinish={handleFinish}
+      >
         <ProFormDigit
           name="menuId"
           label={intl.formatMessage({
@@ -116,7 +116,7 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
             id: 'system.menu.parent_id',
             defaultMessage: '上级菜单',
           })}
-          params={{menuTree}}
+          params={{ menuTree }}
           request={async () => {
             return menuTree;
           }}
@@ -124,11 +124,13 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
           rules={[
             {
               required: true,
-              message: <FormattedMessage id="请输入父菜单编号！" defaultMessage="请输入父菜单编号！" />,
+              message: (
+                <FormattedMessage id="请输入父菜单编号！" defaultMessage="请输入父菜单编号！" />
+              ),
             },
           ]}
-          fieldProps = {{
-            defaultValue: 0
+          fieldProps={{
+            defaultValue: 0,
           }}
         />
         <ProFormRadio.Group
@@ -156,7 +158,7 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
             },
           }}
         />
-        <ProFormSelect
+        {/* <ProFormSelect
           name="icon"
           label={intl.formatMessage({
             id: 'system.menu.icon',
@@ -177,7 +179,7 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
               message: <FormattedMessage id="请输入菜单图标！" defaultMessage="请输入菜单图标！" />,
             },
           ]}
-        />
+        /> */}
         <ProFormText
           name="menuName"
           label={intl.formatMessage({
@@ -208,8 +210,8 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
               message: <FormattedMessage id="请输入显示顺序！" defaultMessage="请输入显示顺序！" />,
             },
           ]}
-          fieldProps = {{
-            defaultValue: 1
+          fieldProps={{
+            defaultValue: 1,
           }}
         />
         <ProFormRadio.Group
@@ -229,11 +231,13 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
           rules={[
             {
               required: false,
-              message: <FormattedMessage id="请输入是否为外链！" defaultMessage="请输入是否为外链！" />,
+              message: (
+                <FormattedMessage id="请输入是否为外链！" defaultMessage="请输入是否为外链！" />
+              ),
             },
           ]}
-          fieldProps = {{
-            defaultValue: '1'
+          fieldProps={{
+            defaultValue: '1',
           }}
         />
         <ProFormText
@@ -320,8 +324,8 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
               message: <FormattedMessage id="请输入是否缓存！" defaultMessage="请输入是否缓存！" />,
             },
           ]}
-          fieldProps = {{
-            defaultValue: 0
+          fieldProps={{
+            defaultValue: 0,
           }}
         />
         <ProFormRadio.Group
@@ -340,8 +344,8 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
               message: <FormattedMessage id="请输入显示状态！" defaultMessage="请输入显示状态！" />,
             },
           ]}
-          fieldProps = {{
-            defaultValue: true
+          fieldProps={{
+            defaultValue: true,
           }}
         />
         <ProFormRadio.Group
@@ -360,8 +364,8 @@ const MenuForm: React.FC<MenuFormProps> = (props) => {
               message: <FormattedMessage id="请输入菜单状态！" defaultMessage="请输入菜单状态！" />,
             },
           ]}
-          fieldProps = {{
-            defaultValue: '0'
+          fieldProps={{
+            defaultValue: '0',
           }}
         />
       </ProForm>
