@@ -179,13 +179,19 @@ function getBasicFieldVisibility(type?: string) {
  * 把表单值整理成后端所需的统一连接定义。
  * 这里显式裁剪空字符串，避免把一堆无意义空值写回数据库。
  */
-function buildPayload(values: EditFormValues, editRecord?: DataSourceRecord | null): DataSourcePayload {
-  const properties = Object.entries(values.properties || {}).reduce<Record<string, any>>((acc, [key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      acc[key] = value;
-    }
-    return acc;
-  }, {});
+function buildPayload(
+  values: EditFormValues,
+  editRecord?: DataSourceRecord | null,
+): DataSourcePayload {
+  const properties = Object.entries(values.properties || {}).reduce<Record<string, any>>(
+    (acc, [key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    },
+    {},
+  );
 
   // Nebula 兼容：把 databaseName 同步到 properties.spaceName，避免 space 与库名不一致
   if (values.type === 'nebula' && values.databaseName?.trim() && !properties.spaceName) {
@@ -227,14 +233,20 @@ export default function DataSourcePage() {
   const [objectLoading, setObjectLoading] = useState(false);
   const [fieldLoading, setFieldLoading] = useState(false);
   const [importSubmitting, setImportSubmitting] = useState(false);
-  const [objectOptions, setObjectOptions] = useState<Array<{ key: string; title: string; kind: string }>>([]);
+  const [objectOptions, setObjectOptions] = useState<
+    Array<{ key: string; title: string; kind: string }>
+  >([]);
   const [selectedObjectKeys, setSelectedObjectKeys] = useState<string[]>([]);
   const [activeObjectKey, setActiveObjectKey] = useState<string>('');
-  const [fieldOptions, setFieldOptions] = useState<Array<{ label: string; value: string; primaryKey?: boolean }>>([]);
+  const [fieldOptions, setFieldOptions] = useState<
+    Array<{ label: string; value: string; primaryKey?: boolean }>
+  >([]);
   const [selectedFieldsMap, setSelectedFieldsMap] = useState<Record<string, string[]>>({});
   const [keyFieldsMap, setKeyFieldsMap] = useState<Record<string, string[]>>({});
   const [importForm] = Form.useForm();
-  const [databaseOptions, setDatabaseOptions] = useState<Array<{ label: string; value: string }>>([]);
+  const [databaseOptions, setDatabaseOptions] = useState<Array<{ label: string; value: string }>>(
+    [],
+  );
   const [dbLoading, setDbLoading] = useState(false);
   const [searchValues, setSearchValues] = useState<SearchFormValues>({
     name: undefined,
@@ -358,7 +370,9 @@ export default function DataSourcePage() {
     const payload = buildPayload(values, editRecord);
     setSubmitting(true);
     try {
-      const res: any = editRecord ? await updateDataSource(payload) : await createDataSource(payload);
+      const res: any = editRecord
+        ? await updateDataSource(payload)
+        : await createDataSource(payload);
       if (res?.code === 200 || res?.code === 0 || res?.success === true) {
         message.success(editRecord ? '数据源更新成功' : '数据源创建成功');
         setModalVisible(false);
@@ -455,7 +469,6 @@ export default function DataSourcePage() {
     }
   };
 
-
   const extractList = (payload: any) => payload?.data || payload || [];
 
   const loadDatabaseOptions = async (payload?: DataSourcePayload, dataSourceId?: number) => {
@@ -471,10 +484,12 @@ export default function DataSourcePage() {
         return;
       }
       const list = (res?.data || res || []) as Array<any>;
-      setDatabaseOptions((list || []).map((item) => ({
-        label: item.label || item.name,
-        value: item.name,
-      })));
+      setDatabaseOptions(
+        (list || []).map((item) => ({
+          label: item.label || item.name,
+          value: item.name,
+        })),
+      );
     } catch (error) {
       console.error(error);
       message.warning('自动获取数据库列表失败，可手动填写');
@@ -483,7 +498,6 @@ export default function DataSourcePage() {
       setDbLoading(false);
     }
   };
-
 
   /**
    * 打开“配置导入对象”弹窗：探查表/集合/标签，再按对象选择字段。
@@ -663,7 +677,8 @@ export default function DataSourcePage() {
       key: 'databaseName',
       width: 160,
       render: (_, record) => {
-        const db = record.databaseName || record.properties?.spaceName || record.properties?.filePath || '-';
+        const db =
+          record.databaseName || record.properties?.spaceName || record.properties?.filePath || '-';
         return <Text code>{db}</Text>;
       },
     },
@@ -692,7 +707,9 @@ export default function DataSourcePage() {
             <Space size={6}>
               {statusTag}
               <Text type="secondary" style={{ fontSize: 12 }}>
-                {record.lastTestTime ? dayjs(record.lastTestTime).format('YYYY-MM-DD HH:mm:ss') : '-'}
+                {record.lastTestTime
+                  ? dayjs(record.lastTestTime).format('YYYY-MM-DD HH:mm:ss')
+                  : '-'}
               </Text>
             </Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -709,16 +726,30 @@ export default function DataSourcePage() {
       fixed: 'right',
       render: (_, record) => (
         <Space size={8} wrap>
-          <Button type="link" size="small" icon={<LinkOutlined />} onClick={() => handleTableTest(record)}>
+          <Button
+            type="link"
+            size="small"
+            icon={<LinkOutlined />}
+            onClick={() => handleTableTest(record)}
+          >
             测试连接
           </Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => openEditModal(record)}
+          >
             编辑
           </Button>
           <Button type="link" size="small" onClick={() => openImportModal(record)}>
             配置导入
           </Button>
-          <Button type="link" size="small" onClick={() => history.push(`/data/import-result?dataSourceId=${record.id}`)}>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => history.push(`/data/import-result?dataSourceId=${record.id}`)}
+          >
             导入结果
           </Button>
           <Popconfirm title="确认删除该数据源吗？" onConfirm={() => handleDelete(record.id)}>
@@ -736,32 +767,72 @@ export default function DataSourcePage() {
       <Card bordered={false}>
         <Space direction="vertical" size={6}>
           <Text strong style={{ fontSize: 18 }}>
-            多源结构化数据源管理
+            数据源接入
           </Text>
         </Space>
       </Card>
 
       <Card bordered={false} loading={metaLoading}>
-        <Row gutter={[12, 12]}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 12,
+            flexWrap: 'nowrap',
+            width: '100%',
+          }}
+        >
           {typeOptions.map((item) => (
-            <Col xs={24} sm={12} md={8} lg={6} xl={4} key={item.type}>
-              <Card size="small" style={{ height: '100%' }}>
-                <Space direction="vertical" size={6}>
-                  <Space size={6} wrap>
-                    <Tag color="blue">{item.typeName}</Tag>
-                    <Tag>{item.categoryName}</Tag>
-                  </Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    类型编码：{item.type}
-                  </Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+            <Card
+              key={item.type}
+              size="small"
+              hoverable
+              style={{
+                flex: 1,
+                borderRadius: 14,
+                border: '1px solid #b3d8ff',
+                background: 'linear-gradient(180deg, #f5faff 0%, #ecf5ff 100%)',
+                boxShadow: '0 8px 18px rgba(64, 158, 255, 0.12)',
+              }}
+              bodyStyle={{ padding: 14 }}
+            >
+              <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                <Space size={8} style={{ width: '100%', justifyContent: 'space-between' }}>
+                  <Tag
+                    style={{
+                      marginInlineEnd: 0,
+                      borderRadius: 999,
+                      paddingInline: 10,
+                      fontWeight: 600,
+                      color: '#409eff',
+                      background: '#ffffff',
+                      borderColor: '#c6e2ff',
+                    }}
+                  >
+                    {item.typeName}
+                  </Tag>
+                  <Tag
+                    style={{
+                      marginInlineEnd: 0,
+                      borderColor: '#d9ecff',
+                      color: '#409eff',
+                      background: '#f0f7ff',
+                      borderRadius: 999,
+                      paddingInline: 10,
+                    }}
+                  >
+                    {item.categoryName}
+                  </Tag>
+                </Space>
+                <Space direction="vertical" size={4}>
+                  <Text style={{ fontSize: 12, color: '#303133' }}>类型编码：{item.type}</Text>
+                  <Text style={{ fontSize: 12, color: '#606266' }}>
                     默认端口：{item.defaultPort ?? '无'}
                   </Text>
                 </Space>
-              </Card>
-            </Col>
+              </Space>
+            </Card>
           ))}
-        </Row>
+        </div>
       </Card>
 
       <Card bordered={false}>
@@ -879,12 +950,20 @@ export default function DataSourcePage() {
         >
           <Row gutter={[16, 8]}>
             <Col span={12}>
-              <Form.Item name="name" label="数据源名称" rules={[{ required: true, message: '请输入数据源名称' }]}>
+              <Form.Item
+                name="name"
+                label="数据源名称"
+                rules={[{ required: true, message: '请输入数据源名称' }]}
+              >
                 <Input placeholder="例如：业务主库 MySQL" maxLength={100} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="type" label="数据源类型" rules={[{ required: true, message: '请选择数据源类型' }]}>
+              <Form.Item
+                name="type"
+                label="数据源类型"
+                rules={[{ required: true, message: '请选择数据源类型' }]}
+              >
                 <Select
                   placeholder="请选择数据源类型"
                   options={typeOptions.map((item) => ({ label: item.typeName, value: item.type }))}
@@ -893,11 +972,19 @@ export default function DataSourcePage() {
             </Col>
             <Col span={24}>
               <Form.Item name="description" label="数据源说明">
-                <Input.TextArea rows={3} placeholder="说明该数据源承载的业务域、主要用途和后续导入目标" maxLength={300} />
+                <Input.TextArea
+                  rows={3}
+                  placeholder="说明该数据源承载的业务域、主要用途和后续导入目标"
+                  maxLength={300}
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="status" label="启停状态" rules={[{ required: true, message: '请选择状态' }]}>
+              <Form.Item
+                name="status"
+                label="启停状态"
+                rules={[{ required: true, message: '请选择状态' }]}
+              >
                 <Select
                   options={[
                     { label: '启用', value: 1 },
@@ -945,7 +1032,12 @@ export default function DataSourcePage() {
                       : undefined
                   }
                 >
-                  <InputNumber style={{ width: '100%' }} min={1} max={65535} placeholder="请输入端口" />
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    min={1}
+                    max={65535}
+                    placeholder="请输入端口"
+                  />
                 </Form.Item>
               </Col>
             )}
@@ -1006,7 +1098,11 @@ export default function DataSourcePage() {
                       ? [{ required: true, message: '请输入密码' }]
                       : undefined
                   }
-                  extra={editRecord ? '编辑时如需保留原密码，可直接使用当前值；后端会在空密码场景下兜底保留。' : undefined}
+                  extra={
+                    editRecord
+                      ? '编辑时如需保留原密码，可直接使用当前值；后端会在空密码场景下兜底保留。'
+                      : undefined
+                  }
                 >
                   <Input.Password placeholder="请输入密码" autoComplete="new-password" />
                 </Form.Item>
@@ -1027,7 +1123,11 @@ export default function DataSourcePage() {
                     <Form.Item
                       name={['properties', field.key]}
                       label={field.label}
-                      rules={field.required ? [{ required: true, message: `请输入${field.label}` }] : undefined}
+                      rules={
+                        field.required
+                          ? [{ required: true, message: `请输入${field.label}` }]
+                          : undefined
+                      }
                       extra={field.helpText}
                     >
                       {field.inputType === 'number' ? (
@@ -1047,7 +1147,11 @@ export default function DataSourcePage() {
       </Modal>
 
       <Modal
-        title={importTarget ? `配置导入对象 - ${importTarget.name} / 库: ${importTarget.databaseName || importTarget.properties?.spaceName || '-'}` : '配置导入对象'}
+        title={
+          importTarget
+            ? `配置导入对象 - ${importTarget.name} / 库: ${importTarget.databaseName || importTarget.properties?.spaceName || '-'}`
+            : '配置导入对象'
+        }
         open={importModalVisible}
         onCancel={() => {
           setImportModalVisible(false);
@@ -1065,13 +1169,19 @@ export default function DataSourcePage() {
           {' / '}
           <Text code>{importTarget?.type}</Text>
           {' / 库：'}
-          <Text code>{importTarget?.databaseName || importTarget?.properties?.spaceName || '-'}</Text>
+          <Text code>
+            {importTarget?.databaseName || importTarget?.properties?.spaceName || '-'}
+          </Text>
           <Text type="secondary">（当前固定全量导入、手动触发）</Text>
         </div>
         <Form form={importForm} layout="vertical">
           <Row gutter={16}>
             <Col span={10}>
-              <Form.Item name="name" label="任务名称" rules={[{ required: true, message: '请输入任务名称' }]}>
+              <Form.Item
+                name="name"
+                label="任务名称"
+                rules={[{ required: true, message: '请输入任务名称' }]}
+              >
                 <Input placeholder="请输入导入任务名称" />
               </Form.Item>
             </Col>
@@ -1097,7 +1207,12 @@ export default function DataSourcePage() {
             </Col>
             <Col span={6}>
               <Form.Item name="enabled" label="启用状态">
-                <Select options={[{ label: '启用', value: 1 }, { label: '停用', value: 0 }]} />
+                <Select
+                  options={[
+                    { label: '启用', value: 1 },
+                    { label: '停用', value: 0 },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={6}>
@@ -1107,7 +1222,6 @@ export default function DataSourcePage() {
             </Col>
           </Row>
         </Form>
-
 
         <Divider orientation="left">选择对象</Divider>
         <Spin spinning={objectLoading}>
@@ -1130,7 +1244,9 @@ export default function DataSourcePage() {
             render={(item) => item.title}
             listStyle={{ width: 360, height: 280 }}
             showSearch
-            filterOption={(input, item) => (item.title || '').toLowerCase().includes(input.toLowerCase())}
+            filterOption={(input, item) =>
+              (item.title || '').toLowerCase().includes(input.toLowerCase())
+            }
           />
         </Spin>
 
@@ -1175,11 +1291,6 @@ export default function DataSourcePage() {
           )}
         </Spin>
       </Modal>
-
-
-
     </Space>
   );
 }
-
-

@@ -4720,17 +4720,18 @@ export default function MonitorPage() {
 
     const statCardStyle: React.CSSProperties = {
       borderRadius: 18,
-      boxShadow: '0 8px 28px rgba(15, 23, 42, 0.05)',
+      border: '1px solid #b3d8ff',
+      boxShadow: '0 8px 18px rgba(64, 158, 255, 0.12)',
       overflow: 'hidden',
     };
 
     const runningCardBgStyle: React.CSSProperties = {
-      background: '#f0f5ff',
+      background: 'linear-gradient(180deg, #f5faff 0%, #ecf5ff 100%)',
       position: 'relative',
     };
 
     const failedCardBgStyle: React.CSSProperties = {
-      background: '#fff5f5',
+      background: 'linear-gradient(180deg, #f5faff 0%, #ecf5ff 100%)',
       position: 'relative',
     };
 
@@ -4739,7 +4740,7 @@ export default function MonitorPage() {
       alignItems: 'center',
       justifyContent: 'space-between',
       padding: '16px 20px 12px',
-      borderBottom: '1px solid rgba(0, 0, 0, 0.04)',
+      borderBottom: '1px solid #d9ecff',
     };
 
     const statValueStyle: React.CSSProperties = {
@@ -4749,18 +4750,19 @@ export default function MonitorPage() {
 
     const statLabelStyle: React.CSSProperties = {
       fontSize: 13,
-      color: '#64748b',
+      color: '#606266',
       marginTop: 4,
     };
 
     const dataTransferCardStyle: React.CSSProperties = {
       borderRadius: 18,
-      boxShadow: '0 8px 28px rgba(15, 23, 42, 0.05)',
+      border: '1px solid #b3d8ff',
+      boxShadow: '0 8px 18px rgba(64, 158, 255, 0.12)',
       overflow: 'hidden',
     };
 
     const dataTransferBgStyle: React.CSSProperties = {
-      background: '#f3f3f3',
+      background: 'linear-gradient(180deg, #f5faff 0%, #ecf5ff 100%)',
     };
 
     return (
@@ -4771,13 +4773,13 @@ export default function MonitorPage() {
             styles={{ body: { padding: 0 } }}
           >
             <div style={statHeaderStyle}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>运行中任务</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#303133' }}>运行中任务</span>
               <div
                 style={{
                   width: 26,
                   height: 26,
                   borderRadius: 10,
-                  background: '#dbeafe',
+                  background: '#d9ecff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -4787,8 +4789,8 @@ export default function MonitorPage() {
               </div>
             </div>
             <div style={{ padding: '16px 20px 20px' }}>
-              <div style={{ ...statValueStyle, color: '#333' }}>{runningJobs.length}</div>
-              <div style={{ ...statLabelStyle, color: '#666' }}>个任务正在执行</div>
+              <div style={{ ...statValueStyle, color: '#303133' }}>{runningJobs.length}</div>
+              <div style={statLabelStyle}>个任务正在执行</div>
             </div>
           </Card>
         </Col>
@@ -4798,13 +4800,13 @@ export default function MonitorPage() {
             styles={{ body: { padding: 0 } }}
           >
             <div style={statHeaderStyle}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>失败任务</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#303133' }}>失败任务</span>
               <div
                 style={{
                   width: 26,
                   height: 26,
                   borderRadius: 10,
-                  background: '#fee2e2',
+                  background: '#fef0f0',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -4814,8 +4816,8 @@ export default function MonitorPage() {
               </div>
             </div>
             <div style={{ padding: '16px 20px 20px' }}>
-              <div style={{ ...statValueStyle, color: '#333' }}>{failedJobs.length}</div>
-              <div style={{ ...statLabelStyle, color: '#666' }}>个任务执行失败</div>
+              <div style={{ ...statValueStyle, color: '#303133' }}>{failedJobs.length}</div>
+              <div style={statLabelStyle}>个任务执行失败</div>
             </div>
           </Card>
         </Col>
@@ -4830,10 +4832,10 @@ export default function MonitorPage() {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '16px 20px 12px',
-                borderBottom: '1px solid rgba(0, 0, 0, 0.04)',
+                borderBottom: '1px solid #d9ecff',
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>数据传输</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#303133' }}>数据传输</span>
               <div
                 style={{
                   display: 'flex',
@@ -4844,7 +4846,7 @@ export default function MonitorPage() {
                   style={{
                     padding: '4px 10px',
                     borderRadius: 6,
-                    background: '#f0fdf4',
+                    background: '#f0f7ff',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
@@ -4857,7 +4859,7 @@ export default function MonitorPage() {
                   style={{
                     padding: '4px 10px',
                     borderRadius: 6,
-                    background: '#eff6ff',
+                    background: '#f0f7ff',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
@@ -4873,10 +4875,10 @@ export default function MonitorPage() {
                 <div
                   style={{
                     padding: '20px 20px 16px',
-                    borderRight: '1px solid rgba(0, 0, 0, 0.04)',
+                    borderRight: '1px solid #d9ecff',
                   }}
                 >
-                  <div style={{ ...statValueStyle, color: '#16a34a' }}>
+                  <div style={{ ...statValueStyle, color: '#409eff' }}>
                     {(totalDataSent / 1024 / 1024).toFixed(2)}
                     <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}>MB</span>
                   </div>
@@ -4885,7 +4887,7 @@ export default function MonitorPage() {
               </Col>
               <Col span={12}>
                 <div style={{ padding: '20px 20px 16px' }}>
-                  <div style={{ ...statValueStyle, color: '#2563eb' }}>
+                  <div style={{ ...statValueStyle, color: '#409eff' }}>
                     {(totalDataReceived / 1024 / 1024).toFixed(2)}
                     <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}>MB</span>
                   </div>
