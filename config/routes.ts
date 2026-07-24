@@ -55,6 +55,12 @@ export default [
     component: './DataSearch',
   },
   {
+    name: 'RAG 问答',
+    icon: 'robot',
+    path: '/rag-system',
+    component: './RagSystem',
+  },
+  {
     name: '鏁版嵁鎺ュ叆',
     icon: 'database',
     path: '/data',

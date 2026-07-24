@@ -25,6 +25,80 @@ const RETRY_HEADER_KEY = 'X-Retry-After-Refresh';
 
 const isDev = process.env.NODE_ENV === 'development';
 
+function normalizeMenuText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return String(value);
+  }
+
+  if (value && typeof value === 'object') {
+    const elementLike = value as { props?: { children?: unknown } };
+    const children = elementLike.props?.children;
+
+    if (typeof children === 'string' || typeof children === 'number') {
+      return String(children);
+    }
+
+    if (Array.isArray(children)) {
+      const text = children
+        .filter((item) => typeof item === 'string' || typeof item === 'number')
+        .join('');
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function normalizeMenuItems<T extends Record<string, any>>(items?: T[]): T[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => {
+    const name = normalizeMenuText(item.name, item.path || '');
+    const title = normalizeMenuText(item.title, name);
+    const breadcrumbName = normalizeMenuText(item.breadcrumbName, title);
+    const label = normalizeMenuText(item.label, name);
+
+    return {
+      ...item,
+      name,
+      title,
+      breadcrumbName,
+      label,
+      children: normalizeMenuItems(item.children),
+      routes: normalizeMenuItems(item.routes),
+    };
+  });
+}
+
+function normalizeRouteItems<T extends Record<string, any>>(items?: T[]): T[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.map((item) => {
+    const name = normalizeMenuText(item.name, item.path || '');
+    const title = normalizeMenuText(item.title, name);
+    const breadcrumbName = normalizeMenuText(item.breadcrumbName, title);
+
+    return {
+      ...item,
+      name,
+      title,
+      breadcrumbName,
+      children: normalizeRouteItems(item.children),
+      routes: normalizeRouteItems(item.routes),
+    };
+  });
+}
+
 
 
 /**
@@ -101,8 +175,9 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
         if (!initialState?.currentUser?.userId) {
           return [];
         }
-        return ensureRemoteMenu();
+        return normalizeMenuItems((await ensureRemoteMenu()) as Record<string, any>[]);
       },
+      postMenuData: (menuData) => normalizeMenuItems(menuData as Record<string, any>[]),
     },
     footerRender: () => <Footer />,
     onPageChange: () => {
@@ -180,6 +255,7 @@ export async function onRouteChange({ clientRoutes, location }) {
 export async function patchClientRoutes({ routes }) {
   // console.log('patchClientRoutes', routes);
   patchRouteWithRemoteMenus(routes);
+  normalizeRouteItems(routes as Record<string, any>[]);
 }
 
 export function render(oldRender: () => void) {

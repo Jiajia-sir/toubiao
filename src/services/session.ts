@@ -10,6 +10,45 @@ function canUseSessionStorage() {
   return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
 }
 
+function isSerializedReactElementLike(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    'type' in candidate &&
+    'props' in candidate &&
+    'key' in candidate &&
+    'ref' in candidate &&
+    !('$$typeof' in candidate)
+  );
+}
+
+function sanitizeMenuCache(items: any[]): any[] {
+  return items.map((item) => {
+    const nextItem: Record<string, any> = {
+      ...item,
+      icon:
+        typeof item?.icon === 'string'
+          ? item.icon
+          : isSerializedReactElementLike(item?.icon)
+            ? undefined
+            : item?.icon,
+    };
+
+    if (Array.isArray(item?.children)) {
+      nextItem.children = sanitizeMenuCache(item.children);
+    }
+
+    if (Array.isArray(item?.routes)) {
+      nextItem.routes = sanitizeMenuCache(item.routes);
+    }
+
+    return nextItem;
+  });
+}
+
 function readStoredRemoteMenu() {
   if (!canUseSessionStorage()) {
     return null;
@@ -22,7 +61,12 @@ function readStoredRemoteMenu() {
 
   try {
     const parsedValue = JSON.parse(rawValue);
-    return Array.isArray(parsedValue) ? parsedValue : null;
+    if (!Array.isArray(parsedValue)) {
+      window.sessionStorage.removeItem(REMOTE_MENU_STORAGE_KEY);
+      return null;
+    }
+
+    return sanitizeMenuCache(parsedValue);
   } catch (error) {
     window.sessionStorage.removeItem(REMOTE_MENU_STORAGE_KEY);
     return null;
@@ -48,7 +92,10 @@ export function setRemoteMenu(data: any) {
   }
 
   if (Array.isArray(data)) {
-    window.sessionStorage.setItem(REMOTE_MENU_STORAGE_KEY, JSON.stringify(data));
+    window.sessionStorage.setItem(
+      REMOTE_MENU_STORAGE_KEY,
+      JSON.stringify(sanitizeMenuCache(data)),
+    );
     return;
   }
 
