@@ -73,8 +73,9 @@ export function getFirstMenuPath(menuData?: MenuDataItem[]): string | undefined 
     if (item.hideInMenu) {
       continue;
     }
-    if (item.routes && item.routes.length > 0) {
-      const childPath = getFirstMenuPath(item.routes as MenuDataItem[]);
+    const childRoutes = item.routes as MenuDataItem[] | undefined;
+    if (childRoutes && childRoutes.length > 0) {
+      const childPath = getFirstMenuPath(childRoutes);
       if (childPath) {
         return childPath;
       }
@@ -103,6 +104,50 @@ function joinMenuPath(parentPath: string, currentPath: string) {
   }
   const normalizedParent = parentPath ? parentPath.replace(/\/+$/, '') : '';
   return `${normalizedParent}/${currentPath}`.replace(/\/{2,}/g, '/');
+}
+
+function normalizeMenuVisible(value: any) {
+  if (value === true || value === 'true' || value === 1 || value === '1') {
+    return true;
+  }
+  if (value === false || value === 'false' || value === 0 || value === '0') {
+    return false;
+  }
+  return undefined;
+}
+
+function normalizeMenuType(value: any) {
+  if (value === 1 || value === '1' || value === 'M') {
+    return 'M';
+  }
+  if (value === 2 || value === '2' || value === 'C') {
+    return 'C';
+  }
+  if (value === 3 || value === '3' || value === 'F') {
+    return 'F';
+  }
+  return undefined;
+}
+
+function normalizeMenuNode(item: any) {
+  const menuType = normalizeMenuType(item.menuType ?? item.type);
+  const visible = normalizeMenuVisible(item.visible);
+  const hidden = typeof item.hidden === 'boolean' ? item.hidden : undefined;
+  const title = item.name ?? item.menuName ?? item.title ?? item.meta?.title;
+  const icon = item.icon ?? item.meta?.icon;
+  const children = Array.isArray(item.children) ? item.children : [];
+
+  return {
+    ...item,
+    name: title,
+    path: item.path ?? '',
+    icon,
+    component: item.component ?? item.componentName,
+    children,
+    visible,
+    hidden,
+    menuType,
+  };
 }
 
 function patchRouteItems(route: any, menu: any, parentPath: string) {
@@ -220,24 +265,31 @@ export function convertCompatRouters(childrens: API.RoutersMenuItem[]): any[] {
 }
 
 function transformMenus(menus: any[], parentPath = ''): any[] {
-  return menus.map((item: any) => {
-    const path = joinMenuPath(parentPath, item.path);
-    const children = item.children ? transformMenus(item.children, path) : undefined;
-    return {
-      path,
-      name: item.name,
-      icon: item.icon ? createIcon(item.icon) : undefined,
-      component: item.component,
-      routes: children,
-      children,
-      hideInMenu: item.visible === false,
-      hideChildrenInMenu: item.visible === false,
-      meta: {
-        title: item.name,
-        icon: item.icon,
-      },
-    };
-  });
+  return menus
+    .map((item: any) => normalizeMenuNode(item))
+    .filter((item: any) => item.menuType !== 'F')
+    .map((item: any) => {
+      const path = joinMenuPath(parentPath, item.path);
+      const children = item.children?.length ? transformMenus(item.children, path) : undefined;
+      const hiddenInMenu = item.hidden === true || item.visible === false;
+
+      return {
+        path,
+        name: item.name || path,
+        icon: item.icon ? createIcon(item.icon) : undefined,
+        component: item.component,
+        routes: children,
+        children,
+        hideInMenu: hiddenInMenu,
+        hideChildrenInMenu: hiddenInMenu,
+        flatMenu: false,
+        meta: {
+          title: item.name,
+          icon: item.icon,
+        },
+      };
+    })
+    .filter((item: any) => item.name);
 }
 
 export async function getRoutersInfo(): Promise<MenuDataItem[]> {
