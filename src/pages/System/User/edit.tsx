@@ -27,6 +27,8 @@ export type UserFormProps = {
   depts: DataNode[];
 };
 
+const PHONE_NUMBER_REGEXP = /^1[3-9]\d{9}$/;
+
 const findDeptPath = (options: DataNode[], targetValue?: React.Key): React.Key[] | undefined => {
   if (typeof targetValue === 'undefined' || targetValue === null) {
     return undefined;
@@ -47,11 +49,25 @@ const findDeptPath = (options: DataNode[], targetValue?: React.Key): React.Key[]
   return undefined;
 };
 
+const normalizeDeptOptions = (options: DataNode[]): DataNode[] => {
+  return options.map((option) => {
+    const currentOption = option as DataNode & { status?: number | string };
+    return {
+      ...currentOption,
+      disabled: Number(currentOption.status) === 1 || currentOption.disabled,
+      children: currentOption.children
+        ? normalizeDeptOptions(currentOption.children as DataNode[])
+        : undefined,
+    };
+  });
+};
+
 const UserForm: React.FC<UserFormProps> = (props) => {
   const [form] = Form.useForm();
   const intl = useIntl();
   const isEdit = typeof props.values.userId !== 'undefined' && props.values.userId !== null;
   const halfColProps = { xs: 24, md: 12, xl: 12 };
+  const deptOptions = normalizeDeptOptions(props.depts || []);
 
   useEffect(() => {
     form.resetFields();
@@ -130,7 +146,7 @@ const UserForm: React.FC<UserFormProps> = (props) => {
             defaultMessage: '部门',
           })}
           fieldProps={{
-            options: props.depts as any[],
+            options: deptOptions as any[],
             changeOnSelect: true,
             style: { width: '100%' },
           }}
@@ -151,6 +167,18 @@ const UserForm: React.FC<UserFormProps> = (props) => {
           })}
           placeholder="请输入手机号码"
           colProps={halfColProps}
+          rules={[
+            {
+              validator: async (_, value) => {
+                if (!value) {
+                  return;
+                }
+                if (!PHONE_NUMBER_REGEXP.test(String(value))) {
+                  throw new Error('请输入正确的手机号格式');
+                }
+              },
+            },
+          ]}
         />
         <ProFormText
           name="email"

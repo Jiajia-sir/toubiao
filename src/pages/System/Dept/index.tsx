@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useIntl, FormattedMessage, useAccess } from '@umijs/max';
 import type { FormInstance } from 'antd';
-import { Button, message, Modal } from 'antd';
+import { Button, message, Modal, Tag } from 'antd';
 import {
   ActionType,
   FooterToolbar,
@@ -17,16 +17,12 @@ import {
   updateDept,
   getDeptListExcludeChild,
 } from '@/services/system/dept';
+import { getUserSimpleList } from '@/services/system/user';
 import UpdateForm from './edit';
 import { getDictValueEnum } from '@/services/system/dict';
 import { buildTreeData } from '@/utils/tree';
 import DictTag from '@/components/DictTag';
 
-/**
- * 添加节点
- *
- * @param fields
- */
 const handleAdd = async (fields: API.System.Dept) => {
   const hide = message.loading('正在添加');
   try {
@@ -45,11 +41,6 @@ const handleAdd = async (fields: API.System.Dept) => {
   }
 };
 
-/**
- * 更新节点
- *
- * @param fields
- */
 const handleUpdate = async (fields: API.System.Dept) => {
   const hide = message.loading('正在更新');
   try {
@@ -68,11 +59,6 @@ const handleUpdate = async (fields: API.System.Dept) => {
   }
 };
 
-/**
- * 删除节点
- *
- * @param selectedRows
- */
 const handleRemove = async (selectedRows: API.System.Dept[]) => {
   const hide = message.loading('正在删除');
   if (!selectedRows) return true;
@@ -123,10 +109,9 @@ const DeptTableList: React.FC = () => {
 
   const [deptTree, setDeptTree] = useState<any>([]);
   const [statusOptions, setStatusOptions] = useState<any>([]);
+  const [userNicknameMap, setUserNicknameMap] = useState<Record<string, string>>({});
 
   const access = useAccess();
-
-  /** 国际化配置 */
   const intl = useIntl();
 
   useEffect(() => {
@@ -141,6 +126,20 @@ const DeptTableList: React.FC = () => {
     });
   }, []);
 
+  useEffect(() => {
+    getUserSimpleList().then((res) => {
+      if (res?.code !== 200) {
+        setUserNicknameMap({});
+        return;
+      }
+      const nicknameMap = (res.data || []).reduce<Record<string, string>>((acc, item) => {
+        acc[String(item.id)] = item.nickname;
+        return acc;
+      }, {});
+      setUserNicknameMap(nicknameMap);
+    });
+  }, []);
+
   const columns: ProColumns<API.System.Dept>[] = [
     {
       title: <FormattedMessage id="system.dept.dept_name" defaultMessage="部门名称" />,
@@ -148,24 +147,44 @@ const DeptTableList: React.FC = () => {
       valueType: 'text',
     },
     {
-      title: <FormattedMessage id="system.dept.id" defaultMessage="部门编号" />,
-      dataIndex: 'id',
+      title: <FormattedMessage id="system.dept.leader" defaultMessage="负责人" />,
+      dataIndex: 'leader',
       valueType: 'text',
+      hideInSearch: true,
+      render: (_, record) => {
+        const leaderUserId = (record as any).leaderUserId;
+        const leader = record.leader;
+        const nicknameFromMap =
+          (typeof leaderUserId !== 'undefined' && userNicknameMap[String(leaderUserId)]) ||
+          (leader && /^\d+$/.test(String(leader)) ? userNicknameMap[String(leader)] : undefined);
+
+        return (
+          nicknameFromMap ||
+          (record as any).leaderName ||
+          (record as any).leaderNickName ||
+          (record as any).leaderNickname ||
+          leader ||
+          '-'
+        );
+      },
     },
     {
       title: <FormattedMessage id="system.dept.order_num" defaultMessage="显示顺序" />,
       dataIndex: 'orderNum',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.dept.email" defaultMessage="邮箱" />,
       dataIndex: 'email',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.dept.phone" defaultMessage="联系电话" />,
       dataIndex: 'phone',
       valueType: 'text',
+      hideInSearch: true,
     },
     {
       title: <FormattedMessage id="system.dept.status" defaultMessage="部门状态" />,
@@ -173,6 +192,9 @@ const DeptTableList: React.FC = () => {
       valueType: 'select',
       valueEnum: statusOptions,
       render: (_, record) => {
+        if (String(record.status) === '1') {
+          return <Tag color="default">停用</Tag>;
+        }
         return <DictTag enums={statusOptions} value={record.status} />;
       },
     },
@@ -220,9 +242,7 @@ const DeptTableList: React.FC = () => {
               onOk: async () => {
                 const success = await handleRemoveOne(record);
                 if (success) {
-                  if (actionRef.current) {
-                    actionRef.current.reload();
-                  }
+                  actionRef.current?.reload();
                 }
               },
             });
@@ -275,7 +295,7 @@ const DeptTableList: React.FC = () => {
               hidden={selectedRows?.length === 0 || !access.hasPerms('system:dept:remove')}
               onClick={async () => {
                 Modal.confirm({
-                  title: '是否确认删除所选数据项?',
+                  title: '是否确认删除所选数据项？',
                   icon: <ExclamationCircleOutlined />,
                   content: '请谨慎操作',
                   async onOk() {
@@ -295,18 +315,17 @@ const DeptTableList: React.FC = () => {
           ]}
           request={(params) =>
             getDeptList({ ...params } as API.System.DeptListParams).then((res) => {
-              const result = {
+              return {
                 data: buildTreeData(res.data, 'deptId', '', '', '', ''),
                 total: res.data.length,
                 success: true,
               };
-              return result;
             })
           }
           columns={columns}
           rowSelection={{
-            onChange: (_, selectedRows) => {
-              setSelectedRows(selectedRows);
+            onChange: (_, rows) => {
+              setSelectedRows(rows);
             },
           }}
         />
@@ -356,9 +375,7 @@ const DeptTableList: React.FC = () => {
           if (success) {
             setModalVisible(false);
             setCurrentRow(undefined);
-            if (actionRef.current) {
-              actionRef.current.reload();
-            }
+            actionRef.current?.reload();
           }
         }}
         onCancel={() => {

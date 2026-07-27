@@ -285,6 +285,28 @@
   font-weight: 500;
 }
 
+.chat-title-wrap {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-title-assistant-tag {
+  margin-top: 4px;
+  flex-shrink: 0;
+  max-width: 160px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #475569;
+  background: #e2e8f0;
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .chat-row-time {
   margin-top: 0;
   flex-shrink: 0;
