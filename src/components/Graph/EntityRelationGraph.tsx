@@ -10,8 +10,8 @@ import {
 import Graph from "graphology";
 import { Sigma } from "sigma";
 import { NodeBorderProgram } from "@sigma/node-border";
-import { createEdgeArrowProgram, drawStraightEdgeLabel } from "sigma/rendering";
-import { createEdgeCurveProgram, createDrawCurvedEdgeLabel, DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS } from "@sigma/edge-curve";
+import { createEdgeArrowProgram } from "sigma/rendering";
+import { createEdgeCurveProgram, DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS } from "@sigma/edge-curve";
 
 import type {
   EntityGraphData,
@@ -185,6 +185,61 @@ function drawValueNodeTag(
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(text, x + accentWidth / 2, y);
+}
+
+function drawStableEdgeLabel(
+  context: CanvasRenderingContext2D,
+  edgeData: Record<string, any>,
+  sourceData: Record<string, any>,
+  targetData: Record<string, any>,
+  settings: Record<string, any>,
+) {
+  const label = String(edgeData?.label || "").trim();
+  if (!label) return;
+
+  const fontSize = Number(settings.edgeLabelSize || 11);
+  const fontWeight = settings.edgeLabelWeight || "600";
+  const fontFamily = settings.labelFont || "sans-serif";
+  const textColor =
+    typeof settings.edgeLabelColor === "object" && settings.edgeLabelColor?.color
+      ? settings.edgeLabelColor.color
+      : "#475569";
+
+  const sourceX = Number(sourceData?.x ?? 0);
+  const sourceY = Number(sourceData?.y ?? 0);
+  const targetX = Number(targetData?.x ?? 0);
+  const targetY = Number(targetData?.y ?? 0);
+  const dx = targetX - sourceX;
+  const dy = targetY - sourceY;
+  const length = Math.hypot(dx, dy);
+  if (!length) return;
+
+  const unitX = dx / length;
+  const unitY = dy / length;
+  const normalX = -unitY;
+  const normalY = unitX;
+
+  let labelX = (sourceX + targetX) / 2;
+  let labelY = (sourceY + targetY) / 2;
+  let normalOffset = 12;
+
+  if (edgeData?.type === "curvedArrow") {
+    const curvature = Number(edgeData?.curvature || 0);
+    const curveOffset = length * curvature * 0.35;
+    labelX += normalX * curveOffset;
+    labelY += normalY * curveOffset;
+  }
+
+  labelX += normalX * normalOffset;
+  labelY += normalY * normalOffset;
+
+  context.save();
+  context.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+  context.fillStyle = textColor;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(label, labelX, labelY);
+  context.restore();
 }
 
 function buildGroupedLayout(
@@ -549,6 +604,9 @@ const EntityRelationGraph = forwardRef<
         color: color,
         size: linkWidth,
         hidden: !showLinks,
+        // Sigma only renders a subset of edge labels by default.
+        // Force relation labels to stay visible without hover.
+        forceLabel: showLinks,
         type: type,
         curvature: curvature,
       };
@@ -580,7 +638,6 @@ const EntityRelationGraph = forwardRef<
     sigmaRef.current?.kill();
     sigmaRef.current = null;
 
-    const drawCurved = createDrawCurvedEdgeLabel(DEFAULT_EDGE_CURVE_PROGRAM_OPTIONS);
     const sigma = new Sigma(graph, container, {
       doubleClickZoomingRatio: 1,
       doubleClickZoomingDuration: 0,
@@ -651,11 +708,7 @@ const EntityRelationGraph = forwardRef<
         }
       },
       defaultDrawEdgeLabel: (context, edgeData, sourceData, targetData, settings) => {
-        if (edgeData.type === "curvedArrow") {
-          drawCurved(context, edgeData, sourceData, targetData, settings);
-        } else {
-          drawStraightEdgeLabel(context, edgeData, sourceData, targetData, settings);
-        }
+        drawStableEdgeLabel(context, edgeData as Record<string, any>, sourceData as Record<string, any>, targetData as Record<string, any>, settings as Record<string, any>);
       },
       edgeLabelColor: { color: "#475569" }, // 加深连线上的文字颜色
       edgeLabelSize: 11,

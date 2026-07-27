@@ -22,12 +22,15 @@ export interface EntityGraphNode {
   type: EntityGraphNodeType;
   desc?: string;
   tag?: string[];
+  avp?: Array<[string, string]>;
   expandable?: boolean;
   relationCount?: number;
   parentId?: string;
   relationFromParent?: string;
   depth?: number;
   branchId?: string;
+  entityType?: string;
+  nodeKind?: string;
 }
 
 export interface EntityGraphLink {

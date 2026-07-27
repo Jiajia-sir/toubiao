@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { history, useLocation } from "@umijs/max";
 import {
+  Alert,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -13,6 +15,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Radio,
   Row,
   Select,
   Slider,
@@ -60,7 +63,7 @@ import {
   type EntityNodeDetail,
   type SourceDocument,
 } from "@/data/entityGraphMock";
-import { getGraphEntities, searchGraph, expandGraphNode, type SearchGraphResult, type GraphEntityResult, type GraphExpandResult, type SearchGraphNode, type SearchGraphLink } from "@/services/biz/graph";
+import { getGraphEntities, searchGraph, expandGraphNode, createGraphNode, updateGraphNode, deleteGraphNode, renameGraphEntity, type SearchGraphResult, type GraphEntityResult, type GraphExpandResult, type SearchGraphNode, type SearchGraphLink } from "@/services/biz/graph";
 import { getEntityTypePage, type EntityTypeItem } from "@/services/biz/entity-type";
 
 const typeMeta: Record<EntityGraphNodeType, { label: string; color: string; countColor: string }> = {
@@ -97,11 +100,15 @@ export interface NodeExpandState {
 }
 
 interface EntityFormValues {
-  name: string;
-  type: EntityGraphNodeType;
-  desc: string;
+  nodeKind?: "entity" | "property";
+  name?: string;
+  type?: string;
+  description?: string;
+  desc?: string;
   tagsText?: string;
   relation?: string;
+  attrKey?: string;
+  attrValue?: string;
 }
 
 interface RelationFormValues {
@@ -136,6 +143,19 @@ function parseTagInput(value?: string) {
 
 function extractResultData<T>(response: any): T {
   return (response?.data?.data ?? response?.data ?? response ?? {}) as T;
+}
+
+function checkApiResponse(res: any, defaultErrorMsg = "操作失败") {
+  if (res === false) {
+    throw new Error(defaultErrorMsg);
+  }
+  if (res && typeof res === "object") {
+    const code = res.code ?? res.status;
+    const success = res.success;
+    if ((code !== undefined && Number(code) !== 200 && Number(code) !== 0) || success === false) {
+      throw new Error(res.msg || res.message || defaultErrorMsg);
+    }
+  }
 }
 
 function createEmptyGraph(centerId = ""): EntityGraphData {
@@ -276,8 +296,10 @@ export default function GraphPage() {
   const [entityOverrides, setEntityOverrides] = useState<Record<string, EntityOverride>>({});
   const [entityModalOpen, setEntityModalOpen] = useState(false);
   const [entityModalMode, setEntityModalMode] = useState<"add" | "edit">("edit");
+  const [entitySubmitting, setEntitySubmitting] = useState(false);
   const [relationModalOpen, setRelationModalOpen] = useState(false);
   const [editingRelationKey, setEditingRelationKey] = useState<string | null>(null);
+  const entitySubmittingRef = useRef(false);
   const [entityForm] = Form.useForm<EntityFormValues>();
   const [relationForm] = Form.useForm<RelationFormValues>();
 
@@ -357,14 +379,16 @@ export default function GraphPage() {
   const selectedDetail = useMemo(() => {
     const nodeName = selectedNode?.name || graphData.centerId;
     const baseDetail = getNodeDetail(nodeName);
-    const override = entityOverrides[nodeName];
+    const override = selectedNode
+      ? entityOverrides[selectedNode.id] || entityOverrides[selectedNode.name]
+      : entityOverrides[nodeName];
     return {
       ...baseDetail,
-      desc: override?.desc ?? baseDetail.desc,
-      tag: override?.tag ?? baseDetail.tag,
+      desc: override?.desc ?? selectedNode?.desc ?? baseDetail.desc,
+      tag: override?.tag ?? selectedNode?.tag ?? baseDetail.tag,
       avp: override?.avp ?? baseDetail.avp,
     } as EntityNodeDetail;
-  }, [entityOverrides, graphData.centerId, selectedNode?.name]);
+  }, [entityOverrides, graphData.centerId, selectedNode]);
 
   const selectedRelations = useMemo(() => {
     if (!selectedNode) {
@@ -589,13 +613,14 @@ export default function GraphPage() {
       const requestCursor = currentNodeState.nextCursor;
       const response = await expandGraphNode({
         way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
-        nodeId: node.id,
+        nodeId: String(node.id),
         nodeKind: "entity",
         direction: "both",
         includeProperty: true,
         limit: 20,
         cursor: requestCursor,
       });
+      checkApiResponse(response, "展开节点失败");
 
       const result = extractResultData<GraphExpandResult>(response);
 
@@ -782,11 +807,15 @@ export default function GraphPage() {
 
   function openAddEntityModal() {
     entityForm.setFieldsValue({
+      nodeKind: "entity",
       name: "",
-      type: "entity",
+      type: activeEntityTypeName || (entityTypes[0]?.name) || "药品",
+      description: "",
       desc: "",
       tagsText: "",
-      relation: "",
+      relation: "关联",
+      attrKey: "",
+      attrValue: "",
     });
     setEntityModalMode("add");
     setEntityModalOpen(true);
@@ -796,153 +825,305 @@ export default function GraphPage() {
     if (!selectedNode) {
       return;
     }
+    const isValueNode = selectedNode.type === "value";
     entityForm.setFieldsValue({
+      nodeKind: isValueNode ? "property" : "entity",
       name: selectedNode.name,
-      type: selectedNode.type,
-      desc: selectedDetail.desc,
+      type: selectedNode.entityType || selectedNode.tag?.[0] || activeEntityTypeName || "药品",
+      description: selectedDetail.desc || selectedNode.desc || "",
+      desc: selectedDetail.desc || selectedNode.desc || "",
       tagsText: selectedDetail.tag.join(", "),
-      relation: selectedNode.relationFromParent || "",
+      relation: selectedNode.relationFromParent || "关联",
+      attrKey: selectedNode.relationFromParent || "",
+      attrValue: selectedNode.name || selectedNode.desc || "",
     });
     setEntityModalMode("edit");
     setEntityModalOpen(true);
   }
 
   async function handleSubmitEntity() {
-    const values = await entityForm.validateFields();
-    const nextName = values.name.trim();
-    if (!nextName) {
+    if (entitySubmittingRef.current) {
       return;
     }
 
-    if (entityModalMode === "add") {
-      if (values.type === "center") {
-        message.warning("新增实体不支持设置为中心实体");
-        return;
-      }
-      if (graphData.nodes.some((node) => node.id === nextName)) {
-        message.warning("实体名称已存在");
-        return;
-      }
+    entitySubmittingRef.current = true;
+    setEntitySubmitting(true);
 
-      const parentNode = selectedNode || graphData.nodes.find((node) => node.id === graphData.centerId);
-      const nextNode: EntityGraphNode = {
-        id: nextName,
-        name: nextName,
-        type: values.type,
-        expandable: true,
-        relationCount: 1,
-        parentId: parentNode?.id,
-        relationFromParent: values.relation?.trim() || "关联",
-        depth: parentNode ? (parentNode.depth ?? 0) + 1 : 1,
-        branchId: parentNode?.type === "center" ? nextName : parentNode?.branchId || parentNode?.id || nextName,
-      };
+    try {
+      const values = await entityForm.validateFields();
+      const currentWay = workspaceMode === "auto-upload" ? "auto_read" : "front_upload";
+      const isProperty = values.nodeKind === "property";
 
-      setGraphData((prev) => ({
-        ...prev,
-        nodes: [...prev.nodes, nextNode],
-        links: parentNode
-          ? [
+      if (entityModalMode === "add") {
+        if (isProperty) {
+          if (!selectedNode || selectedNode.type === "value") {
+            message.warning("新建属性时，必须先选定一个已存在的目标实体");
+            return;
+          }
+          const parentNode = selectedNode;
+          const nextAttrKey = (values.attrKey || "").trim();
+          const nextAttrValue = (values.attrValue || "").trim();
+          if (!nextAttrKey || !nextAttrValue) {
+            return;
+          }
+          const targetNodeId = String(parentNode.id);
+          const res = await createGraphNode({
+            way: currentWay,
+            nodeKind: "property",
+            entityId: targetNodeId,
+            attrKey: nextAttrKey,
+            attrValue: nextAttrValue,
+          });
+          checkApiResponse(res, "新建属性失败");
+
+          const valNodeId = `${parentNode.id}_prop_${Date.now()}`;
+          const valueNode: EntityGraphNode = {
+            id: valNodeId,
+            name: nextAttrValue,
+            type: "value",
+            desc: `${nextAttrKey}: ${nextAttrValue}`,
+            tag: [nextAttrKey],
+            expandable: false,
+            relationCount: 1,
+            parentId: parentNode.id,
+            relationFromParent: nextAttrKey,
+            depth: (parentNode.depth ?? 0) + 1,
+          };
+          setGraphData((prev) => ({
+            ...prev,
+            nodes: [...prev.nodes, valueNode],
+            links: [
               ...prev.links,
               {
                 source: parentNode.id,
-                target: nextName,
-                relation: values.relation?.trim() || "关联",
+                target: valNodeId,
+                relation: nextAttrKey,
               },
-            ]
-          : prev.links,
+            ],
+          }));
+          setEntityOverrides((prev) => {
+            const old = prev[parentNode.id] || {};
+            const oldAvp = old.avp || selectedDetail.avp || [];
+            return {
+              ...prev,
+              [parentNode.id]: {
+                ...old,
+                avp: [...oldAvp, [nextAttrKey, nextAttrValue]],
+              },
+            };
+          });
+          message.success("属性已成功新建并在图谱和属性列表中显示");
+          setEntityModalOpen(false);
+          return;
+        }
+
+        const nextName = (values.name || "").trim();
+        if (!nextName) {
+          return;
+        }
+        const nextType = (values.type || "").trim() || "其他";
+        const nextDescription = (values.description || values.desc || "").trim();
+
+        const res = await createGraphNode({
+          way: currentWay,
+          nodeKind: "entity",
+          name: nextName,
+          type: nextType,
+          description: nextDescription,
+        });
+        checkApiResponse(res, "新建实体失败");
+
+        const createdId = String((res as any)?.nodeId || (res as any)?.id || nextName);
+        const nextNode: EntityGraphNode = {
+          id: createdId,
+          name: nextName,
+          type: "entity",
+          entityType: nextType,
+          desc: nextDescription || "",
+          tag: [nextType],
+          expandable: true,
+          relationCount: 0,
+          depth: 1,
+          branchId: createdId,
+        };
+
+        setGraphData((prev) => ({
+          ...prev,
+          nodes: [...prev.nodes.filter((n) => n.id !== createdId), nextNode],
+          links: prev.links,
+        }));
+        setEntityOverrides((prev) => ({
+          ...prev,
+          [createdId]: {
+            desc: nextDescription || "",
+            tag: [nextType],
+            avp: [],
+          },
+          [nextName]: {
+            desc: nextDescription || "",
+            tag: [nextType],
+            avp: [],
+          },
+        }));
+        setSelectedNodeId(createdId);
+        message.success("实体已成功新建并在画布中显示");
+        setEntityModalOpen(false);
+        return;
+      }
+
+      if (!selectedNode) {
+        return;
+      }
+
+      const targetNodeId = String(selectedNode.id);
+      if (isProperty) {
+        const nextAttrKey = (values.attrKey || "").trim();
+        const nextAttrValue = (values.attrValue || "").trim();
+        if (!nextAttrKey || !nextAttrValue) {
+          return;
+        }
+        const res = await updateGraphNode({
+          way: currentWay,
+          nodeId: targetNodeId,
+          nodeKind: "property",
+          attrKey: nextAttrKey,
+          attrValue: nextAttrValue,
+        });
+        checkApiResponse(res, "更新属性失败");
+        setGraphData((prev) => ({
+          ...prev,
+          nodes: prev.nodes.map((node) => {
+            if (node.id === selectedNode.id) {
+              return {
+                ...node,
+                name: nextAttrValue,
+                desc: `${nextAttrKey}: ${nextAttrValue}`,
+                relationFromParent: nextAttrKey,
+              };
+            }
+            return node;
+          }),
+          links: prev.links.map((link) => {
+            if (link.target === selectedNode.id) {
+              return { ...link, relation: nextAttrKey };
+            }
+            return link;
+          }),
+        }));
+        message.success("属性已更新");
+        setEntityModalOpen(false);
+        return;
+      }
+
+      const nextName = (values.name || "").trim();
+      if (!nextName) {
+        return;
+      }
+      const nextType = (values.type || "").trim() || "其他";
+      const nextDescription = (values.description || values.desc || "").trim();
+
+      const res = await renameGraphEntity({
+        way: currentWay,
+        nodeId: targetNodeId,
+        newName: nextName,
+      });
+      checkApiResponse(res, "修改实体失败");
+
+      setGraphData((prev) => ({
+        ...prev,
+        nodes: prev.nodes.map((node) => {
+          if (node.id === selectedNode.id) {
+            return {
+              ...node,
+              name: nextName,
+              entityType: nextType,
+              desc: nextDescription,
+              tag: [nextType],
+            };
+          }
+          return node;
+        }),
       }));
       setEntityOverrides((prev) => ({
         ...prev,
+        [selectedNode.id]: {
+          ...(prev[selectedNode.id] || {}),
+          desc: nextDescription,
+          tag: [nextType],
+        },
         [nextName]: {
-          desc: values.desc.trim() || `${nextName} 的自定义实体描述`,
-          tag: parseTagInput(values.tagsText),
-          avp: [],
+          ...(prev[nextName] || {}),
+          desc: nextDescription,
+          tag: [nextType],
         },
       }));
-      setSelectedNodeId(nextName);
+
+      message.success("实体已更新");
       setEntityModalOpen(false);
-      message.success("实体已新增");
-      return;
+    } catch (error: any) {
+      if (error?.errorFields) {
+        return;
+      }
+      message.error(error?.message || (entityModalMode === "add" ? "新增失败" : "编辑失败"));
+    } finally {
+      entitySubmittingRef.current = false;
+      setEntitySubmitting(false);
     }
-
-    if (!selectedNode) {
-      return;
-    }
-
-    const prevName = selectedNode.id;
-    const renamed = prevName !== nextName;
-    if (renamed && graphData.nodes.some((node) => node.id === nextName)) {
-      message.warning("目标实体名称已存在");
-      return;
-    }
-
-    setGraphData((prev) => ({
-      centerId: prev.centerId === prevName ? nextName : prev.centerId,
-      nodes: prev.nodes.map((node) => {
-        const nextNode = { ...node };
-        if (node.id === prevName) {
-          nextNode.id = nextName;
-          nextNode.name = nextName;
-          nextNode.type = values.type;
-          nextNode.relationFromParent = values.relation?.trim() || node.relationFromParent;
-        }
-        if (node.parentId === prevName) {
-          nextNode.parentId = nextName;
-        }
-        if (node.branchId === prevName) {
-          nextNode.branchId = nextName;
-        }
-        return nextNode;
-      }),
-      links: prev.links.map((link) => ({
-        source: link.source === prevName ? nextName : link.source,
-        target: link.target === prevName ? nextName : link.target,
-        relation:
-          link.target === prevName &&
-          link.source === selectedNode.parentId &&
-          values.relation?.trim()
-            ? values.relation.trim()
-            : link.relation,
-      })),
-    }));
-    setEntityOverrides((prev) => {
-      const nextOverrides = { ...prev };
-      const oldOverride = nextOverrides[prevName];
-      delete nextOverrides[prevName];
-      nextOverrides[nextName] = {
-        desc: values.desc.trim() || oldOverride?.desc || selectedDetail.desc,
-        tag: parseTagInput(values.tagsText),
-        avp: oldOverride?.avp || selectedDetail.avp,
-      };
-      return nextOverrides;
-    });
-    setSelectedNodeId(nextName);
-    setEntityModalOpen(false);
-    message.success("实体已更新");
   }
 
   function handleDeleteEntity() {
     if (!selectedNode) {
       return;
     }
-    if (selectedNode.id === graphData.centerId) {
-      message.warning("中心实体不允许删除");
-      return;
-    }
 
-    const deleteId = selectedNode.id;
-    setGraphData((prev) => ({
-      ...prev,
-      nodes: prev.nodes.filter((node) => node.id !== deleteId),
-      links: prev.links.filter((link) => link.source !== deleteId && link.target !== deleteId),
-    }));
-    setEntityOverrides((prev) => {
-      const next = { ...prev };
-      delete next[deleteId];
-      return next;
+    const nodeName = selectedNode.name || selectedNode.id;
+    Modal.confirm({
+      title: "确认删除节点",
+      content: `确定要删除「${nodeName}」吗？删除后在图谱中将不可恢复。`,
+      okText: "确定删除",
+      okType: "danger",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const deleteId = selectedNode.id;
+          const targetNodeId = String(deleteId);
+          const res = await deleteGraphNode({
+            way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
+            nodeId: targetNodeId,
+            nodeKind: selectedNode.type === "value" ? "property" : "entity",
+          });
+          checkApiResponse(res, "删除失败");
+
+          setGraphData((prev) => {
+            const nextNodes = prev.nodes.filter((node) => node.id !== deleteId);
+            const nextLinks = prev.links.filter((link) => link.source !== deleteId && link.target !== deleteId);
+            const nextCenterId = prev.centerId === deleteId ? (nextNodes[0]?.id || "") : prev.centerId;
+            return {
+              centerId: nextCenterId,
+              nodes: nextNodes,
+              links: nextLinks,
+            };
+          });
+          setEntityOverrides((prev) => {
+            const next = { ...prev };
+            delete next[deleteId];
+            return next;
+          });
+
+          setSelectedNodeId((prevSelected) => {
+            if (prevSelected === deleteId) {
+              const remainingNode = graphData.nodes.find((n) => n.id !== deleteId);
+              return remainingNode?.id || "";
+            }
+            return prevSelected;
+          });
+
+          message.success("节点已删除");
+        } catch (error: any) {
+          message.error(error?.message || "删除失败");
+        }
+      },
     });
-    setSelectedNodeId(graphData.centerId);
-    message.success("实体已删除");
   }
 
   function openAddRelationModal() {
@@ -1860,35 +2041,43 @@ export default function GraphPage() {
             )}
           </div>
 
-          <div style={{ padding: 16, borderTop: "1px solid #e5e7eb", background: "#fff" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <div
+            style={{
+              padding: "14px 16px",
+              borderTop: "1px solid #e5e7eb",
+              background: "#fff",
+              flexShrink: 0,
+              position: "sticky",
+              bottom: 0,
+              zIndex: 10,
+              boxShadow: "0 -4px 12px rgba(0, 0, 0, 0.03)",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               <Button
-                style={{ width: "100%", height: 40, borderRadius: 20 }}
+                style={{ width: "100%", height: 38, borderRadius: 19, padding: "0 4px" }}
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openAddEntityModal}
+              >
+                新增
+              </Button>
+              <Button
+                style={{ width: "100%", height: 38, borderRadius: 19, padding: "0 4px" }}
                 icon={<EditOutlined />}
+                disabled={!selectedNode}
                 onClick={openEditEntityModal}
               >
                 编辑
               </Button>
-              <Button style={{ width: "100%", height: 40, borderRadius: 20 }} icon={<PlusOutlined />} onClick={openAddEntityModal}>
-                新增实体
-              </Button>
               <Button
-                style={{ width: "100%", height: 40, borderRadius: 20 }}
-                type={selectedNode?.id === graphData.centerId ? "primary" : "default"}
-                danger={selectedNode?.id !== graphData.centerId}
-                loading={selectedNode?.id === graphData.centerId && Boolean(nodeExpandMap[selectedNode.id]?.loading)}
-                disabled={selectedNode?.id === graphData.centerId && Boolean(nodeExpandMap[selectedNode.id]?.loading)}
-                onClick={() =>
-                  selectedNode?.id === graphData.centerId
-                    ? selectedNode && handleNodeExpand(selectedNode)
-                    : handleDeleteEntity()
-                }
+                style={{ width: "100%", height: 38, borderRadius: 19, padding: "0 4px" }}
+                danger
+                icon={<DeleteOutlined />}
+                disabled={!selectedNode}
+                onClick={handleDeleteEntity}
               >
-                {selectedNode?.id === graphData.centerId ? (
-                  <>查看更多 <span style={{ marginLeft: 4, fontWeight: 700 }}>↗</span></>
-                ) : (
-                  "删除实体"
-                )}
+                删除
               </Button>
             </div>
           </div>
@@ -1896,33 +2085,89 @@ export default function GraphPage() {
       </div>
 
       <Modal
-        title={entityModalMode === "add" ? "新增实体" : "编辑实体"}
+        title={entityModalMode === "add" ? "新增图谱节点（实体 / 属性）" : "编辑图谱节点"}
         open={entityModalOpen}
-        onCancel={() => setEntityModalOpen(false)}
+        onCancel={() => {
+          if (entitySubmittingRef.current) {
+            return;
+          }
+          setEntityModalOpen(false);
+        }}
         onOk={handleSubmitEntity}
+        okButtonProps={{ loading: entitySubmitting }}
+        cancelButtonProps={{ disabled: entitySubmitting }}
+        maskClosable={!entitySubmitting}
+        keyboard={!entitySubmitting}
         destroyOnHidden
       >
-        <Form form={entityForm} layout="vertical">
-          <Form.Item name="name" label="实体名称" rules={[{ required: true, message: "请输入实体名称" }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="type" label="节点类型" rules={[{ required: true, message: "请选择节点类型" }]}>
-            <Select
+        <Form form={entityForm} layout="vertical" initialValues={{ nodeKind: "entity" }}>
+          {entityModalMode === "add" && (!selectedNode || selectedNode.type === "value") && (
+            <Alert
+              message="新建属性需绑定已存在的目标实体；当前未选定实体，仅支持新建实体。"
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          )}
+          <Form.Item name="nodeKind" label="节点种类" rules={[{ required: true }]}>
+            <Radio.Group
+              disabled={entityModalMode === "edit"}
               options={[
-                { label: "中心实体", value: "center" },
-                { label: "关联实体", value: "entity" },
-                { label: "属性值", value: "value" },
+                { label: "新建实体 (Entity)", value: "entity" },
+                {
+                  label: "新建属性 (Property)",
+                  value: "property",
+                  disabled: !selectedNode || selectedNode.type === "value",
+                },
               ]}
+              optionType="button"
+              buttonStyle="solid"
             />
           </Form.Item>
-          <Form.Item name="desc" label="实体描述">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item name="tagsText" label="标签">
-            <Input placeholder="多个标签用逗号分隔" />
-          </Form.Item>
-          <Form.Item name="relation" label={entityModalMode === "add" ? "与当前节点关系" : "父级关系"}>
-            <Input placeholder="例如：关联、属于、包含" />
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.nodeKind !== currentValues.nodeKind}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue("nodeKind") === "property" ? (
+                <>
+                  <Form.Item
+                    name="attrKey"
+                    label="属性名（Key）"
+                    rules={[{ required: true, message: "请输入属性名称（如：性状、适应症）" }]}
+                  >
+                    <Input placeholder="请输入属性名称（如：适应症）" />
+                  </Form.Item>
+                  <Form.Item
+                    name="attrValue"
+                    label="属性内容（Value）"
+                    rules={[{ required: true, message: "请输入属性内容" }]}
+                  >
+                    <Input.TextArea rows={3} placeholder="请输入属性内容（如：用于缓解轻至中度疼痛）" />
+                  </Form.Item>
+                </>
+              ) : (
+                <>
+                  <Form.Item name="name" label="实体名称" rules={[{ required: true, message: "请输入实体名称" }]}>
+                    <Input placeholder="请输入实体名称（如：阿司匹林）" />
+                  </Form.Item>
+                  <Form.Item name="type" label="实体类型" rules={[{ required: true, message: "请选择或输入实体类型" }]}>
+                    <AutoComplete
+                      options={entityTypes.map((item) => ({ label: item.name, value: item.name }))}
+                      placeholder="请选择或输入实体类型（如：药品）"
+                      filterOption={(inputValue, option) =>
+                        String(option?.label || option?.value || "")
+                          .toLowerCase()
+                          .includes(inputValue.toLowerCase())
+                      }
+                    />
+                  </Form.Item>
+                  <Form.Item name="description" label="实体描述">
+                    <Input.TextArea rows={3} placeholder="请输入实体描述（如：解热镇痛药）" />
+                  </Form.Item>
+                </>
+              )
+            }
           </Form.Item>
         </Form>
       </Modal>
