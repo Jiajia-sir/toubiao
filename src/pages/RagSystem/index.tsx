@@ -1,40 +1,36 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { request } from '@umijs/max';
+import { fetchEventSource } from '@microsoft/fetch-event-source';
+import { request, useModel } from '@umijs/max';
+import {
+  ClearOutlined,
+  CopyOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+  SendOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
 import {
   Button,
   Empty,
   Form,
   Input,
   Modal,
-  Progress,
   Select,
   Space,
-  Switch,
-  Tag,
+  Spin,
   Tooltip,
   Typography,
   message,
 } from 'antd';
-import {
-  BookOutlined,
-  ClearOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  DislikeOutlined,
-  EditOutlined,
-  LikeOutlined,
-  PlusOutlined,
-  SendOutlined,
-  SettingOutlined,
-  UserOutlined,
-} from '@ant-design/icons';
+import { getAccessToken } from '@/access';
 import { API_PREFIX } from '@/constants';
 import { getKnowledgeBaseList } from '@/services/biz/knowledge-base';
 import './SmartQA.css';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 type MessageItem = {
@@ -43,7 +39,7 @@ type MessageItem = {
   content: string;
   timestamp: string;
   sources?: string[];
-  confidence?: number;
+  status?: 'streaming' | 'done' | 'error';
 };
 
 type AssistantItem = {
@@ -51,12 +47,11 @@ type AssistantItem = {
   name: string;
   openingStatement?: string;
   prompt?: string;
-  chatModelName: string;
-  chatModelUrl: string;
-  embeddingModelName: string;
-  embeddingModelUrl: string;
+  chatModelName?: string;
+  chatModelUrl?: string;
+  embeddingModelName?: string;
+  embeddingModelUrl?: string;
   knowledgeBaseIds: Array<number | string>;
-  enabled: number;
 };
 
 type ChatItem = {
@@ -82,162 +77,347 @@ type AssistantFormValues = {
   embeddingModelName: string;
   embeddingModelUrl: string;
   knowledgeBaseIds: Array<number | string>;
-  enabled: boolean;
 };
 
-const assistantSeeds: AssistantItem[] = [
-  {
-    id: 1,
-    name: '法规问答助理',
-    openingStatement: '你好，我可以基于已选择知识库回答法规和制度问题。',
-    prompt: '请严格基于知识库内容进行回答。',
-    chatModelName: 'qwen2.5-72b-instruct',
-    chatModelUrl: 'http://127.0.0.1:8000/v1',
-    embeddingModelName: 'bge-large-zh',
-    embeddingModelUrl: 'http://127.0.0.1:8001/embed',
-    knowledgeBaseIds: [1, 2],
-    enabled: 1,
-  },
-  {
-    id: 2,
-    name: '客服知识助理',
-    openingStatement: '你好，我可以帮助你整理常见问题与标准答复。',
-    prompt: '优先给出简洁、结构化回答。',
-    chatModelName: 'deepseek-chat',
-    chatModelUrl: 'http://127.0.0.1:8100/v1',
-    embeddingModelName: 'bge-m3',
-    embeddingModelUrl: 'http://127.0.0.1:8101/embed',
-    knowledgeBaseIds: [3],
-    enabled: 1,
-  },
-];
-
-const chatSeeds: ChatItem[] = [
-  {
-    id: 101,
-    assistantId: 1,
-    title: '法规问答',
-    createTime: '今天 10:20',
-    messages: [],
-  },
-  {
-    id: 102,
-    assistantId: 1,
-    title: '制度核对',
-    createTime: '今天 11:05',
-    messages: [],
-  },
-  {
-    id: 201,
-    assistantId: 2,
-    title: '售后话术整理',
-    createTime: '昨天 16:40',
-    messages: [],
-  },
-];
-
-const parseMarkdown = (text: string): string => {
-  let html = text;
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/(?<!\*)\*(?!\*)(.*?)\*(?!\*)/g, '<em>$1</em>');
-  const tableRegex = /(\|.*\|)\n(\|[-\s|:]+\|)\n((?:\|.*\|\n?)*)/g;
-  html = html.replace(tableRegex, (_match, header, _separator, body) => {
-    const headerCells = header
-      .split('|')
-      .filter((cell: string) => cell.trim())
-      .map(
-        (cell: string) =>
-          `<th style="padding:8px 12px;background:#f5f5f5;border:1px solid #e8e8e8;font-weight:600">${cell.trim()}</th>`,
-      )
-      .join('');
-    const bodyRows = body
-      .trim()
-      .split('\n')
-      .map((row: string) => {
-        const cells = row
-          .split('|')
-          .filter((cell: string) => cell.trim())
-          .map(
-            (cell: string) =>
-              `<td style="padding:8px 12px;border:1px solid #e8e8e8">${cell.trim()}</td>`,
-          )
-          .join('');
-        return `<tr>${cells}</tr>`;
-      })
-      .join('');
-    return `<table style="border-collapse:collapse;margin:12px 0;width:100%"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
-  });
-  return html.replace(/\n/g, '<br>');
+type ChatStreamRequestPayload = {
+  sessionId: number | string;
+  assistantId: number | string;
+  question: string;
+  assistantName?: string;
+  knowledgeBaseIds?: Array<number | string>;
+  chatModelName?: string;
+  chatModelUrl?: string;
+  stream?: boolean;
+  history?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+  metadata?: Record<string, unknown>;
 };
 
-const buildAssistantReply = (question: string, assistant?: AssistantItem) => {
-  const assistantName = assistant?.name || '当前助理';
-  const modelName = assistant?.chatModelName || '未配置模型';
-
-  return {
-    content: `**${assistantName}** 已收到你的问题。\n\n当前问答模型：**${modelName}**\n\n问题内容：${question}\n\n这是前端演示版对话区，后续只需要把这里替换成真实发送消息与拉取回复接口即可。`,
-    sources: ['助理配置', '聊天演示模式'],
-    confidence: 0.91,
+type ChatStreamChunk = {
+  code?: number;
+  msg?: string;
+  data?: {
+    done?: boolean;
+    content?: string;
+    delta?: string;
+    answer?: string;
+    text?: string;
+    sources?: string[];
+    sourceList?: string[];
+    sessionId?: number | string;
+    messageId?: string;
   };
 };
 
+const CHAT_STREAM_ENDPOINT = `${API_PREFIX}/biz/qa-chat/stream`;
+
+const recommendQuestions = [
+  {
+    title: '请总结这个助理的主要能力',
+    desc: '快速了解当前助理可以处理哪些类型的问题。',
+  },
+  {
+    title: '帮我整理一份标准问答模板',
+    desc: '适用于客服、运营或业务支持等常见问答场景。',
+  },
+  {
+    title: '请根据当前配置给出回答示例',
+    desc: '直接查看这个助理的输出风格和回复效果。',
+  },
+];
+
+const CHAT_DELETE_MODAL_TEXT = {
+  title: '确认删除会话',
+  content: '删除后不可恢复，是否继续？',
+  okText: '删除',
+  cancelText: '取消',
+};
+
+const ASSISTANT_DELETE_MODAL_TEXT = {
+  title: '确认删除助理',
+  content: '删除后不可恢复，是否继续？',
+  okText: '删除',
+  cancelText: '取消',
+};
+
+const parseMarkdown = (text: string): string => {
+  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\n/g, '<br />');
+  return html;
+};
+
+const getNowLabel = () =>
+  new Date().toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+const formatDateTime = (value?: string) => {
+  if (!value) return '刚刚更新';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const toIdArray = (value: unknown): Array<number | string> => {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== undefined && item !== null && item !== '');
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  if (value === undefined || value === null || value === '') {
+    return [];
+  }
+  return [value as number | string];
+};
+
+const normalizeAssistant = (item: any): AssistantItem => ({
+  id: item?.id ?? item?.assistantId ?? item?.qaAssistantId,
+  name: String(item?.name ?? item?.assistantName ?? '未命名助理'),
+  openingStatement: item?.openingStatement ?? item?.openingRemark ?? item?.welcomeMessage ?? '',
+  prompt: item?.prompt ?? item?.systemPrompt ?? '',
+  chatModelName: item?.chatModelName ?? item?.modelName ?? item?.chatModel ?? '',
+  chatModelUrl: item?.chatModelUrl ?? item?.modelUrl ?? '',
+  embeddingModelName: item?.embeddingModelName ?? item?.embeddingName ?? '',
+  embeddingModelUrl: item?.embeddingModelUrl ?? item?.embeddingUrl ?? '',
+  knowledgeBaseIds: toIdArray(item?.knowledgeBaseIds ?? item?.knowledgeBaseId),
+});
+
+const normalizeChat = (item: any, fallbackAssistantId: number | string): ChatItem => ({
+  id: item?.id ?? item?.chatId ?? item?.qaChatId,
+  assistantId: item?.assistantId ?? item?.qaAssistantId ?? fallbackAssistantId,
+  title: String(item?.title ?? item?.name ?? item?.chatName ?? '未命名会话'),
+  createTime: item?.updateTime ?? item?.gmtModified ?? item?.modifiedAt ?? item?.createTime ?? '',
+  messages: Array.isArray(item?.messages) ? item.messages : [],
+});
+
+const pickList = (response: any): any[] => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.list)) return response.list;
+  if (Array.isArray(response?.rows)) return response.rows;
+  if (Array.isArray(response?.data?.list)) return response.data.list;
+  if (Array.isArray(response?.data?.rows)) return response.data.rows;
+  if (Array.isArray(response?.data)) return response.data;
+  return [];
+};
+
+const getResponseMessage = (response: any, fallback: string) =>
+  response?.msg || response?.message || response?.data?.msg || fallback;
+
+const isSuccessResponse = (response: any) => {
+  if (!response || typeof response !== 'object') return true;
+  if (typeof response.code === 'number') return response.code === 200;
+  return true;
+};
+
+const assertSuccessResponse = <T,>(response: T, fallback: string) => {
+  if (!isSuccessResponse(response)) {
+    throw new Error(getResponseMessage(response, fallback));
+  }
+  return response;
+};
+
+const requestFirstList = async (
+  configs: Array<{ url: string; method?: 'GET' | 'POST'; params?: any; data?: any }>,
+) => {
+  let lastError: Error | null = null;
+
+  for (const config of configs) {
+    try {
+      const result = assertSuccessResponse(
+        await request(config.url, {
+          method: config.method ?? 'GET',
+          params: config.params,
+          data: config.data,
+        }),
+        '列表加载失败',
+      );
+      const list = pickList(result);
+      if (Array.isArray(list)) return list;
+    } catch (error: any) {
+      lastError = error instanceof Error ? error : new Error('列表加载失败');
+    }
+  }
+
+  if (lastError) throw lastError;
+  return [];
+};
+
 export default function RagSystemPage() {
+  const { initialState } = useModel('@@initialState');
   const [assistantForm] = Form.useForm<AssistantFormValues>();
-  const [assistants, setAssistants] = useState<AssistantItem[]>(assistantSeeds);
-  const [chats, setChats] = useState<ChatItem[]>(chatSeeds);
+  const [assistants, setAssistants] = useState<AssistantItem[]>([]);
+  const [chats, setChats] = useState<ChatItem[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseOption[]>([]);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
   const [assistantModalOpen, setAssistantModalOpen] = useState(false);
   const [editingAssistant, setEditingAssistant] = useState<AssistantItem | null>(null);
   const [savingAssistant, setSavingAssistant] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [activeAssistantId, setActiveAssistantId] = useState<number | string>('');
+  const [activeChatId, setActiveChatId] = useState<number | string>('');
+  const [typedWelcomeText, setTypedWelcomeText] = useState('');
 
-  const [activeAssistantId, setActiveAssistantId] = useState<number | string>(assistantSeeds[0]?.id ?? '');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const chatRequestRef = useRef<{
+    assistantId: number | string;
+    promise: Promise<void>;
+  } | null>(null);
+
   const activeAssistant = useMemo(
     () => assistants.find((item) => item.id === activeAssistantId),
     [assistants, activeAssistantId],
   );
-
-  const assistantChats = useMemo(
-    () => chats.filter((item) => item.assistantId === activeAssistantId),
-    [chats, activeAssistantId],
-  );
-
-  const [activeChatId, setActiveChatId] = useState<number | string>(assistantChats[0]?.id ?? '');
-
-  useEffect(() => {
-    setActiveChatId((prev) => {
-      if (assistantChats.some((item) => item.id === prev)) {
-        return prev;
-      }
-      return assistantChats[0]?.id ?? '';
-    });
-  }, [assistantChats]);
 
   const activeChat = useMemo(
     () => chats.find((item) => item.id === activeChatId),
     [chats, activeChatId],
   );
 
+  const welcomeText = useMemo(() => {
+    if (activeChat) {
+      return activeAssistant?.openingStatement || '你好，我是你的助理，有什么可以帮你？';
+    }
+    return '你好，请选择一个会话开始问答。';
+  }, [activeAssistant?.openingStatement, activeChat]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeChat?.messages, messagesLoading]);
+
+  useEffect(() => {
+    setTypedWelcomeText('');
+    if (!welcomeText) return;
+
+    let index = 0;
+    const timer = window.setInterval(() => {
+      index += 1;
+      setTypedWelcomeText(welcomeText.slice(0, index));
+      if (index >= welcomeText.length) {
+        window.clearInterval(timer);
+      }
+    }, 55);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [welcomeText]);
+
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+    };
+  }, []);
+
+  const loadAssistants = async () => {
+    setAssistantLoading(true);
+    try {
+      const list = await requestFirstList([
+        { url: `${API_PREFIX}/biz/qa-assistant/list`, method: 'GET' },
+        {
+          url: `${API_PREFIX}/biz/qa-assistant/page`,
+          method: 'GET',
+          params: { pageNo: 1, pageSize: 999 },
+        },
+      ]);
+
+      const normalized = list
+        .map(normalizeAssistant)
+        .filter((item) => item.id !== undefined && item.id !== null && item.id !== '');
+
+      setAssistants(normalized);
+      setActiveAssistantId((prev) => {
+        if (normalized.some((item) => item.id === prev)) return prev;
+        return normalized[0]?.id ?? '';
+      });
+    } catch (error: any) {
+      message.error(error?.message || '加载助理列表失败');
+      setAssistants([]);
+      setActiveAssistantId('');
+    } finally {
+      setAssistantLoading(false);
+    }
+  };
+
+  const loadChats = async (assistantId: number | string) => {
+    if (!assistantId) {
+      setChats([]);
+      setActiveChatId('');
+      return;
+    }
+
+    if (chatRequestRef.current?.assistantId === assistantId) {
+      await chatRequestRef.current.promise;
+      return;
+    }
+
+    const requestPromise = (async () => {
+      setChatLoading(true);
+      try {
+        const list = await requestFirstList([
+          {
+            url: `${API_PREFIX}/biz/qa-chat/page`,
+            method: 'GET',
+            params: { pageNo: 1, pageSize: 999, assistantId },
+          },
+        ]);
+
+        const normalized = list
+          .map((item) => normalizeChat(item, assistantId))
+          .filter((item) => item.id !== undefined && item.id !== null && item.id !== '');
+
+        setChats(normalized);
+        setActiveChatId((prev) => {
+          if (normalized.some((item) => item.id === prev)) return prev;
+          return normalized[0]?.id ?? '';
+        });
+      } catch (error: any) {
+        message.error(error?.message || '加载会话列表失败');
+        setChats([]);
+        setActiveChatId('');
+      } finally {
+        if (chatRequestRef.current?.promise === requestPromise) {
+          chatRequestRef.current = null;
+        }
+        setChatLoading(false);
+      }
+    })();
+
+    chatRequestRef.current = {
+      assistantId,
+      promise: requestPromise,
+    };
+
+    await requestPromise;
+  };
+
+  useEffect(() => {
+    void loadAssistants();
+  }, []);
 
   useEffect(() => {
     const loadKnowledgeBases = async () => {
       setLoadingKnowledge(true);
       try {
         const response: any = await getKnowledgeBaseList();
-        const list = Array.isArray(response?.list)
-          ? response.list
-          : Array.isArray(response?.data?.list)
-            ? response.data.list
-            : Array.isArray(response?.rows)
-              ? response.rows
-              : [];
+        const list = pickList(response);
         setKnowledgeOptions(
           list.map((item: any) => ({
             label: String(item.name ?? item.label ?? item.id),
@@ -245,11 +425,7 @@ export default function RagSystemPage() {
           })),
         );
       } catch {
-        setKnowledgeOptions([
-          { label: '默认知识库 A', value: 1 },
-          { label: '默认知识库 B', value: 2 },
-          { label: '默认知识库 C', value: 3 },
-        ]);
+        setKnowledgeOptions([]);
       } finally {
         setLoadingKnowledge(false);
       }
@@ -258,90 +434,64 @@ export default function RagSystemPage() {
     void loadKnowledgeBases();
   }, []);
 
+  useEffect(() => {
+    void loadChats(activeAssistantId);
+  }, [activeAssistantId]);
+
   const openCreateAssistant = () => {
     setEditingAssistant(null);
     assistantForm.resetFields();
     assistantForm.setFieldsValue({
-      name: '',
-      openingStatement: '',
-      prompt: '',
-      chatModelName: '',
-      chatModelUrl: '',
-      embeddingModelName: '',
-      embeddingModelUrl: '',
       knowledgeBaseIds: [],
-      enabled: true,
     });
     setAssistantModalOpen(true);
   };
 
   const openEditAssistant = (assistant: AssistantItem) => {
     setEditingAssistant(assistant);
-    assistantForm.setFieldsValue({
-      id: assistant.id,
-      name: assistant.name,
-      openingStatement: assistant.openingStatement,
-      prompt: assistant.prompt,
-      chatModelName: assistant.chatModelName,
-      chatModelUrl: assistant.chatModelUrl,
-      embeddingModelName: assistant.embeddingModelName,
-      embeddingModelUrl: assistant.embeddingModelUrl,
-      knowledgeBaseIds: assistant.knowledgeBaseIds,
-      enabled: assistant.enabled === 1,
-    });
+    assistantForm.setFieldsValue(assistant);
     setAssistantModalOpen(true);
   };
 
   const handleSaveAssistant = async () => {
+    const values = await assistantForm.validateFields();
+    const payload = {
+      id: editingAssistant?.id,
+      name: values.name,
+      openingStatement: values.openingStatement,
+      prompt: values.prompt,
+      chatModelName: values.chatModelName,
+      chatModelUrl: values.chatModelUrl,
+      embeddingModelName: values.embeddingModelName,
+      embeddingModelUrl: values.embeddingModelUrl,
+      knowledgeBaseIds: values.knowledgeBaseIds,
+    };
+
+    setSavingAssistant(true);
     try {
-      const values = await assistantForm.validateFields();
-      const payload = {
-        ...(editingAssistant?.id ? { id: editingAssistant.id } : {}),
-        name: values.name,
-        openingStatement: values.openingStatement,
-        prompt: values.prompt,
-        chatModelName: values.chatModelName,
-        chatModelUrl: values.chatModelUrl,
-        embeddingModelName: values.embeddingModelName,
-        embeddingModelUrl: values.embeddingModelUrl,
-        knowledgeBaseIds: values.knowledgeBaseIds,
-        enabled: values.enabled ? 1 : 0,
-      };
-
-      setSavingAssistant(true);
-
       if (editingAssistant) {
-        await request(`${API_PREFIX}/biz/qa-assistant/update`, {
-          method: 'PUT',
-          data: payload,
-        });
-        setAssistants((prev) =>
-          prev.map((item) =>
-            item.id === editingAssistant.id ? ({ ...item, ...payload } as AssistantItem) : item,
-          ),
+        assertSuccessResponse(
+          await request(`${API_PREFIX}/biz/qa-assistant/update`, {
+            method: 'PUT',
+            data: payload,
+          }),
+          '保存助理失败',
         );
-        message.success('助理已更新');
+        message.success('更新成功');
       } else {
-        const response: any = await request(`${API_PREFIX}/biz/qa-assistant/create`, {
-          method: 'POST',
-          data: payload,
-        });
-        const nextId = response?.data ?? Date.now();
-        const nextAssistant: AssistantItem = {
-          id: nextId,
-          ...payload,
-        };
-        setAssistants((prev) => [nextAssistant, ...prev]);
-        setActiveAssistantId(nextId);
-        message.success('助理已创建');
+        assertSuccessResponse(
+          await request(`${API_PREFIX}/biz/qa-assistant/create`, {
+            method: 'POST',
+            data: payload,
+          }),
+          '保存助理失败',
+        );
+        message.success('创建成功');
       }
-
       setAssistantModalOpen(false);
+      await loadAssistants();
     } catch (error: any) {
-      if (error?.errorFields) {
-        return;
-      }
-      message.error(editingAssistant ? '更新助理失败' : '创建助理失败');
+      message.error(error?.message || '保存助理失败');
     } finally {
       setSavingAssistant(false);
     }
@@ -355,89 +505,55 @@ export default function RagSystemPage() {
 
     setCreatingChat(true);
     try {
-      const title = `${activeAssistant.name} ${assistantChats.length + 1}`;
-      const response: any = await request(`${API_PREFIX}/biz/qa-chat/create`, {
-        method: 'POST',
-        data: {
-          assistantId: activeAssistant.id,
-          title,
-        },
-      });
-      const chatId = response?.data ?? Date.now();
-      const nextChat: ChatItem = {
-        id: chatId,
-        assistantId: activeAssistant.id,
-        title,
-        createTime: '刚刚',
-        messages: activeAssistant.openingStatement
-          ? [
-              {
-                id: `opening-${chatId}`,
-                role: 'assistant',
-                content: activeAssistant.openingStatement,
-                timestamp: new Date().toLocaleTimeString(),
-              },
-            ]
-          : [],
-      };
-      setChats((prev) => [nextChat, ...prev]);
-      setActiveChatId(chatId);
-      message.success('会话已创建');
-    } catch {
-      message.error('创建会话失败');
+      assertSuccessResponse(
+        await request(`${API_PREFIX}/biz/qa-chat/create`, {
+          method: 'POST',
+          data: {
+            assistantId: activeAssistant.id,
+            title: `会话 ${chats.length + 1}`,
+          },
+        }),
+        '创建会话失败',
+      );
+      message.success('创建成功');
+      await loadChats(activeAssistant.id);
+    } catch (error: any) {
+      message.error(error?.message || '创建会话失败');
     } finally {
       setCreatingChat(false);
     }
   };
 
-  const handleSend = async () => {
-    if (!inputValue.trim() || !activeChat || !activeAssistant || messagesLoading) {
-      return;
+  const handleDeleteAssistant = async (assistantId: number | string) => {
+    try {
+      assertSuccessResponse(
+        await request(`${API_PREFIX}/biz/qa-assistant/delete`, {
+          method: 'DELETE',
+          params: { id: assistantId },
+        }),
+        '删除助理失败',
+      );
+      message.success('删除成功');
+      await loadAssistants();
+    } catch (error: any) {
+      message.error(error?.message || '删除助理失败');
     }
+  };
 
-    const question = inputValue.trim();
-    const userMessage: MessageItem = {
-      id: `${Date.now()}`,
-      role: 'user',
-      content: question,
-      timestamp: new Date().toLocaleTimeString(),
-    };
-
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === activeChat.id
-          ? {
-              ...chat,
-              messages: [...chat.messages, userMessage],
-            }
-          : chat,
-      ),
-    );
-    setInputValue('');
-    setMessagesLoading(true);
-
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const reply = buildAssistantReply(question, activeAssistant);
-    const assistantMessage: MessageItem = {
-      id: `${Date.now() + 1}`,
-      role: 'assistant',
-      content: reply.content,
-      timestamp: new Date().toLocaleTimeString(),
-      sources: reply.sources,
-      confidence: reply.confidence,
-    };
-
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === activeChat.id
-          ? {
-              ...chat,
-              messages: [...chat.messages, assistantMessage],
-            }
-          : chat,
-      ),
-    );
-    setMessagesLoading(false);
+  const handleDeleteChat = async (chatId: number | string) => {
+    try {
+      assertSuccessResponse(
+        await request(`${API_PREFIX}/biz/qa-chat/delete`, {
+          method: 'DELETE',
+          params: { id: chatId },
+        }),
+        '删除会话失败',
+      );
+      message.success('删除成功');
+      await loadChats(activeAssistantId);
+    } catch (error: any) {
+      message.error(error?.message || '删除会话失败');
+    }
   };
 
   const handleCopy = async (content: string) => {
@@ -449,198 +565,421 @@ export default function RagSystemPage() {
     }
   };
 
+  const handleClearChat = () => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+
+    if (!activeChat) return;
+    setChats((prev) =>
+      prev.map((item) => (item.id === activeChat.id ? { ...item, messages: [] } : item)),
+    );
+    message.success('对话已清空');
+  };
+
+  const appendQuestion = async (question: string) => {
+    if (!question.trim() || !activeChat || !activeAssistant) return;
+
+    streamAbortRef.current?.abort();
+
+    const userMessage: MessageItem = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: question.trim(),
+      timestamp: getNowLabel(),
+    };
+
+    const assistantMessageId = `assistant-${Date.now()}`;
+    const assistantPlaceholder: MessageItem = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: getNowLabel(),
+      sources: [],
+      status: 'streaming',
+    };
+
+    setChats((prev) =>
+      prev.map((item) =>
+        item.id === activeChat.id
+          ? {
+              ...item,
+              title: item.messages.length === 0 ? question.trim().slice(0, 16) : item.title,
+              messages: [...item.messages, userMessage, assistantPlaceholder],
+            }
+          : item,
+      ),
+    );
+    setInputValue('');
+    setMessagesLoading(true);
+
+    const requestPayload: ChatStreamRequestPayload = {
+      sessionId: activeChat.id,
+      assistantId: activeAssistant.id,
+      question: question.trim(),
+      assistantName: activeAssistant.name,
+      knowledgeBaseIds: activeAssistant.knowledgeBaseIds,
+      chatModelName: activeAssistant.chatModelName,
+      chatModelUrl: activeAssistant.chatModelUrl,
+      stream: true,
+      history: activeChat.messages.map((item) => ({
+        role: item.role,
+        content: item.content,
+      })),
+      metadata: {
+        source: 'rag-system-page',
+        requestedAt: new Date().toISOString(),
+      },
+    };
+
+    const updateAssistantMessage = (updater: (messageItem: MessageItem) => MessageItem) => {
+      setChats((prev) =>
+        prev.map((item) =>
+          item.id === activeChat.id
+            ? {
+                ...item,
+                messages: item.messages.map((messageItem) =>
+                  messageItem.id === assistantMessageId ? updater(messageItem) : messageItem,
+                ),
+              }
+            : item,
+        ),
+      );
+    };
+
+    const finishStreamMessage = (patch?: Partial<MessageItem>) => {
+      updateAssistantMessage((messageItem) => ({
+        ...messageItem,
+        ...patch,
+        status: patch?.status ?? 'done',
+        timestamp: getNowLabel(),
+      }));
+      setMessagesLoading(false);
+      streamAbortRef.current = null;
+    };
+
+    const abortController = new AbortController();
+    streamAbortRef.current = abortController;
+
+    try {
+      await fetchEventSource(CHAT_STREAM_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getAccessToken() || ''}`,
+          'Content-Type': 'application/json;charset=utf-8',
+        },
+        body: JSON.stringify(requestPayload),
+        signal: abortController.signal,
+        openWhenHidden: true,
+        async onopen(response) {
+          if (!response.ok) {
+            throw new Error(`对话接口连接失败：${response.status}`);
+          }
+        },
+        onmessage(event) {
+          if (!event.data || event.data === 'connected') return;
+          if (event.data === '[DONE]') {
+            finishStreamMessage();
+            return;
+          }
+
+          let chunk: ChatStreamChunk | null = null;
+          try {
+            chunk = JSON.parse(event.data) as ChatStreamChunk;
+          } catch {
+            updateAssistantMessage((messageItem) => ({
+              ...messageItem,
+              content: `${messageItem.content}${event.data}`,
+            }));
+            return;
+          }
+
+          if (chunk?.code && chunk.code !== 200) {
+            throw new Error(chunk.msg || '对话接口返回失败');
+          }
+
+          const chunkData = chunk?.data;
+          const delta =
+            chunkData?.delta ?? chunkData?.content ?? chunkData?.answer ?? chunkData?.text ?? '';
+
+          if (delta) {
+            updateAssistantMessage((messageItem) => ({
+              ...messageItem,
+              content: `${messageItem.content}${delta}`,
+              sources: chunkData?.sources ?? chunkData?.sourceList ?? messageItem.sources,
+            }));
+          }
+
+          if (chunkData?.done) {
+            finishStreamMessage({
+              sources: chunkData.sources ?? chunkData.sourceList,
+            });
+          }
+        },
+        onclose() {
+          finishStreamMessage();
+        },
+        onerror(error) {
+          finishStreamMessage({
+            status: 'error',
+            content: '对话接口暂未配置完成，当前为流式调用预留状态。后端联调后这里会展示实时回复。',
+          });
+          throw error;
+        },
+      });
+    } catch (error: any) {
+      if (abortController.signal.aborted) {
+        finishStreamMessage({
+          status: 'done',
+          content: '已取消当前回答。',
+        });
+        return;
+      }
+
+      finishStreamMessage({
+        status: 'error',
+        content: '对话接口暂未配置完成，当前为流式调用预留状态。后端联调后这里会展示实时回复。',
+      });
+      message.warning(error?.message || '对话接口暂未接入，已保留流式调用骨架');
+    }
+  };
+
+  const renderAssistantAvatar = () => (
+    <div className="ai-avatar ai-avatar-robot">
+      <div className="robot-screen robot-screen-mini">
+        <div className="robot-eye robot-eye-mini" />
+        <div className="robot-eye robot-eye-mini" />
+      </div>
+      <div className="robot-antenna robot-antenna-mini" />
+    </div>
+  );
+
+  const userAvatar = initialState?.currentUser?.avatar || '';
+
   return (
     <div className="smart-qa-page">
       <div className="smart-qa-workspace">
         <aside className="assistant-sidebar">
-          <div className="sidebar-header">
-            <div>
-              <div className="sidebar-title">助理</div>
-              <div className="sidebar-subtitle">配置模型与知识库</div>
-            </div>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateAssistant}>
-              新增
+          <div className="sidebar-header sidebar-header-full-action">
+            <Button block type="primary" icon={<PlusOutlined />} onClick={openCreateAssistant}>
+              新建助理
             </Button>
           </div>
 
-          <div className="sidebar-list">
-            {assistants.map((assistant) => (
-              <div
-                key={assistant.id}
-                className={`sidebar-card ${assistant.id === activeAssistantId ? 'active' : ''}`}
-                onClick={() => setActiveAssistantId(assistant.id)}
-              >
-                <div className="sidebar-card-title-row">
-                  <div className="sidebar-card-title">{assistant.name}</div>
-                  <Space size={4}>
-                    <Tooltip title="编辑助理">
+          <div className="sidebar-list sidebar-list-compact">
+            {assistantLoading ? (
+              <div className="sidebar-empty">
+                <Spin />
+              </div>
+            ) : assistants.length === 0 ? (
+              <div className="sidebar-empty">
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无助理" />
+              </div>
+            ) : (
+              assistants.map((item) => {
+                const selected = item.id === activeAssistantId;
+                const kbNames = item.knowledgeBaseIds
+                  .map(
+                    (id) =>
+                      knowledgeOptions.find((option) => option.value === id)?.label ||
+                      `知识库 ${id}`,
+                  )
+                  .slice(0, 2);
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`sidebar-row ${selected ? 'active' : ''}`}
+                    onClick={() => setActiveAssistantId(item.id)}
+                  >
+                    <div className="sidebar-row-indicator" />
+                    <div className="sidebar-row-main">
+                      <div className="sidebar-row-top">
+                        <div className="sidebar-row-title">{item.name}</div>
+                      </div>
+                      <div className="sidebar-row-meta">{item.chatModelName || '未配置模型'}</div>
+                      <div className="sidebar-row-tags">
+                        {kbNames.map((name) => (
+                          <span key={name} className="sidebar-mini-tag">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <Space size={6}>
                       <Button
                         type="text"
                         size="small"
                         icon={<EditOutlined />}
+                        className="sidebar-row-action"
                         onClick={(event) => {
                           event.stopPropagation();
-                          openEditAssistant(assistant);
+                          openEditAssistant(item);
                         }}
                       />
-                    </Tooltip>
-                  </Space>
-                </div>
-                <div className="sidebar-card-meta">{assistant.chatModelName}</div>
-                <div className="sidebar-card-meta">{assistant.embeddingModelName}</div>
-                <div className="sidebar-card-tags">
-                  <Tag color={assistant.enabled === 1 ? 'success' : 'default'}>
-                    {assistant.enabled === 1 ? '启用' : '停用'}
-                  </Tag>
-                  <Tag>{assistant.knowledgeBaseIds.length} 个知识库</Tag>
-                </div>
-              </div>
-            ))}
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<DeleteOutlined />}
+                        danger
+                        className="sidebar-row-action sidebar-row-action-danger"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          Modal.confirm({
+                            ...ASSISTANT_DELETE_MODAL_TEXT,
+                            okButtonProps: { danger: true },
+                            onOk: async () => {
+                              await handleDeleteAssistant(item.id);
+                            },
+                          });
+                        }}
+                      />
+                    </Space>
+                  </div>
+                );
+              })
+            )}
           </div>
         </aside>
 
         <aside className="chat-sidebar">
           <div className="sidebar-header">
             <div>
-              <div className="sidebar-title">问答</div>
+              <div className="sidebar-title">会话（{chats.length}）</div>
               <div className="sidebar-subtitle">
-                {activeAssistant ? `${activeAssistant.name} 的会话` : '请选择助理'}
+                {activeAssistant ? `当前助理：${activeAssistant.name}` : '选择助理后即可开始对话'}
               </div>
             </div>
             <Button
-              type="primary"
-              ghost
-              icon={<PlusOutlined />}
-              disabled={!activeAssistant}
-              loading={creatingChat}
               onClick={() => void handleCreateChat()}
+              loading={creatingChat}
+              disabled={!activeAssistant}
             >
               新建
             </Button>
           </div>
 
-          {activeAssistant ? (
-            <div className="sidebar-list">
-              {assistantChats.length === 0 ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无问答会话" />
-              ) : (
-                assistantChats.map((chat) => (
-                  <div
-                    key={chat.id}
-                    className={`sidebar-card ${chat.id === activeChatId ? 'active' : ''}`}
-                    onClick={() => setActiveChatId(chat.id)}
-                  >
-                    <div className="sidebar-card-title">{chat.title}</div>
-                    <div className="sidebar-card-meta">{chat.createTime || '未记录时间'}</div>
-                    <div className="sidebar-card-meta">{chat.messages.length} 条消息</div>
+          <div className="sidebar-list sidebar-list-compact">
+            {chatLoading ? (
+              <div className="sidebar-empty">
+                <Spin />
+              </div>
+            ) : chats.length === 0 ? (
+              <div className="sidebar-empty">
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无会话" />
+              </div>
+            ) : (
+              chats.map((item) => (
+                <div
+                  key={item.id}
+                  className={`sidebar-row chat-row ${item.id === activeChatId ? 'active' : ''}`}
+                  onClick={() => setActiveChatId(item.id)}
+                >
+                  <div className="sidebar-row-main">
+                    <div className="sidebar-row-top">
+                      <div className="sidebar-row-title">{item.title}</div>
+                      <div className="sidebar-row-meta chat-row-time">
+                        {formatDateTime(item.createTime)}
+                      </div>
+                    </div>
+                    <div className="sidebar-row-meta chat-row-subtle">
+                      {item.messages.length > 0
+                        ? item.messages[item.messages.length - 1].content
+                        : '点击开始会话'}
+                    </div>
                   </div>
-                ))
-              )}
-            </div>
-          ) : (
-            <div className="sidebar-empty">
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择左侧助理" />
-            </div>
-          )}
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<DeleteOutlined />}
+                    danger
+                    className="sidebar-row-action sidebar-row-action-danger"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      Modal.confirm({
+                        ...CHAT_DELETE_MODAL_TEXT,
+                        okButtonProps: { danger: true },
+                        onOk: async () => {
+                          await handleDeleteChat(item.id);
+                        },
+                      });
+                    }}
+                  />
+                </div>
+              ))
+            )}
+          </div>
         </aside>
 
         <section className="smart-qa-container">
-          <div
-            style={{
-              padding: '8px 24px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              borderBottom: '1px solid rgba(59, 130, 246, 0.15)',
-              background: 'rgba(255, 255, 255, 0.9)',
-              backdropFilter: 'blur(10px)',
-              position: 'relative',
-              zIndex: 2,
-            }}
-          >
-            <Space>
-              <span className="smart-qa-title" style={{ fontSize: 16, fontWeight: 600 }}>
-                {activeChat?.title || '智能问答'}
-              </span>
-              {activeAssistant && <Tag className="source-tag">{activeAssistant.name}</Tag>}
-            </Space>
-            <Space>
+          <div className="chat-header">
+            <div className="chat-title-section">
+              <div className="chat-title-main">
+                <div>
+                  <div className="chat-subtitle">
+                    {activeChat ? activeChat.title : '请选择一个会话开始问答'}
+                  </div>
+                </div>
+              </div>
               {activeAssistant && (
-                <Tooltip title="编辑当前助理">
-                  <Button
-                    className="clear-button"
-                    icon={<SettingOutlined />}
-                    onClick={() => openEditAssistant(activeAssistant)}
-                  />
-                </Tooltip>
+                <Space size={8} wrap>
+                  <Button className="clear-button" icon={<ClearOutlined />} onClick={handleClearChat}>
+                    清空对话
+                  </Button>
+                  <Button icon={<SettingOutlined />} onClick={() => openEditAssistant(activeAssistant)}>
+                    配置
+                  </Button>
+                </Space>
               )}
-              <Tooltip title="清空当前对话">
-                <Button
-                  className="clear-button"
-                  icon={<ClearOutlined />}
-                  onClick={() => {
-                    if (!activeChat) return;
-                    setChats((prev) =>
-                      prev.map((chat) =>
-                        chat.id === activeChat.id ? { ...chat, messages: [] } : chat,
-                      ),
-                    );
-                  }}
-                />
-              </Tooltip>
-            </Space>
+            </div>
           </div>
 
-          <div className="messages-area">
-            {!activeAssistant || !activeChat ? (
-              <div className="chat-empty-state">
+          {!activeChat || activeChat.messages.length === 0 ? (
+            <div className="chat-landing">
+              <div className="welcome-screen">
                 <div className="robot-avatar-container">
                   <div className="robot-avatar">
-                    <div className="robot-antenna" />
                     <div className="robot-screen">
                       <div className="robot-eye" />
                       <div className="robot-eye" />
                     </div>
-                  </div>
-                </div>
-                <Paragraph
-                  style={{
-                    maxWidth: 720,
-                    textAlign: 'center',
-                    fontSize: 14,
-                    color: '#64748b',
-                    marginBottom: 0,
-                  }}
-                >
-                  先在左侧选择助理，再在中间选择或新建一个问答会话。
-                </Paragraph>
-              </div>
-            ) : activeChat.messages.length === 0 ? (
-              <div className="chat-empty-state">
-                <div className="robot-avatar-container">
-                  <div className="robot-avatar">
                     <div className="robot-antenna" />
-                    <div className="robot-screen">
-                      <div className="robot-eye" />
-                      <div className="robot-eye" />
-                    </div>
                   </div>
                 </div>
-                <Paragraph
-                  style={{
-                    maxWidth: 720,
-                    textAlign: 'center',
-                    fontSize: 14,
-                    color: '#64748b',
-                    marginBottom: 0,
-                  }}
-                >
-                  {activeAssistant.openingStatement ||
-                    '你好，我是你的问答助理，输入问题即可开始对话。'}
-                </Paragraph>
+                <div className="welcome-panel">
+                  <div
+                    className={`welcome-title ${typedWelcomeText.length < welcomeText.length ? 'typing-cursor' : ''}`}
+                  >
+                    {typedWelcomeText}
+                  </div>
+                </div>
               </div>
-            ) : (
-              activeChat.messages.map((msg) => (
+
+              {activeChat && (
+                <div className="recommend-section">
+                  <div className="recommend-header">
+                    <div className="recommend-title">你可以试试这些问题：</div>
+                  </div>
+                  <div className="recommend-grid">
+                    {recommendQuestions.map((question) => (
+                      <div
+                        key={question.title}
+                        className="hot-question-card"
+                        onClick={() => void appendQuestion(question.title)}
+                      >
+                        <div className="hot-question-top">
+                          <span className="hot-question-index" />
+                          <div className="hot-question-title">{question.title}</div>
+                        </div>
+                        <div className="hot-question-desc">{question.desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="messages-area">
+              {activeChat.messages.map((msg) => (
                 <div
                   key={msg.id}
                   style={{
@@ -649,54 +988,17 @@ export default function RagSystemPage() {
                     marginBottom: 20,
                   }}
                 >
-                  <div
-                    className="message-bubble"
-                    style={{
-                      maxWidth: '90%',
-                      display: 'flex',
-                      gap: 12,
-                      flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
-                    }}
-                  >
-                    <div
-                      className={msg.role === 'user' ? 'user-avatar' : 'ai-avatar'}
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {msg.role === 'user' ? (
-                        <UserOutlined style={{ color: '#fff', fontSize: 16 }} />
-                      ) : (
-                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
-                          <rect x="4" y="4" width="16" height="16" rx="4" fill="#3b82f6" />
-                          <rect
-                            x="6"
-                            y="6"
-                            width="12"
-                            height="9"
-                            rx="2"
-                            fill="rgba(30,58,138,0.7)"
-                          />
-                          <rect x="8" y="8.5" width="3" height="3" rx="0.8" fill="#60a5fa" />
-                          <rect x="13" y="8.5" width="3" height="3" rx="0.8" fill="#60a5fa" />
-                        </svg>
-                      )}
-                    </div>
-                    <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', gap: 12, maxWidth: '76%' }}>
+                    {msg.role === 'assistant' && renderAssistantAvatar()}
+                    <div>
                       <div
                         style={{
-                          marginBottom: 4,
+                          marginBottom: 6,
                           textAlign: msg.role === 'user' ? 'right' : 'left',
                         }}
                       >
                         <Text style={{ fontSize: 12, color: '#64748b' }}>
-                          {msg.role === 'user' ? '我' : activeAssistant.name}
+                          {msg.role === 'user' ? '我' : activeAssistant?.name}
                         </Text>
                       </div>
                       <div
@@ -708,72 +1010,30 @@ export default function RagSystemPage() {
                         }}
                       >
                         <div
-                          style={{ lineHeight: 1.6 }}
+                          style={{ lineHeight: 1.7 }}
                           dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
                         />
                         {msg.role === 'assistant' && (
-                          <div
-                            style={{
-                              marginTop: 12,
-                              paddingTop: 12,
-                              borderTop: '1px solid #f0f0f0',
-                            }}
-                          >
-                            {msg.sources && (
-                              <div style={{ marginBottom: 8 }}>
-                                <Text style={{ fontSize: 12, color: '#64748b' }}>
-                                  <BookOutlined /> 参考来源：
-                                </Text>
-                                {msg.sources.map((source) => (
-                                  <Tag
-                                    key={source}
-                                    className="source-tag"
-                                    style={{ marginLeft: 4, fontSize: 11 }}
-                                  >
-                                    {source}
-                                  </Tag>
-                                ))}
-                              </div>
-                            )}
-                            {typeof msg.confidence === 'number' && (
-                              <div style={{ marginBottom: 8 }}>
-                                <Text style={{ fontSize: 12, color: '#64748b' }}>置信度：</Text>
-                                <Progress
-                                  className="confidence-progress"
-                                  percent={Math.round(msg.confidence * 100)}
-                                  size="small"
-                                  style={{ width: 100, display: 'inline-block', marginLeft: 8 }}
-                                  strokeColor={{ '0%': '#3b82f6', '100%': '#1d4ed8' }}
-                                  trailColor="rgba(59, 130, 246, 0.1)"
-                                />
-                              </div>
-                            )}
-                            <Space>
-                              <Tooltip title="复制">
-                                <Button
-                                  className="action-button"
-                                  size="small"
-                                  icon={<CopyOutlined />}
-                                  onClick={() => void handleCopy(msg.content)}
-                                />
-                              </Tooltip>
-                              <Tooltip title="有用">
-                                <Button className="action-button" size="small" icon={<LikeOutlined />} />
-                              </Tooltip>
-                              <Tooltip title="无用">
-                                <Button
-                                  className="action-button"
-                                  size="small"
-                                  icon={<DislikeOutlined />}
-                                />
-                              </Tooltip>
-                            </Space>
+                          <div className="message-tools">
+                            {msg.sources?.map((source) => (
+                              <span key={source} className="sidebar-mini-tag">
+                                {source}
+                              </span>
+                            ))}
+                            <Tooltip title="复制">
+                              <Button
+                                size="small"
+                                type="text"
+                                icon={<CopyOutlined />}
+                                onClick={() => void handleCopy(msg.content)}
+                              />
+                            </Tooltip>
                           </div>
                         )}
                         <div
                           style={{
                             fontSize: 11,
-                            color: msg.role === 'user' ? 'rgba(255,255,255,0.7)' : '#999',
+                            color: msg.role === 'user' ? 'rgba(255,255,255,0.75)' : '#94a3b8',
                             marginTop: 8,
                             textAlign: 'right',
                           }}
@@ -782,93 +1042,58 @@ export default function RagSystemPage() {
                         </div>
                       </div>
                     </div>
+                    {msg.role === 'user' && (
+                      <div className="user-avatar">
+                        {userAvatar ? (
+                          <img src={userAvatar} alt="用户头像" className="user-avatar-image" />
+                        ) : (
+                          '我'
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))
-            )}
+              ))}
 
-            {messagesLoading && (
-              <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 20 }}>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <div
-                    className="ai-avatar"
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 10,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <rect x="4" y="4" width="16" height="16" rx="4" fill="#3b82f6" />
-                      <rect
-                        x="6"
-                        y="6"
-                        width="12"
-                        height="9"
-                        rx="2"
-                        fill="rgba(30,58,138,0.7)"
-                      />
-                      <rect x="8" y="8.5" width="3" height="3" rx="0.8" fill="#60a5fa">
-                        <animate
-                          attributeName="opacity"
-                          values="1;0.3;1"
-                          dur="3s"
-                          repeatCount="indefinite"
-                          keyTimes="0;0.45;0.55"
-                        />
-                      </rect>
-                      <rect x="13" y="8.5" width="3" height="3" rx="0.8" fill="#60a5fa">
-                        <animate
-                          attributeName="opacity"
-                          values="1;0.3;1"
-                          dur="3s"
-                          repeatCount="indefinite"
-                          keyTimes="0;0.45;0.55"
-                        />
-                      </rect>
-                    </svg>
-                  </div>
-                  <div
-                    className="message-bubble assistant"
-                    style={{ padding: '14px 18px', borderRadius: '16px 16px 16px 4px' }}
-                  >
-                    <div className="thinking-container">
-                      <div className="thinking-dot" />
-                      <div className="thinking-dot" />
-                      <div className="thinking-dot" />
-                      <Text style={{ color: '#94a3b8', marginLeft: 8 }}>AI 正在思考中...</Text>
+              {messagesLoading && (
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 20 }}>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    {renderAssistantAvatar()}
+                    <div className="message-bubble assistant" style={{ padding: '14px 18px' }}>
+                      <div className="thinking-container">
+                        <div className="thinking-dot" />
+                        <div className="thinking-dot" />
+                        <div className="thinking-dot" />
+                        <Text style={{ color: '#94a3b8', marginLeft: 8 }}>AI 正在思考中...</Text>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
 
           <div className="input-area">
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 10 }}>
               <TextArea
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder={activeChat ? '输入问题...' : '先选择左侧会话...'}
+                placeholder={activeChat ? '输入你的问题...' : '请先选择会话...'}
                 autoSize={{ minRows: 1, maxRows: 4 }}
                 onPressEnter={(e) => {
                   if (!e.shiftKey) {
                     e.preventDefault();
-                    void handleSend();
+                    void appendQuestion(inputValue);
                   }
                 }}
-                style={{ flex: 1 }}
                 disabled={!activeChat}
               />
               <Button
                 className="send-button"
+                type="primary"
                 icon={<SendOutlined />}
-                onClick={() => void handleSend()}
+                onClick={() => void appendQuestion(inputValue)}
                 loading={messagesLoading}
                 disabled={!inputValue.trim() || !activeChat}
               >
@@ -880,7 +1105,7 @@ export default function RagSystemPage() {
       </div>
 
       <Modal
-        title={editingAssistant ? '编辑助理' : '新增助理'}
+        title={editingAssistant ? '编辑助理' : '新建助理'}
         open={assistantModalOpen}
         width={720}
         onCancel={() => setAssistantModalOpen(false)}
@@ -900,39 +1125,43 @@ export default function RagSystemPage() {
             </Form.Item>
 
             <Form.Item
-              name="enabled"
-              label="是否启用"
-              valuePropName="checked"
+              name="chatModelName"
+              label="问答模型名称"
+              rules={[{ required: true, message: '请输入问答模型名称' }]}
             >
-              <Switch />
+              <Input placeholder="qwen2.5-72b-instruct" />
             </Form.Item>
 
-            <Form.Item name="chatModelName" label="问答模型名称" rules={[{ required: true }]}>
-              <Input placeholder="例如：qwen2.5-72b-instruct" />
-            </Form.Item>
-
-            <Form.Item name="chatModelUrl" label="问答模型地址" rules={[{ required: true }]}>
-              <Input placeholder="例如：http://127.0.0.1:8000/v1" />
+            <Form.Item
+              name="chatModelUrl"
+              label="问答模型地址"
+              rules={[{ required: true, message: '请输入问答模型地址' }]}
+            >
+              <Input placeholder="http://127.0.0.1:8000/v1" />
             </Form.Item>
 
             <Form.Item
               name="embeddingModelName"
               label="向量模型名称"
-              rules={[{ required: true }]}
+              rules={[{ required: true, message: '请输入向量模型名称' }]}
             >
-              <Input placeholder="例如：bge-large-zh" />
+              <Input placeholder="bge-large-zh" />
             </Form.Item>
 
             <Form.Item
               name="embeddingModelUrl"
               label="向量模型地址"
-              rules={[{ required: true }]}
+              rules={[{ required: true, message: '请输入向量模型地址' }]}
             >
-              <Input placeholder="例如：http://127.0.0.1:8001/embed" />
+              <Input placeholder="http://127.0.0.1:8001/embed" />
             </Form.Item>
           </div>
 
-          <Form.Item name="knowledgeBaseIds" label="关联知识库" rules={[{ required: true }]}>
+          <Form.Item
+            name="knowledgeBaseIds"
+            label="关联知识库"
+            rules={[{ required: true, message: '请至少选择一个知识库' }]}
+          >
             <Select
               mode="multiple"
               loading={loadingKnowledge}
@@ -942,11 +1171,11 @@ export default function RagSystemPage() {
           </Form.Item>
 
           <Form.Item name="openingStatement" label="开场白">
-            <Input.TextArea rows={3} placeholder="例如：你好，我可以根据知识库为你回答问题。" />
+            <Input.TextArea rows={3} placeholder="例如：你好，我可以根据知识库回答你的问题。" />
           </Form.Item>
 
           <Form.Item name="prompt" label="提示词">
-            <Input.TextArea rows={4} placeholder="例如：请严格基于知识库内容回答。" />
+            <Input.TextArea rows={4} placeholder="例如：请基于知识内容给出清晰、准确的回答。" />
           </Form.Item>
         </Form>
       </Modal>
