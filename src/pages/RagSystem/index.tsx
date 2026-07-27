@@ -203,6 +203,9 @@ const normalizeChat = (item: any, fallbackAssistantId: number | string): ChatIte
   messages: Array.isArray(item?.messages) ? item.messages : [],
 });
 
+const getResponseData = <T,>(response: any): T | undefined =>
+  (response?.data?.data ?? response?.data ?? response) as T | undefined;
+
 const pickList = (response: any): any[] => {
   if (Array.isArray(response)) return response;
   if (Array.isArray(response?.list)) return response.list;
@@ -270,6 +273,7 @@ export default function RagSystemPage() {
   const [creatingChat, setCreatingChat] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [newChatTitle, setNewChatTitle] = useState('');
   const [activeAssistantId, setActiveAssistantId] = useState<number | string>('');
   const [activeChatId, setActiveChatId] = useState<number | string>('');
   const [typedWelcomeText, setTypedWelcomeText] = useState('');
@@ -356,7 +360,10 @@ export default function RagSystemPage() {
     }
   };
 
-  const loadChats = async (assistantId: number | string) => {
+  const loadChats = async (
+    assistantId: number | string,
+    options?: { preferredChatId?: number | string; preferredTitle?: string },
+  ) => {
     if (!assistantId) {
       setChats([]);
       setActiveChatId('');
@@ -385,6 +392,21 @@ export default function RagSystemPage() {
 
         setChats(normalized);
         setActiveChatId((prev) => {
+          if (
+            options?.preferredChatId !== undefined &&
+            options.preferredChatId !== null &&
+            normalized.some((item) => item.id === options.preferredChatId)
+          ) {
+            return options.preferredChatId;
+          }
+          if (options?.preferredTitle) {
+            const matchedChat = [...normalized]
+              .reverse()
+              .find((item) => item.title === options.preferredTitle);
+            if (matchedChat) {
+              return matchedChat.id;
+            }
+          }
           if (normalized.some((item) => item.id === prev)) return prev;
           return normalized[0]?.id ?? '';
         });
@@ -497,26 +519,47 @@ export default function RagSystemPage() {
     }
   };
 
+  const getDefaultChatTitle = () => `会话 ${chats.length + 1}`;
+
+  const handlePrepareCreateChat = () => {
+    if (!activeAssistant) {
+      message.warning('请先选择助理');
+      return;
+    }
+
+    setNewChatTitle((prev) => prev || getDefaultChatTitle());
+  };
+
   const handleCreateChat = async () => {
     if (!activeAssistant) {
       message.warning('请先选择助理');
       return;
     }
 
+    const title = newChatTitle.trim() || getDefaultChatTitle();
+
     setCreatingChat(true);
     try {
-      assertSuccessResponse(
+      const createResponse = assertSuccessResponse(
         await request(`${API_PREFIX}/biz/qa-chat/create`, {
           method: 'POST',
           data: {
             assistantId: activeAssistant.id,
-            title: `会话 ${chats.length + 1}`,
+            title,
           },
         }),
         '创建会话失败',
       );
+      const createdChat = getResponseData<{ id?: number | string; chatId?: number | string; qaChatId?: number | string }>(
+        createResponse,
+      );
+      const createdChatId = createdChat?.id ?? createdChat?.chatId ?? createdChat?.qaChatId;
       message.success('创建成功');
-      await loadChats(activeAssistant.id);
+      setNewChatTitle('');
+      await loadChats(activeAssistant.id, {
+        preferredChatId: createdChatId,
+        preferredTitle: title,
+      });
     } catch (error: any) {
       message.error(error?.message || '创建会话失败');
     } finally {
@@ -843,19 +886,27 @@ export default function RagSystemPage() {
 
         <aside className="chat-sidebar">
           <div className="sidebar-header">
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="sidebar-title">会话（{chats.length}）</div>
-              <div className="sidebar-subtitle">
-                {activeAssistant ? `当前助理：${activeAssistant.name}` : '选择助理后即可开始对话'}
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <Input
+                  value={newChatTitle}
+                  onChange={(e) => setNewChatTitle(e.target.value)}
+                  onFocus={handlePrepareCreateChat}
+                  onPressEnter={() => void handleCreateChat()}
+                  placeholder={activeAssistant ? getDefaultChatTitle() : '请先选择助理'}
+                  disabled={!activeAssistant || creatingChat}
+                  maxLength={100}
+                />
+                <Button
+                  onClick={() => void handleCreateChat()}
+                  loading={creatingChat}
+                  disabled={!activeAssistant}
+                >
+                  新建
+                </Button>
               </div>
             </div>
-            <Button
-              onClick={() => void handleCreateChat()}
-              loading={creatingChat}
-              disabled={!activeAssistant}
-            >
-              新建
-            </Button>
           </div>
 
           <div className="sidebar-list sidebar-list-compact">
@@ -914,10 +965,13 @@ export default function RagSystemPage() {
           <div className="chat-header">
             <div className="chat-title-section">
               <div className="chat-title-main">
-                <div>
+                <div className="chat-title-wrap">
                   <div className="chat-subtitle">
                     {activeChat ? activeChat.title : '请选择一个会话开始问答'}
                   </div>
+                  {activeAssistant && (
+                    <span className="chat-title-assistant-tag">{activeAssistant.name}</span>
+                  )}
                 </div>
               </div>
               {activeAssistant && (
@@ -1179,6 +1233,7 @@ export default function RagSystemPage() {
           </Form.Item>
         </Form>
       </Modal>
+
     </div>
   );
 }
