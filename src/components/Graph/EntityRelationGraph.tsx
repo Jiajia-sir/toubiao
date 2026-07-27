@@ -559,6 +559,8 @@ const EntityRelationGraph = forwardRef<
         graph.mergeEdgeAttributes(edgeId, edgeData);
       }
     });
+
+    sigmaRef.current?.refresh();
   }, [data, nodeScale, linkWidth, showNodes, showLinks, showLabels, selectedNodeId, labelMaxLength, maxVisibleLabels]);
 
   const onNodeClickRef = useRef(onNodeClick);
@@ -582,9 +584,12 @@ const EntityRelationGraph = forwardRef<
     const sigma = new Sigma(graph, container, {
       doubleClickZoomingRatio: 1,
       doubleClickZoomingDuration: 0,
-      hideLabelsOnMove: true,
-      hideEdgesOnMove: true,
-      labelRenderedSizeThreshold: 10,
+      // Keep labels and relations visible during canvas/camera movement.
+      // The previous optimization caused the graph to temporarily degrade into
+      // unlabeled points while dragging or right after animated camera updates.
+      hideLabelsOnMove: false,
+      hideEdgesOnMove: false,
+      labelRenderedSizeThreshold: 1,
       renderEdgeLabels: showLinks,
       zIndex: true,
       defaultDrawNodeHover: (context, data, settings) => {

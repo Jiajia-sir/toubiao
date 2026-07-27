@@ -19,6 +19,7 @@ import {
   Space,
   Spin,
   Tag,
+  Tooltip,
   message,
 } from "antd";
 import {
@@ -59,7 +60,7 @@ import {
   type EntityNodeDetail,
   type SourceDocument,
 } from "@/data/entityGraphMock";
-import { getGraphEntities, searchGraph, expandGraphNode, type SearchGraphResult, type GraphEntityResult, type GraphExpandResult } from "@/services/biz/graph";
+import { getGraphEntities, searchGraph, expandGraphNode, type SearchGraphResult, type GraphEntityResult, type GraphExpandResult, type SearchGraphNode, type SearchGraphLink } from "@/services/biz/graph";
 import { getEntityTypePage, type EntityTypeItem } from "@/services/biz/entity-type";
 
 const typeMeta: Record<EntityGraphNodeType, { label: string; color: string; countColor: string }> = {
@@ -84,6 +85,15 @@ interface EntityOverride {
   desc?: string;
   tag?: string[];
   avp?: Array<[string, string]>;
+}
+
+export interface NodeExpandState {
+  cursor?: number | string;
+  nextCursor?: number | string;
+  hasMore?: boolean;
+  loading?: boolean;
+  nodes: string[];
+  links: string[];
 }
 
 interface EntityFormValues {
@@ -249,11 +259,11 @@ export default function GraphPage() {
   const [entityTypeLoading, setEntityTypeLoading] = useState(false);
   const [graphData, setGraphData] = useState<EntityGraphData>(() => createEmptyGraph(initialEntity));
   const [previewCursor, setPreviewCursor] = useState<string | number | undefined>(undefined);
+  const [entityListHasMore, setEntityListHasMore] = useState<boolean>(true);
+  const [entityListLoading, setEntityListLoading] = useState<boolean>(false);
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
-  const [expandCursors, setExpandCursors] = useState<Record<string, number | string | undefined>>({});
-  const [expandHasMore, setExpandHasMore] = useState<Record<string, boolean>>({});
-  const [nodeExpandHistory, setNodeExpandHistory] = useState<Record<string, { nodes: string[], links: string[] }>>({});
+  const [nodeExpandMap, setNodeExpandMap] = useState<Record<string, NodeExpandState>>({});
   const [entityTypes, setEntityTypes] = useState<EntityTypeItem[]>([]);
   const [activeEntityTypeName, setActiveEntityTypeName] = useState<string | null>(null);
   const [entityNameKeyword, setEntityNameKeyword] = useState("");
@@ -287,16 +297,12 @@ export default function GraphPage() {
       if (node.type === "value") {
         return false;
       }
-      const detailTags = getNodeDetail(node.name).tag;
-      if (activeEntityTypeName && !detailTags.includes(activeEntityTypeName) && node.name !== activeEntityTypeName) {
-        return false;
-      }
       if (!keywordValue) {
         return true;
       }
       return node.name.toLowerCase().includes(keywordValue);
     });
-  }, [activeEntityTypeName, entityNameKeyword, graphData.nodes]);
+  }, [entityNameKeyword, graphData.nodes]);
 
   const communities = useMemo(() => buildCommunities(graphData), [graphData]);
   const activeCommunity = useMemo(
@@ -316,7 +322,15 @@ export default function GraphPage() {
       if (communityNodeIds && !communityNodeIds.has(node.id)) {
         return false;
       }
-      if (node.id === graphData.centerId || node.type === "center") {
+      if (node.id === graphData.centerId || node.type === "center" || expandedNodeIds.has(node.id)) {
+        return true;
+      }
+      const isConnectedToExpanded = graphData.links.some(
+        (l) =>
+          (l.source === node.id && (l.target === graphData.centerId || expandedNodeIds.has(l.target))) ||
+          (l.target === node.id && (l.source === graphData.centerId || expandedNodeIds.has(l.source))),
+      );
+      if (isConnectedToExpanded) {
         return true;
       }
       if (!hasNameFilter) {
@@ -425,9 +439,7 @@ export default function GraphPage() {
       setGraphData(nextGraph);
       setSelectedNodeId(nextGraph.nodes[0]?.id || "");
       setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
-      setExpandCursors({});
-      setExpandHasMore({});
-      setNodeExpandHistory({});
+      setNodeExpandMap({});
       setActiveEntityTypeName(null);
       setEntityNameKeyword("");
       setActiveCommunityId(null);
@@ -452,14 +464,27 @@ export default function GraphPage() {
     }
   }
 
-  async function handleLoadGraphEntities(overrideType?: string, resetCursor = false) {
+  async function handleLoadGraphEntities(
+    overrideType?: string,
+    resetCursor = false,
+    mode: "replace" | "append" = "replace",
+  ) {
+    if (entityListLoading) return;
+    if (!resetCursor && entityListHasMore === false) {
+      message.info("暂无更多实体数据");
+      return;
+    }
+
     try {
-      setGraphLoading(true);
+      setEntityListLoading(true);
+      if (resetCursor) {
+        setGraphLoading(true);
+      }
       const targetType = overrideType !== undefined ? overrideType : activeEntityTypeName;
       const cursorToUse = resetCursor ? undefined : previewCursor;
       const response = await getGraphEntities({
         way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
-        nodeKind: "all",
+        nodeKind: "entity",
         entityType: targetType || undefined,
         name: entityNameKeyword.trim() || undefined,
         cursor: cursorToUse,
@@ -468,7 +493,7 @@ export default function GraphPage() {
       const result = extractResultData<GraphEntityResult>(response);
       
       const nodes: EntityGraphNode[] = (result?.list || []).map((item) => ({
-        id: item.graphNodeId || item.nodeId,
+        id: String(item.nodeId || item.graphNodeId || item.name || "").trim(),
         name: item.name,
         type: item.nodeKind === "entity" ? "entity" : "value",
         desc: item.value || "",
@@ -477,25 +502,36 @@ export default function GraphPage() {
         relationCount: 0,
       }));
 
-      const nextGraph: EntityGraphData = {
-        centerId: nodes[0]?.id || "",
-        nodes,
-        links: [],
-      };
-
-      setKeyword("");
-      setGraphData(nextGraph);
-      setSelectedNodeId(nextGraph.centerId || nextGraph.nodes[0]?.id || "");
-      setExpandedNodeIds(new Set());
-      setExpandCursors({});
-      setExpandHasMore({});
-      setNodeExpandHistory({});
-      setActiveCommunityId(null);
-      setLinkWidth(1.4);
       setPreviewCursor(result?.nextCursor);
-      window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+      setEntityListHasMore(result?.hasMore !== false);
 
-      if (nextGraph.nodes.length === 0) {
+      if (mode === "append" && !resetCursor) {
+        setGraphData((prev) => {
+          const existingIds = new Set(prev.nodes.map((n) => n.id));
+          const newUniqueNodes = nodes.filter((n) => !existingIds.has(n.id));
+          return {
+            ...prev,
+            nodes: [...prev.nodes, ...newUniqueNodes],
+          };
+        });
+      } else {
+        const nextGraph: EntityGraphData = {
+          centerId: nodes[0]?.id || "",
+          nodes,
+          links: [],
+        };
+
+        setKeyword("");
+        setGraphData(nextGraph);
+        setSelectedNodeId(nextGraph.centerId || nextGraph.nodes[0]?.id || "");
+        setExpandedNodeIds(new Set());
+        setNodeExpandMap({});
+        setActiveCommunityId(null);
+        setLinkWidth(1.4);
+        window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+      }
+
+      if (nodes.length === 0) {
         message.info("当前暂无可展示的图谱数据");
       }
     } catch (error) {
@@ -504,8 +540,10 @@ export default function GraphPage() {
       setSelectedNodeId("");
       setExpandedNodeIds(new Set());
       setActiveCommunityId(null);
+      setEntityListHasMore(false);
       message.error("图谱加载失败");
     } finally {
+      setEntityListLoading(false);
       setGraphLoading(false);
     }
   }
@@ -519,13 +557,36 @@ export default function GraphPage() {
 
   async function handleNodeExpand(node: EntityGraphNode, mode: "append" | "replace" = "append") {
     setSelectedNodeId(node.id);
-    if (!node.expandable || (expandedNodeIds.has(node.id) && !mode)) {
+    if (!node.expandable) {
+      return;
+    }
+
+    const currentNodeState = nodeExpandMap[node.id] || {
+      hasMore: true,
+      loading: false,
+      nodes: [],
+      links: [],
+    };
+
+    if (currentNodeState.loading) {
+      return;
+    }
+
+    if (currentNodeState.hasMore === false) {
+      message.info("该节点暂无更多可展开关系");
       return;
     }
 
     try {
-      setGraphLoading(true);
-      const currentCursor = expandCursors[node.id];
+      setNodeExpandMap((prev) => ({
+        ...prev,
+        [node.id]: {
+          ...(prev[node.id] || currentNodeState),
+          loading: true,
+        },
+      }));
+
+      const requestCursor = currentNodeState.nextCursor;
       const response = await expandGraphNode({
         way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
         nodeId: node.id,
@@ -533,14 +594,54 @@ export default function GraphPage() {
         direction: "both",
         includeProperty: true,
         limit: 20,
-        cursor: currentCursor,
+        cursor: requestCursor,
       });
 
       const result = extractResultData<GraphExpandResult>(response);
 
-      if (!result?.nodes?.length && !result?.links?.length) {
-        message.info("该节点暂无更多可展开关系");
-        setExpandHasMore((prev) => ({ ...prev, [node.id]: false }));
+      const rawNodes = Array.isArray(result?.nodes) ? result.nodes : [];
+      const rawLinks = Array.isArray(result?.links) ? result.links : [];
+
+      const validNodes = rawNodes
+        .map((n) => {
+          if (!n) return null;
+          const nid = String(n.id ?? (n as any).nodeId ?? (n as any).graphNodeId ?? n.name ?? "").trim();
+          if (!nid) return null;
+          return {
+            ...n,
+            id: nid,
+            name: String(n.name ?? nid).trim(),
+            type: n.type ?? "entity",
+          };
+        })
+        .filter(Boolean) as SearchGraphNode[];
+
+      const validLinks = rawLinks
+        .map((l) => {
+          if (!l) return null;
+          const source = String(l.source ?? "").trim();
+          const target = String(l.target ?? "").trim();
+          const relation = String(l.relation ?? "关联").trim();
+          if (!source || !target) return null;
+          return {
+            ...l,
+            source,
+            target,
+            relation,
+          };
+        })
+        .filter(Boolean) as SearchGraphLink[];
+
+      if (!validNodes.length && !validLinks.length) {
+        message.info(mode === "replace" ? "暂无其他可展示的新关联关系" : "该节点暂无更多可展开关系");
+        setNodeExpandMap((prev) => ({
+          ...prev,
+          [node.id]: {
+            ...(prev[node.id] || currentNodeState),
+            hasMore: false,
+            loading: false,
+          },
+        }));
         setExpandedNodeIds((prev) => {
           const next = new Set(prev);
           next.add(node.id);
@@ -549,55 +650,67 @@ export default function GraphPage() {
         return;
       }
 
-      const newNodesIds = result.nodes?.map((n) => n.id) || [];
-      const newLinksKeys = result.links?.map((l) => `${l.source}-${l.target}-${l.relation}`) || [];
+      const newNodesIds = validNodes.map((n) => n.id);
+      const newLinksKeys = validLinks.map((l) => `${l.source}-${l.target}-${l.relation}`);
 
       setGraphData((prev) => {
         const nextNodesMap = new Map(prev.nodes.map((n) => [n.id, n]));
         const nextLinksMap = new Map(prev.links.map((l) => [`${l.source}-${l.target}-${l.relation}`, l]));
         
         if (mode === "replace") {
-          const history = nodeExpandHistory[node.id];
-          if (history) {
-            history.links.forEach((k) => nextLinksMap.delete(k));
-            history.nodes.forEach((nid) => {
-              const stillReferenced = Array.from(nextLinksMap.values()).some((l) => l.source === nid || l.target === nid);
-              if (!stillReferenced && nid !== prev.centerId && nid !== node.id) {
-                nextNodesMap.delete(nid);
-              }
-            });
-          }
+          const historyLinks = new Set(currentNodeState.links || []);
+          historyLinks.forEach((k) => nextLinksMap.delete(k));
+          (currentNodeState.nodes || []).forEach((nid) => {
+            const stillReferenced = Array.from(nextLinksMap.values()).some(
+              (l) => l?.source === nid || l?.target === nid,
+            );
+            if (!stillReferenced && nid !== prev.centerId && nid !== node.id) {
+              nextNodesMap.delete(nid);
+            }
+          });
         }
 
-        result.nodes?.forEach((n) => {
+        validNodes.forEach((n) => {
           if (!nextNodesMap.has(n.id)) {
             nextNodesMap.set(n.id, n as any);
           }
         });
         
-        result.links?.forEach((l) => {
+        validLinks.forEach((l) => {
           nextLinksMap.set(`${l.source}-${l.target}-${l.relation}`, l);
         });
 
         return {
           ...prev,
+          centerId: node.id,
           nodes: Array.from(nextNodesMap.values()),
           links: Array.from(nextLinksMap.values()),
         };
       });
 
-      setNodeExpandHistory((prev) => ({
-        ...prev,
-        [node.id]: mode === "append"
-          ? {
-              nodes: Array.from(new Set([...(prev[node.id]?.nodes || []), ...newNodesIds])),
-              links: Array.from(new Set([...(prev[node.id]?.links || []), ...newLinksKeys])),
-            }
-          : { nodes: newNodesIds, links: newLinksKeys },
-      }));
+      setNodeExpandMap((prev) => {
+        const prevNodeState = prev[node.id] || { nodes: [], links: [] };
+        const mergedNodes =
+          mode === "append"
+            ? Array.from(new Set([...(prevNodeState.nodes || []), ...newNodesIds]))
+            : newNodesIds;
+        const mergedLinks =
+          mode === "append"
+            ? Array.from(new Set([...(prevNodeState.links || []), ...newLinksKeys]))
+            : newLinksKeys;
 
-      setExpandCursors((prev) => ({ ...prev, [node.id]: result.nextCursor }));
-      setExpandHasMore((prev) => ({ ...prev, [node.id]: result.hasMore !== false }));
+        return {
+          ...prev,
+          [node.id]: {
+            cursor: requestCursor,
+            nextCursor: result.nextCursor,
+            hasMore: result.hasMore !== false,
+            loading: false,
+            nodes: mergedNodes,
+            links: mergedLinks,
+          },
+        };
+      });
 
       setExpandedNodeIds((prev) => {
         const next = new Set(prev);
@@ -607,8 +720,16 @@ export default function GraphPage() {
     } catch (error) {
       console.error(error);
       message.error("节点拓展失败");
-    } finally {
-      setGraphLoading(false);
+      setNodeExpandMap((prev) => {
+        if (!prev[node.id]) return prev;
+        return {
+          ...prev,
+          [node.id]: {
+            ...prev[node.id],
+            loading: false,
+          },
+        };
+      });
     }
   }
 
@@ -1029,8 +1150,8 @@ export default function GraphPage() {
                 className="hide-scrollbar"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 10,
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 8,
                   maxHeight: 260,
                   overflowY: "auto",
                   paddingRight: 4,
@@ -1038,38 +1159,30 @@ export default function GraphPage() {
               >
                 {entityTypes.map((item) => {
                   const active = activeEntityTypeName === item.name;
-                  const count = item.entityCount || 0;
                   return (
-                    <button
-                      key={String(item.id)}
-                      type="button"
-                      onClick={() => handleEntityTypeChange(item.name)}
-                      title={item.name}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "8px 12px",
-                        borderRadius: 12,
-                        border: active ? "1px solid #93c5fd" : "1px solid #e2e8f0",
-                        background: active ? "#eff6ff" : "#fff",
-                        color: active ? "#3b82f6" : "#475569",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <span style={{ fontSize: 14 }}>{item.name}</span>
-                      <span
+                    <Tooltip key={String(item.id)} title={item.name} placement="top">
+                      <button
+                        type="button"
+                        onClick={() => handleEntityTypeChange(item.name)}
                         style={{
-                          background: active ? "#dbeafe" : "#f1f5f9",
-                          color: active ? "#3b82f6" : "#94a3b8",
-                          padding: "0 6px",
-                          borderRadius: 10,
-                          fontSize: 12,
+                          display: "block",
+                          width: "100%",
+                          padding: "8px 6px",
+                          borderRadius: 12,
+                          border: active ? "1px solid #93c5fd" : "1px solid #e2e8f0",
+                          background: active ? "#eff6ff" : "#fff",
+                          color: active ? "#3b82f6" : "#475569",
+                          cursor: "pointer",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: 13,
+                          textAlign: "center",
                         }}
                       >
-                        {count}
-                      </span>
-                    </button>
+                        {item.name}
+                      </button>
+                    </Tooltip>
                   );
                 })}
               </div>
@@ -1081,7 +1194,35 @@ export default function GraphPage() {
             </div>
           </SectionBlock>
 
-          <SectionBlock title="实体名称">
+          <SectionBlock
+            title="实体名称"
+            extra={
+              entityListHasMore !== false ? (
+                <Space size={12}>
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => void handleLoadGraphEntities(undefined, false, "replace")}
+                    loading={entityListLoading}
+                    disabled={entityListLoading}
+                    style={{ padding: 0, fontSize: 13 }}
+                  >
+                    换一批
+                  </Button>
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => void handleLoadGraphEntities(undefined, false, "append")}
+                    loading={entityListLoading}
+                    disabled={entityListLoading}
+                    style={{ padding: 0, fontSize: 13 }}
+                  >
+                    加载更多
+                  </Button>
+                </Space>
+              ) : null
+            }
+          >
             <Input
               value={entityNameKeyword}
               onChange={(event) => setEntityNameKeyword(event.target.value)}
@@ -1091,83 +1232,52 @@ export default function GraphPage() {
               style={{ height: 40, borderRadius: 12 }}
             />
 
-            <div
-              className="hide-scrollbar"
-              style={{
-                marginTop: 12,
-                display: "grid",
-                gridTemplateColumns: "repeat(1, minmax(0, 1fr))",
-                gap: 8,
-                maxHeight: 260,
-                overflowY: "auto",
-                paddingRight: 4,
-              }}
-            >
-              {entityNameOptions.map((node) => (
-                <button
-                  key={node.id}
-                  type="button"
-                  onClick={() => handleEntityNameSelect(node)}
-                  title={node.name}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "stretch",
-                    gap: 6,
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border:
-                      selectedNodeId === node.id
-                        ? `1px solid ${typeMeta[node.type].color}`
-                        : "1px solid #e2e8f0",
-                    background:
-                      selectedNodeId === node.id ? `${typeMeta[node.type].color}12` : "#fff",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    minWidth: 0,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      minWidth: 0,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <EntityTypeDot type={node.type} />
-                    <span
-                      style={{
-                        color: "#1f2937",
-                        fontWeight: 600,
-                        fontSize: 13,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        minWidth: 0,
-                        display: "block",
-                        flex: 1,
-                      }}
-                    >
-                      {node.name}
-                    </span>
-                  </div>
-                  <span
-                    style={{
-                      color: "#94a3b8",
-                      fontSize: 11,
-                      lineHeight: 1,
-                      textAlign: "left",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {node.expandable && !expandedNodeIds.has(node.id) ? "点击展开" : "已展示"}
-                  </span>
-                </button>
-              ))}
-              {entityNameOptions.length === 0 ? (
+            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+              <div
+                className="hide-scrollbar"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 8,
+                  maxHeight: 260,
+                  overflowY: "auto",
+                  paddingRight: 4,
+                }}
+              >
+                {entityNameOptions.map((node) => {
+                  const active = selectedNodeId === node.id;
+                  return (
+                    <Tooltip key={node.id} title={node.name} placement="top">
+                      <button
+                        type="button"
+                        onClick={() => handleEntityNameSelect(node)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "8px 6px",
+                          borderRadius: 12,
+                          border: active
+                            ? `1px solid ${typeMeta[node.type].color}`
+                            : "1px solid #e2e8f0",
+                          background: active ? `${typeMeta[node.type].color}12` : "#fff",
+                          color: active ? typeMeta[node.type].color : "#475569",
+                          cursor: "pointer",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          fontSize: 13,
+                          textAlign: "center",
+                        }}
+                      >
+                        {node.name}
+                      </button>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+
+              {entityListLoading ? <Spin size="small" /> : null}
+              {!entityListLoading && entityNameOptions.length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前筛选下暂无实体" />
               ) : null}
             </div>
@@ -1345,9 +1455,9 @@ export default function GraphPage() {
               <Button type="text" icon={<ReloadOutlined />} onClick={() => graphRef.current?.resetZoom()}>
                 重置
               </Button>
-              <Button type="text" icon={<ReloadOutlined />} onClick={() => void handleLoadGraphEntities()}>
+              {/* <Button type="text" icon={<ReloadOutlined />} onClick={() => void handleLoadGraphEntities()}>
                 换一批
-              </Button>
+              </Button> */}
               <Button type="text" icon={<DownloadOutlined />} onClick={handleExport}>
                 导出
               </Button>
@@ -1515,12 +1625,14 @@ export default function GraphPage() {
                   icon={<LinkOutlined style={{ color: "#3b82f6" }} />}
                   extra={
                     <Space size={12}>
-                      {selectedNode.expandable && expandedNodeIds.has(selectedNode.id) && expandHasMore[selectedNode.id] !== false && (
+                      {selectedNode.expandable && nodeExpandMap[selectedNode.id]?.hasMore !== false && (
                         <>
                           <Button
                             size="small"
                             type="link"
                             onClick={() => handleNodeExpand(selectedNode, "replace")}
+                            loading={Boolean(nodeExpandMap[selectedNode.id]?.loading)}
+                            disabled={Boolean(nodeExpandMap[selectedNode.id]?.loading)}
                             style={{ padding: 0, fontSize: 13 }}
                           >
                             换一批
@@ -1529,6 +1641,8 @@ export default function GraphPage() {
                             size="small"
                             type="link"
                             onClick={() => handleNodeExpand(selectedNode, "append")}
+                            loading={Boolean(nodeExpandMap[selectedNode.id]?.loading)}
+                            disabled={Boolean(nodeExpandMap[selectedNode.id]?.loading)}
                             style={{ padding: 0, fontSize: 13 }}
                           >
                             加载更多
@@ -1549,6 +1663,7 @@ export default function GraphPage() {
                 >
                   {selectedRelations.length > 0 ? (
                     selectedRelations.map((link) => {
+                      if (!link || !link.source || !link.target) return null;
                       const targetId = link.source === selectedNode.id ? link.target : link.source;
                       const targetNode = graphData.nodes.find((node) => node.id === targetId) || null;
                       return (
@@ -1761,6 +1876,8 @@ export default function GraphPage() {
                 style={{ width: "100%", height: 40, borderRadius: 20 }}
                 type={selectedNode?.id === graphData.centerId ? "primary" : "default"}
                 danger={selectedNode?.id !== graphData.centerId}
+                loading={selectedNode?.id === graphData.centerId && Boolean(nodeExpandMap[selectedNode.id]?.loading)}
+                disabled={selectedNode?.id === graphData.centerId && Boolean(nodeExpandMap[selectedNode.id]?.loading)}
                 onClick={() =>
                   selectedNode?.id === graphData.centerId
                     ? selectedNode && handleNodeExpand(selectedNode)
