@@ -8,6 +8,7 @@ declare namespace API.System {
     deptName: string;
     orderNum: number;
     leader: string;
+    leaderUserId?: number;
     phone: string;
     email: string;
     status: string;
@@ -48,6 +49,19 @@ declare namespace API.System {
     msg: string;
     total: number;
     data: Array<Dept>;
+  }
+
+  export interface UserSimpleRespVO {
+    id: number;
+    nickname: string;
+    deptId?: number;
+    deptName?: string;
+  }
+
+  export interface UserSimpleListResult {
+    code: number;
+    msg: string;
+    data: Array<UserSimpleRespVO>;
   }
 
 }
