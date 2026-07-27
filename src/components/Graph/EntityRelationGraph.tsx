@@ -86,20 +86,42 @@ function stableHash(text: string) {
   return Math.abs(hash);
 }
 
-function getBranchColor(node: EntityGraphNode) {
+export function getEntityTypePalette(typeName: string) {
+  if (typeName === "中心实体") return { strong: "#5D5CDE", medium: "#7F7EF0", stroke: "#4A49B2", text: "#ffffff" };
+  if (typeName === "人物" || typeName === "角色") return { strong: "#12A2A8", medium: "#12A2A8", stroke: "#12A2A8", text: "#ffffff" };
+  if (typeName === "产品") return { strong: "#F09B1A", medium: "#F09B1A", stroke: "#F09B1A", text: "#ffffff" };
+  if (typeName === "机构" || typeName === "公司") return { strong: "#14B274", medium: "#14B274", stroke: "#14B274", text: "#ffffff" };
+  if (typeName === "技术") return { strong: "#EE4292", medium: "#EE4292", stroke: "#EE4292", text: "#ffffff" };
+  if (typeName === "地点" || typeName === "地区" || typeName === "城市" || typeName === "国家") return { strong: "#EF4352", medium: "#EF4352", stroke: "#EF4352", text: "#ffffff" };
+
+  const seed = stableHash(typeName);
+  return branchPalette[seed % branchPalette.length];
+}
+
+function getBranchColor(node: EntityGraphNode, nodeMap?: Map<string, EntityGraphNode>) {
   if (node.type === "center") {
     return {
-      fill: "#3b82f6",
-      medium: "#60a5fa",
-      stroke: "#1d4ed8",
+      fill: "#5D5CDE",
+      medium: "#7F7EF0",
+      stroke: "#4A49B2",
       text: "#ffffff",
     };
   }
 
-  const seed = stableHash(node.branchId || node.id);
-  const palette = branchPalette[seed % branchPalette.length];
+  let rootNode = node;
+  if (node.branchId && nodeMap?.has(node.branchId)) {
+    rootNode = nodeMap.get(node.branchId)!;
+  } else if (node.parentId && nodeMap?.has(node.parentId)) {
+    rootNode = nodeMap.get(node.parentId)!;
+  }
+
+  const tags = rootNode.tag || [];
+  const typeName = tags.length > 0 ? tags[0] : (node.branchId || node.id);
+  const palette = getEntityTypePalette(typeName);
+
   return {
     fill: node.type === "entity" ? palette.strong : palette.medium,
+    medium: palette.medium,
     stroke: palette.stroke,
     text: "#ffffff",
   };
@@ -109,12 +131,83 @@ function truncateLabel(name: string, maxLength: number) {
   return name.length > maxLength ? `${name.slice(0, maxLength)}...` : name;
 }
 
-function buildGroupedLayout(nodes: EntityGraphNode[], centerId: string) {
+function drawValueNodeTag(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  text: string,
+  accentColor: string,
+) {
+  const fontSize = 11;
+  const paddingX = 10;
+  const paddingY = 5;
+  const accentWidth = 4;
+  context.font = `500 ${fontSize}px sans-serif`;
+  const textWidth = context.measureText(text).width;
+  const width = textWidth + paddingX * 2 + accentWidth;
+  const height = fontSize + paddingY * 2;
+  const radius = height / 2;
+  const left = x - width / 2;
+  const top = y - height / 2;
+
+  context.beginPath();
+  if (context.roundRect) {
+    context.roundRect(left, top, width, height, radius);
+  } else {
+    context.moveTo(left + radius, top);
+    context.lineTo(left + width - radius, top);
+    context.quadraticCurveTo(left + width, top, left + width, top + radius);
+    context.lineTo(left + width, top + height - radius);
+    context.quadraticCurveTo(left + width, top + height, left + width - radius, top + height);
+    context.lineTo(left + radius, top + height);
+    context.quadraticCurveTo(left, top + height, left, top + height - radius);
+    context.lineTo(left, top + radius);
+    context.quadraticCurveTo(left, top, left + radius, top);
+  }
+  context.fillStyle = "#f8fafc";
+  context.fill();
+  context.setLineDash([4, 3]);
+  context.strokeStyle = accentColor;
+  context.lineWidth = 1;
+  context.stroke();
+  context.setLineDash([]);
+
+  context.beginPath();
+  if (context.roundRect) {
+    context.roundRect(left + 2, top + 2, accentWidth, height - 4, 2);
+  } else {
+    context.rect(left + 2, top + 2, accentWidth, height - 4);
+  }
+  context.fillStyle = accentColor;
+  context.fill();
+
+  context.fillStyle = "#334155";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(text, x + accentWidth / 2, y);
+}
+
+function buildGroupedLayout(
+  nodes: EntityGraphNode[],
+  links: EntityGraphLink[],
+  centerId: string,
+  focusNodeId?: string | null,
+) {
   const positionMap = new Map<
     string,
     { x: number; y: number; angle: number; sectorStart: number; sectorEnd: number; radius: number }
   >();
-  positionMap.set(centerId, {
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const rootId =
+    (focusNodeId && nodeMap.has(focusNodeId) ? focusNodeId : null) ||
+    (nodeMap.has(centerId) ? centerId : null) ||
+    nodes[0]?.id;
+
+  if (!rootId) {
+    return positionMap;
+  }
+
+  positionMap.set(rootId, {
     x: 0,
     y: 0,
     angle: -Math.PI / 2,
@@ -123,26 +216,47 @@ function buildGroupedLayout(nodes: EntityGraphNode[], centerId: string) {
     radius: 0,
   });
 
-  const childrenByParent = new Map<string, EntityGraphNode[]>();
+  const adjacencyMap = new Map<string, Array<{ node: EntityGraphNode; relation: string }>>();
   nodes.forEach((node) => {
-    if (!node.parentId || node.id === centerId) return;
-    const current = childrenByParent.get(node.parentId) || [];
-    current.push(node);
-    childrenByParent.set(node.parentId, current);
+    adjacencyMap.set(node.id, []);
   });
 
-  childrenByParent.forEach((children) => {
-    children.sort((a, b) => {
-      const relationCompare = (a.relationFromParent || "").localeCompare(
-        b.relationFromParent || "",
+  links.forEach((link) => {
+    const sourceNode = nodeMap.get(link.source);
+    const targetNode = nodeMap.get(link.target);
+    if (!sourceNode || !targetNode) return;
+
+    adjacencyMap.get(link.source)?.push({ node: targetNode, relation: link.relation });
+    adjacencyMap.get(link.target)?.push({ node: sourceNode, relation: link.relation });
+  });
+
+  const childrenByParent = new Map<string, EntityGraphNode[]>();
+  const depthMap = new Map<string, number>([[rootId, 0]]);
+  const visited = new Set<string>([rootId]);
+  const queue = [rootId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const neighbors = [...(adjacencyMap.get(currentId) || [])].sort((left, right) => {
+      const relationCompare = (left.relation || "").localeCompare(
+        right.relation || "",
         "zh-CN",
       );
       if (relationCompare !== 0) return relationCompare;
-      return a.name.localeCompare(b.name, "zh-CN");
+      return left.node.name.localeCompare(right.node.name, "zh-CN");
     });
-  });
 
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    neighbors.forEach(({ node }) => {
+      if (visited.has(node.id)) return;
+      visited.add(node.id);
+      depthMap.set(node.id, (depthMap.get(currentId) || 0) + 1);
+      const current = childrenByParent.get(currentId) || [];
+      current.push(node);
+      childrenByParent.set(currentId, current);
+      queue.push(node.id);
+    });
+  }
+
   const weightCache = new Map<string, number>();
 
   function getSubtreeWeight(nodeId: string): number {
@@ -159,7 +273,7 @@ function buildGroupedLayout(nodes: EntityGraphNode[], centerId: string) {
     return weight;
   }
 
-  const rootChildren = childrenByParent.get(centerId) || [];
+  const rootChildren = childrenByParent.get(rootId) || [];
   const rootGap = Math.PI / 32;
   const rootPadding = Math.PI / 36;
   const totalRootWeight = rootChildren.reduce(
@@ -169,16 +283,15 @@ function buildGroupedLayout(nodes: EntityGraphNode[], centerId: string) {
   const fullAngle = Math.PI * 2 - Math.max(0, rootChildren.length - 1) * rootGap;
   let cursor = -Math.PI / 2;
 
-  function resolveRadius(depth: number) {
-    if (depth <= 1) return 220;
-    return 220 + (depth - 1) * 138;
+  function resolveRadius(depth: number, layerCount: number) {
+    if (depth <= 1) return Math.max(220, 160 + layerCount * 26);
+    return Math.max(220 + (depth - 1) * 150, 170 + layerCount * 22);
   }
 
   function placeChildren(
     parentId: string,
     sectorStart: number,
     sectorEnd: number,
-    parentAngle: number,
     depth: number,
   ) {
     const children = childrenByParent.get(parentId) || [];
@@ -200,9 +313,8 @@ function buildGroupedLayout(nodes: EntityGraphNode[], centerId: string) {
       const span = usableRange * (weight / Math.max(totalWeight, 1));
       const childStart = localCursor;
       const childEnd = childStart + span;
-      const childAngle =
-        depth === 1 ? (childStart + childEnd) / 2 : Math.max(childStart, Math.min((childStart + childEnd) / 2, childEnd));
-      const radius = resolveRadius(depth);
+      const childAngle = (childStart + childEnd) / 2;
+      const radius = resolveRadius(depth, children.length);
       const x = Math.cos(childAngle) * radius;
       const y = Math.sin(childAngle) * radius;
 
@@ -215,7 +327,7 @@ function buildGroupedLayout(nodes: EntityGraphNode[], centerId: string) {
         radius,
       });
 
-      placeChildren(child.id, childStart, childEnd, childAngle, depth + 1);
+      placeChildren(child.id, childStart, childEnd, depth + 1);
       localCursor = childEnd + gap;
     });
   }
@@ -226,7 +338,7 @@ function buildGroupedLayout(nodes: EntityGraphNode[], centerId: string) {
     const childStart = cursor;
     const childEnd = childStart + span;
     const childAngle = (childStart + childEnd) / 2;
-    const radius = resolveRadius(1);
+    const radius = resolveRadius(1, rootChildren.length);
 
     positionMap.set(child.id, {
       x: Math.cos(childAngle) * radius,
@@ -237,15 +349,15 @@ function buildGroupedLayout(nodes: EntityGraphNode[], centerId: string) {
       radius,
     });
 
-    placeChildren(child.id, childStart, childEnd, childAngle, 2);
+    placeChildren(child.id, childStart, childEnd, 2);
     cursor = childEnd + rootGap;
   });
 
   nodes.forEach((node) => {
     if (!positionMap.has(node.id)) {
-      const fallbackDepth = node.depth ?? 1;
+      const fallbackDepth = depthMap.get(node.id) ?? node.depth ?? 1;
       const fallbackAngle = stableHash(node.id) % 360;
-      const radius = resolveRadius(fallbackDepth);
+      const radius = resolveRadius(fallbackDepth, 1);
       positionMap.set(node.id, {
         x: Math.cos((fallbackAngle * Math.PI) / 180) * radius,
         y: Math.sin((fallbackAngle * Math.PI) / 180) * radius,
@@ -334,7 +446,8 @@ const EntityRelationGraph = forwardRef<
     const graph = graphRef.current;
     if (!graph || data.nodes.length === 0) return;
 
-    const targetPositions = buildGroupedLayout(data.nodes, data.centerId);
+    const targetPositions = buildGroupedLayout(data.nodes, data.links, data.centerId, selectedNodeId);
+    const nodeMap = new Map(data.nodes.map(n => [n.id, n]));
 
     const existingNodes = new Set(graph.nodes());
     const newNodes = new Set(data.nodes.map(n => n.id));
@@ -361,22 +474,25 @@ const EntityRelationGraph = forwardRef<
     data.nodes.forEach(node => {
       const pos = targetPositions.get(node.id) || { x: 0, y: 0 };
       const radius = getRadius(node, nodeScale);
-      const colors = getBranchColor(node);
+      const colors = getBranchColor(node, nodeMap);
       const isSelected = node.id === selectedNodeId;
+      const isValueNode = node.type === "value";
       const maxLength = labelMaxLength || (node.type === "center" ? 6 : node.type === "entity" ? 5 : 4);
-      const label = visibleLabelNodeIds.has(node.id)
+      const label = visibleLabelNodeIds.has(node.id) || isValueNode
         ? truncateLabel(node.name, maxLength)
         : "";
+      const visibleNodeSize = isValueNode ? Math.max(12, radius * 0.9) : radius;
 
       const nodeData = {
         x: pos.x,
         y: pos.y,
-        size: radius,
+        size: visibleNodeSize,
         label: (showNodes && showLabels !== false) ? label : "",
-        color: showNodes ? colors.fill : "rgba(0, 0, 0, 0)",
-        borderColor: showNodes ? (isSelected ? "#d8b15d" : colors.stroke) : "rgba(0, 0, 0, 0)",
-        borderSize: isSelected ? 4 : (node.type === "center" ? 2 : 1.2),
+        color: showNodes ? (isValueNode ? "rgba(0, 0, 0, 0)" : colors.fill) : "rgba(0, 0, 0, 0)",
+        borderColor: showNodes ? (isValueNode ? "rgba(0, 0, 0, 0)" : (isSelected ? "#d8b15d" : colors.stroke)) : "rgba(0, 0, 0, 0)",
+        borderSize: isValueNode ? 0.01 : (isSelected ? 4 : (node.type === "center" ? 2 : 1.2)),
         hidden: false,
+        customColor: colors.fill,
         originalData: node
       };
 
@@ -402,7 +518,7 @@ const EntityRelationGraph = forwardRef<
 
       const targetNode = data.nodes.find(n => n.id === link.target);
       // 加深连线颜色，由 stroke 改为 medium
-      const color = targetNode ? getBranchColor(targetNode).medium : "#64748b";
+      const color = "#98a2b3";
 
       // 判断是否存在反向关系，或者同方向存在多条关系
       const pairEdges = data.links.filter(l => 
@@ -466,7 +582,69 @@ const EntityRelationGraph = forwardRef<
     const sigma = new Sigma(graph, container, {
       doubleClickZoomingRatio: 1,
       doubleClickZoomingDuration: 0,
-      renderEdgeLabels: true,
+      hideLabelsOnMove: true,
+      hideEdgesOnMove: true,
+      labelRenderedSizeThreshold: 10,
+      renderEdgeLabels: showLinks,
+      zIndex: true,
+      defaultDrawNodeHover: (context, data, settings) => {
+        const nodeId = (data as any).key;
+        const originalData = (data as any).originalData || (nodeId && graphRef.current ? graphRef.current.getNodeAttribute(nodeId, "originalData") : null);
+        
+        if (originalData && originalData.type === "value") {
+          const text = `${originalData.relationFromParent || "属性"}: ${originalData.name}`;
+          const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
+          drawValueNodeTag(context, data.x!, data.y!, String(originalData.name || ""), accentColor);
+        } else {
+          const label = data.label;
+          if (!label) return;
+          const size = settings.labelSize || 12;
+          context.font = `${settings.labelWeight || "normal"} ${size}px ${settings.labelFont || "sans-serif"}`;
+          
+          context.beginPath();
+          context.fillStyle = "#ffffff";
+          context.arc(data.x!, data.y!, data.size! + 2, 0, Math.PI * 2);
+          context.fill();
+          
+          const textWidth = context.measureText(label).width;
+          const boxWidth = textWidth + 12;
+          const boxHeight = size + 10;
+          const boxX = data.x! + data.size! + 4;
+          const boxY = data.y! - boxHeight / 2;
+          
+          context.beginPath();
+          if (context.roundRect) {
+            context.roundRect(boxX, boxY, boxWidth, boxHeight, 4);
+          } else {
+            context.rect(boxX, boxY, boxWidth, boxHeight);
+          }
+          context.fillStyle = "rgba(255, 255, 255, 0.9)";
+          context.fill();
+          
+          context.fillStyle = (settings.labelColor && settings.labelColor.color) ? settings.labelColor.color : "#334155";
+          context.textAlign = "left";
+          context.textBaseline = "middle";
+          context.fillText(label, data.x! + data.size! + 8, data.y!);
+        }
+      },
+      defaultDrawNodeLabel: (context, data, settings) => {
+        const nodeId = (data as any).key;
+        const originalData = (data as any).originalData || (nodeId && graphRef.current ? graphRef.current.getNodeAttribute(nodeId, "originalData") : null);
+        
+        if (originalData && originalData.type === "value") {
+          const text = `${originalData.relationFromParent || "属性"}: ${originalData.name}`;
+          const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
+          drawValueNodeTag(context, data.x!, data.y!, String(originalData.name || ""), accentColor);
+        } else {
+          // Fallback label drawer for entities
+          const label = data.label;
+          if (!label) return;
+          const size = settings.labelSize || 12;
+          context.font = `${settings.labelWeight || "normal"} ${size}px ${settings.labelFont || "sans-serif"}`;
+          context.fillStyle = (settings.labelColor && settings.labelColor.color) ? settings.labelColor.color : "#334155";
+          context.fillText(label, data.x! + data.size! + 6, data.y! + size / 3);
+        }
+      },
       defaultDrawEdgeLabel: (context, edgeData, sourceData, targetData, settings) => {
         if (edgeData.type === "curvedArrow") {
           drawCurved(context, edgeData, sourceData, targetData, settings);
@@ -500,7 +678,11 @@ const EntityRelationGraph = forwardRef<
     });
     sigmaRef.current = sigma;
 
+    let draggedNode: string | null = null;
+    let movedDuringDrag = false;
+
     sigma.on("clickNode", (e) => {
+      if (movedDuringDrag) return;
       const originalData = graph.getNodeAttribute(e.node, "originalData");
       if (originalData && onNodeClickRef.current) {
         onNodeClickRef.current(originalData);
@@ -508,6 +690,7 @@ const EntityRelationGraph = forwardRef<
     });
 
     sigma.on("doubleClickNode", (e) => {
+      if (movedDuringDrag) return;
       const originalData = graph.getNodeAttribute(e.node, "originalData");
       if (originalData && onNodeDoubleClickRef.current) {
         onNodeDoubleClickRef.current(originalData);
@@ -515,24 +698,33 @@ const EntityRelationGraph = forwardRef<
     });
 
     // 节点拖拽逻辑
-    let draggedNode: string | null = null;
-    
     sigma.on("downNode", (e) => {
       draggedNode = e.node;
+      movedDuringDrag = false;
       sigma.getCamera().disable();
     });
     
     sigma.getMouseCaptor().on("mousemovebody", (e) => {
       if (!draggedNode) return;
+      movedDuringDrag = true;
       const pos = sigma.viewportToGraph(e);
       graph.setNodeAttribute(draggedNode, "x", pos.x);
       graph.setNodeAttribute(draggedNode, "y", pos.y);
+      e.preventSigmaDefault();
+      if (e.original) {
+        e.original.preventDefault();
+        e.original.stopPropagation();
+      }
+      sigma.refresh();
     });
     
     const handleUp = () => {
       if (draggedNode) {
         draggedNode = null;
         sigma.getCamera().enable();
+        window.setTimeout(() => {
+          movedDuringDrag = false;
+        }, 0);
       }
     };
     
@@ -542,8 +734,6 @@ const EntityRelationGraph = forwardRef<
       sigma.kill();
       sigmaRef.current = null;
     };
-    sigma.resize();
-    sigma.refresh();
   }, [size.height, size.width]);
 
   return (
@@ -565,6 +755,7 @@ const EntityRelationGraph = forwardRef<
           height: 100% !important;
         }
       `}</style>
+
     </div>
   );
 });

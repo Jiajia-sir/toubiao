@@ -35,11 +35,19 @@ import {
   UserOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
+  LinkOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+  ClusterOutlined,
+  CloudUploadOutlined,
+  UploadOutlined,
+  SlidersOutlined,
+  ApiOutlined,
 } from "@ant-design/icons";
 import type { EntityRelationGraphRef } from "@/components/Graph/EntityRelationGraph";
-import EntityRelationGraph from "@/components/Graph/EntityRelationGraph";
+import EntityRelationGraph, { getEntityTypePalette } from "@/components/Graph/EntityRelationGraph";
 import {
-  expandGraphWithEntity,
+
   getNodeDetail,
   getSuggestedEntities,
   hasPresetEntityRecord,
@@ -51,7 +59,7 @@ import {
   type EntityNodeDetail,
   type SourceDocument,
 } from "@/data/entityGraphMock";
-import { randomPreviewGraph, searchGraph, type SearchGraphResult } from "@/services/biz/graph";
+import { getGraphEntities, searchGraph, expandGraphNode, type SearchGraphResult, type GraphEntityResult, type GraphExpandResult } from "@/services/biz/graph";
 import { getEntityTypePage, type EntityTypeItem } from "@/services/biz/entity-type";
 
 const typeMeta: Record<EntityGraphNodeType, { label: string; color: string; countColor: string }> = {
@@ -240,8 +248,12 @@ export default function GraphPage() {
   const [graphLoading, setGraphLoading] = useState(false);
   const [entityTypeLoading, setEntityTypeLoading] = useState(false);
   const [graphData, setGraphData] = useState<EntityGraphData>(() => createEmptyGraph(initialEntity));
+  const [previewCursor, setPreviewCursor] = useState<string | number | undefined>(undefined);
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
+  const [expandCursors, setExpandCursors] = useState<Record<string, number | string | undefined>>({});
+  const [expandHasMore, setExpandHasMore] = useState<Record<string, boolean>>({});
+  const [nodeExpandHistory, setNodeExpandHistory] = useState<Record<string, { nodes: string[], links: string[] }>>({});
   const [entityTypes, setEntityTypes] = useState<EntityTypeItem[]>([]);
   const [activeEntityTypeName, setActiveEntityTypeName] = useState<string | null>(null);
   const [entityNameKeyword, setEntityNameKeyword] = useState("");
@@ -262,9 +274,7 @@ export default function GraphPage() {
   useEffect(() => {
     if (initialEntity) {
       void handleSearch(initialEntity, workspaceMode);
-      return;
     }
-    void handleLoadRandomPreview();
   }, [initialEntity]);
 
   useEffect(() => {
@@ -308,12 +318,6 @@ export default function GraphPage() {
       }
       if (node.id === graphData.centerId || node.type === "center") {
         return true;
-      }
-      if (!hasTypeFilter && !hasNameFilter) {
-        return true;
-      }
-      if (hasTypeFilter && !focusIds.has(node.id)) {
-        return false;
       }
       if (!hasNameFilter) {
         return true;
@@ -382,11 +386,23 @@ export default function GraphPage() {
         pageSize: 100,
       });
       const result = extractResultData<{ list?: EntityTypeItem[]; records?: EntityTypeItem[] }>(response);
-      setEntityTypes(result?.list || result?.records || []);
+      const list = result?.list || result?.records || [];
+      setEntityTypes(list);
+      
+      if (!initialEntity) {
+        if (list.length > 0 && !activeEntityTypeName) {
+          const defaultName = list[0].name;
+          setActiveEntityTypeName(defaultName);
+          void handleLoadGraphEntities(defaultName);
+        } else {
+          void handleLoadGraphEntities();
+        }
+      }
     } catch (error) {
       console.error(error);
       setEntityTypes([]);
       message.error("实体类型加载失败");
+      if (!initialEntity) void handleLoadGraphEntities();
     } finally {
       setEntityTypeLoading(false);
     }
@@ -409,6 +425,9 @@ export default function GraphPage() {
       setGraphData(nextGraph);
       setSelectedNodeId(nextGraph.nodes[0]?.id || "");
       setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
+      setExpandCursors({});
+      setExpandHasMore({});
+      setNodeExpandHistory({});
       setActiveEntityTypeName(null);
       setEntityNameKeyword("");
       setActiveCommunityId(null);
@@ -433,21 +452,47 @@ export default function GraphPage() {
     }
   }
 
-  async function handleLoadRandomPreview() {
+  async function handleLoadGraphEntities(overrideType?: string, resetCursor = false) {
     try {
       setGraphLoading(true);
-      const response = await randomPreviewGraph({ nodeLimit: 10, linkLimit: 8 });
-      const result = extractResultData<SearchGraphResult>(response);
-      const nextGraph = buildGraphFromSearchResult(result, "");
+      const targetType = overrideType !== undefined ? overrideType : activeEntityTypeName;
+      const cursorToUse = resetCursor ? undefined : previewCursor;
+      const response = await getGraphEntities({
+        way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
+        nodeKind: "all",
+        entityType: targetType || undefined,
+        name: entityNameKeyword.trim() || undefined,
+        cursor: cursorToUse,
+        pageSize: 20,
+      });
+      const result = extractResultData<GraphEntityResult>(response);
+      
+      const nodes: EntityGraphNode[] = (result?.list || []).map((item) => ({
+        id: item.graphNodeId || item.nodeId,
+        name: item.name,
+        type: item.nodeKind === "entity" ? "entity" : "value",
+        desc: item.value || "",
+        tag: item.type ? [item.type] : [],
+        expandable: item.nodeKind === "entity",
+        relationCount: 0,
+      }));
+
+      const nextGraph: EntityGraphData = {
+        centerId: nodes[0]?.id || "",
+        nodes,
+        links: [],
+      };
 
       setKeyword("");
       setGraphData(nextGraph);
       setSelectedNodeId(nextGraph.centerId || nextGraph.nodes[0]?.id || "");
-      setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
-      setActiveEntityTypeName(null);
-      setEntityNameKeyword("");
+      setExpandedNodeIds(new Set());
+      setExpandCursors({});
+      setExpandHasMore({});
+      setNodeExpandHistory({});
       setActiveCommunityId(null);
       setLinkWidth(1.4);
+      setPreviewCursor(result?.nextCursor);
       window.setTimeout(() => graphRef.current?.resetZoom(), 40);
 
       if (nextGraph.nodes.length === 0) {
@@ -458,8 +503,6 @@ export default function GraphPage() {
       setGraphData(createEmptyGraph(""));
       setSelectedNodeId("");
       setExpandedNodeIds(new Set());
-      setActiveEntityTypeName(null);
-      setEntityNameKeyword("");
       setActiveCommunityId(null);
       message.error("图谱加载失败");
     } finally {
@@ -474,24 +517,99 @@ export default function GraphPage() {
     }
   }
 
-  function handleNodeExpand(node: EntityGraphNode) {
+  async function handleNodeExpand(node: EntityGraphNode, mode: "append" | "replace" = "append") {
     setSelectedNodeId(node.id);
-    if (!node.expandable || expandedNodeIds.has(node.id)) {
+    if (!node.expandable || (expandedNodeIds.has(node.id) && !mode)) {
       return;
     }
 
-    const result = expandGraphWithEntity(graphData, node.id);
-    if (!result.expanded) {
-      message.info("该节点暂无更多可展开关系");
-      return;
-    }
+    try {
+      setGraphLoading(true);
+      const currentCursor = expandCursors[node.id];
+      const response = await expandGraphNode({
+        way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
+        nodeId: node.id,
+        nodeKind: "entity",
+        direction: "both",
+        includeProperty: true,
+        limit: 20,
+        cursor: currentCursor,
+      });
 
-    setGraphData(result.graph);
-    setExpandedNodeIds((prev) => {
-      const next = new Set(prev);
-      next.add(node.id);
-      return next;
-    });
+      const result = extractResultData<GraphExpandResult>(response);
+
+      if (!result?.nodes?.length && !result?.links?.length) {
+        message.info("该节点暂无更多可展开关系");
+        setExpandHasMore((prev) => ({ ...prev, [node.id]: false }));
+        setExpandedNodeIds((prev) => {
+          const next = new Set(prev);
+          next.add(node.id);
+          return next;
+        });
+        return;
+      }
+
+      const newNodesIds = result.nodes?.map((n) => n.id) || [];
+      const newLinksKeys = result.links?.map((l) => `${l.source}-${l.target}-${l.relation}`) || [];
+
+      setGraphData((prev) => {
+        const nextNodesMap = new Map(prev.nodes.map((n) => [n.id, n]));
+        const nextLinksMap = new Map(prev.links.map((l) => [`${l.source}-${l.target}-${l.relation}`, l]));
+        
+        if (mode === "replace") {
+          const history = nodeExpandHistory[node.id];
+          if (history) {
+            history.links.forEach((k) => nextLinksMap.delete(k));
+            history.nodes.forEach((nid) => {
+              const stillReferenced = Array.from(nextLinksMap.values()).some((l) => l.source === nid || l.target === nid);
+              if (!stillReferenced && nid !== prev.centerId && nid !== node.id) {
+                nextNodesMap.delete(nid);
+              }
+            });
+          }
+        }
+
+        result.nodes?.forEach((n) => {
+          if (!nextNodesMap.has(n.id)) {
+            nextNodesMap.set(n.id, n as any);
+          }
+        });
+        
+        result.links?.forEach((l) => {
+          nextLinksMap.set(`${l.source}-${l.target}-${l.relation}`, l);
+        });
+
+        return {
+          ...prev,
+          nodes: Array.from(nextNodesMap.values()),
+          links: Array.from(nextLinksMap.values()),
+        };
+      });
+
+      setNodeExpandHistory((prev) => ({
+        ...prev,
+        [node.id]: mode === "append"
+          ? {
+              nodes: Array.from(new Set([...(prev[node.id]?.nodes || []), ...newNodesIds])),
+              links: Array.from(new Set([...(prev[node.id]?.links || []), ...newLinksKeys])),
+            }
+          : { nodes: newNodesIds, links: newLinksKeys },
+      }));
+
+      setExpandCursors((prev) => ({ ...prev, [node.id]: result.nextCursor }));
+      setExpandHasMore((prev) => ({ ...prev, [node.id]: result.hasMore !== false }));
+
+      setExpandedNodeIds((prev) => {
+        const next = new Set(prev);
+        next.add(node.id);
+        return next;
+      });
+    } catch (error) {
+      console.error(error);
+      message.error("节点拓展失败");
+    } finally {
+      setGraphLoading(false);
+    }
   }
 
   function handleNodeClick(node: EntityGraphNode) {
@@ -502,8 +620,14 @@ export default function GraphPage() {
   }
 
   function handleEntityTypeChange(typeName: string | null) {
+    if (activeEntityTypeName === typeName) return;
     setActiveEntityTypeName(typeName);
     setEntityNameKeyword("");
+    if (typeName) {
+      void handleLoadGraphEntities(typeName, true);
+    } else {
+      void handleLoadGraphEntities(undefined, true);
+    }
   }
 
   function handleEntityNameSelect(node: EntityGraphNode) {
@@ -797,6 +921,15 @@ export default function GraphPage() {
 
   return (
     <>
+      <style>{`
+        .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
       <div
         style={{
           height: "calc(100vh - 112px)",
@@ -809,6 +942,7 @@ export default function GraphPage() {
         }}
       >
         <aside
+          className="hide-scrollbar"
           style={{
             background: "#fff",
             borderRight: "1px solid #e5e7eb",
@@ -816,78 +950,87 @@ export default function GraphPage() {
             overflowY: "auto",
           }}
         >
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#1f2937", marginBottom: 14 }}>
-            图谱检索
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+                background: "#eef2ff",
+                color: "#3b82f6",
+                display: "grid",
+                placeItems: "center",
+                fontSize: 18,
+              }}
+            >
+              <ApiOutlined />
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#1f2937", lineHeight: 1.2 }}>图谱检索</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>知识图谱实体检索</div>
+            </div>
           </div>
 
           <Input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
             onPressEnter={() => void handleSearch()}
-            prefix={<SearchOutlined style={{ color: "#94a3b8" }} />}
+            prefix={<SearchOutlined style={{ color: "#94a3b8", marginRight: 4 }} />}
             placeholder="搜索实体名称"
             allowClear
-            style={{ height: 40 }}
+            style={{ height: 44, borderRadius: 22 }}
           />
           <Button
             type="primary"
             block
+            icon={<span style={{ fontSize: 15 }}>✨</span>}
             style={{
-              marginTop: 12,
-              height: 40,
-              background: "#2563eb",
-              boxShadow: "0 10px 18px rgba(37, 99, 235, 0.18)",
+              marginTop: 16,
+              height: 44,
+              borderRadius: 22,
+              background: "#3b82f6",
+              boxShadow: "0 4px 12px rgba(59, 130, 246, 0.2)",
+              fontWeight: 600,
             }}
             onClick={() => void handleSearch()}
           >
             开始检索
           </Button>
 
-          <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>文档类型</div>
-            <ModeSelectCard
-              title="自动上传"
-              description="查看自动上传来源对应的知识图谱数据。"
-              active={workspaceMode === "auto-upload"}
-              accent="#2563eb"
-              onClick={() => switchWorkspaceMode("auto-upload")}
-            />
-            <ModeSelectCard
-              title="手动上传"
-              description="查看页面上传来源对应的知识图谱数据。"
-              active={workspaceMode === "manual-upload"}
-              accent="#0f766e"
-              onClick={() => switchWorkspaceMode("manual-upload")}
-            />
-          </div>
+          <SectionBlock title="文档类型">
+            <div style={{ display: "grid", gap: 10 }}>
+              <ModeSelectCard
+                title="自动上传"
+                description="查看自动上传来源对应的知识图谱数据"
+                active={workspaceMode === "auto-upload"}
+                accent="#3b82f6"
+                icon={<CloudUploadOutlined />}
+                onClick={() => switchWorkspaceMode("auto-upload")}
+              />
+              <ModeSelectCard
+                title="手动上传"
+                description="查看页面上传来源对应的知识图谱数据"
+                active={workspaceMode === "manual-upload"}
+                accent="#3b82f6"
+                icon={<UploadOutlined />}
+                onClick={() => switchWorkspaceMode("manual-upload")}
+              />
+            </div>
+          </SectionBlock>
 
-          <SectionBlock title="实体类型">
+          <SectionBlock
+            title="实体类型"
+            extra={
+              <span onClick={() => handleEntityTypeChange(null)}>清除筛选</span>
+            }
+          >
             <div style={{ display: "grid", gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => handleEntityTypeChange(null)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: activeEntityTypeName === null ? "1px solid #2563eb" : "1px solid #e2e8f0",
-                  background: activeEntityTypeName === null ? "#eff6ff" : "#fff",
-                  color: activeEntityTypeName === null ? "#2563eb" : "#1f2937",
-                  cursor: "pointer",
-                }}
-              >
-                <span style={{ fontWeight: 600 }}>全部类型</span>
-                <span style={{ fontSize: 12, color: "#94a3b8" }}>清除筛选</span>
-              </button>
-
               <div
+                className="hide-scrollbar"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                  gap: 8,
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
                   maxHeight: 260,
                   overflowY: "auto",
                   paddingRight: 4,
@@ -895,6 +1038,7 @@ export default function GraphPage() {
               >
                 {entityTypes.map((item) => {
                   const active = activeEntityTypeName === item.name;
+                  const count = item.entityCount || 0;
                   return (
                     <button
                       key={String(item.id)}
@@ -903,33 +1047,27 @@ export default function GraphPage() {
                       title={item.name}
                       style={{
                         display: "flex",
-                        flexDirection: "column",
-                        alignItems: "flex-start",
-                        gap: 4,
-                        padding: "10px 12px",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "8px 12px",
                         borderRadius: 12,
-                        border: active ? "1px solid #2563eb" : "1px solid #e2e8f0",
+                        border: active ? "1px solid #93c5fd" : "1px solid #e2e8f0",
                         background: active ? "#eff6ff" : "#fff",
+                        color: active ? "#3b82f6" : "#475569",
                         cursor: "pointer",
-                        minWidth: 0,
-                        overflow: "hidden",
-                        textAlign: "left",
                       }}
                     >
+                      <span style={{ fontSize: 14 }}>{item.name}</span>
                       <span
                         style={{
-                          width: "100%",
-                          color: active ? "#2563eb" : "#1f2937",
-                          fontWeight: 600,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          background: active ? "#dbeafe" : "#f1f5f9",
+                          color: active ? "#3b82f6" : "#94a3b8",
+                          padding: "0 6px",
+                          borderRadius: 10,
+                          fontSize: 12,
                         }}
                       >
-                        {item.name}
-                      </span>
-                      <span style={{ fontSize: 11, color: item.description ? "#64748b" : "#94a3b8" }}>
-                        {item.description || "点击筛选"}
+                        {count}
                       </span>
                     </button>
                   );
@@ -947,17 +1085,18 @@ export default function GraphPage() {
             <Input
               value={entityNameKeyword}
               onChange={(event) => setEntityNameKeyword(event.target.value)}
-              prefix={<SearchOutlined style={{ color: "#94a3b8" }} />}
+              prefix={<SearchOutlined style={{ color: "#94a3b8", marginRight: 4 }} />}
               placeholder="输入实体名称筛选"
               allowClear
-              style={{ height: 40 }}
+              style={{ height: 40, borderRadius: 12 }}
             />
 
             <div
+              className="hide-scrollbar"
               style={{
                 marginTop: 12,
                 display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gridTemplateColumns: "repeat(1, minmax(0, 1fr))",
                 gap: 8,
                 maxHeight: 260,
                 overflowY: "auto",
@@ -1034,7 +1173,19 @@ export default function GraphPage() {
             </div>
           </SectionBlock>
 
-          <SectionBlock title="显示设置">
+          <div
+            style={{
+              marginTop: 28,
+              border: "1px solid #eef2f7",
+              borderRadius: 16,
+              padding: "16px",
+              background: "#fff",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#3b82f6", fontWeight: 700, fontSize: 13, marginBottom: 16 }}>
+              <SlidersOutlined /> 显示设置
+            </div>
+            
             <SliderRow
               label="节点大小"
               min={0.8}
@@ -1042,6 +1193,7 @@ export default function GraphPage() {
               step={0.05}
               value={nodeScale}
               onChange={setNodeScale}
+              displayValue={`${Math.round(((nodeScale - 0.8) / 0.65) * 100)}%`}
             />
             <SliderRow
               label="连线粗细"
@@ -1050,6 +1202,7 @@ export default function GraphPage() {
               step={0.2}
               value={linkWidth}
               onChange={setLinkWidth}
+              displayValue={`${Math.round(((linkWidth - 1) / 2.2) * 100)}%`}
             />
             <SliderRow
               label="节点字数"
@@ -1058,8 +1211,9 @@ export default function GraphPage() {
               step={1}
               value={labelMaxLength}
               onChange={setLabelMaxLength}
+              displayValue={`${Math.round(((labelMaxLength - 2) / 18) * 100)}%`}
             />
-            <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
               <CheckboxOptionRow
                 label="显示节点"
                 hint="控制图谱节点显示"
@@ -1073,7 +1227,7 @@ export default function GraphPage() {
                 onChange={setShowLinks}
               />
             </div>
-          </SectionBlock>
+          </div>
 
           <SectionBlock title="图谱概览">
             <div
@@ -1125,6 +1279,50 @@ export default function GraphPage() {
             height: "100%",
           }}
         >
+          {/* 图例 */}
+          <div 
+            style={{
+              position: "absolute",
+              top: 16,
+              left: 16,
+              backgroundColor: "rgba(255, 255, 255, 0.9)",
+              backdropFilter: "blur(4px)",
+              borderRadius: 12,
+              boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+              border: "1px solid #f1f5f9",
+              padding: 16,
+              zIndex: 10,
+              width: 192,
+              pointerEvents: "none",
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 500, color: "#1e293b", marginBottom: 12 }}>节点类型</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 14, height: 14, borderRadius: "50%", backgroundColor: "#94a3b8" }}></div>
+                <span style={{ fontSize: 12, color: "#475569" }}>实体 (实心圆)</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 32, height: 16, borderRadius: 8, border: "1px dashed #94a3b8", display: "flex", alignItems: "center", justifyContent: "center" }}></div>
+                <span style={{ fontSize: 12, color: "#475569" }}>属性 (虚线胶囊)</span>
+              </div>
+            </div>
+            
+            <div style={{ fontSize: 14, fontWeight: 500, color: "#1e293b", marginBottom: 12 }}>实体类型</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", rowGap: 10, columnGap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: "#5D5CDE" }}></div>
+                <span style={{ fontSize: 12, color: "#475569" }}>中心实体</span>
+              </div>
+              {entityTypes.map(item => (
+                <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: getEntityTypePalette(item.name).strong }}></div>
+                  <span style={{ fontSize: 12, color: "#475569" }}>{item.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <Card
             styles={{ body: { padding: "8px 16px" } }}
             style={{
@@ -1147,7 +1345,7 @@ export default function GraphPage() {
               <Button type="text" icon={<ReloadOutlined />} onClick={() => graphRef.current?.resetZoom()}>
                 重置
               </Button>
-              <Button type="text" icon={<ReloadOutlined />} onClick={() => void handleLoadRandomPreview()}>
+              <Button type="text" icon={<ReloadOutlined />} onClick={() => void handleLoadGraphEntities()}>
                 换一批
               </Button>
               <Button type="text" icon={<DownloadOutlined />} onClick={handleExport}>
@@ -1207,14 +1405,15 @@ export default function GraphPage() {
             />
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+          <div className="hide-scrollbar" style={{ flex: 1, overflowY: "auto", padding: 16 }}>
             {selectedNode ? (
               <>
                 <div
                   style={{
-                    marginBottom: 16,
-                    paddingBottom: 16,
-                    borderBottom: "1px solid #edf1f5",
+                    marginBottom: 20,
+                    padding: 16,
+                    borderRadius: 16,
+                    border: "1px solid #eef2f7",
                   }}
                 >
                   <Space align="start" size={12}>
@@ -1223,11 +1422,12 @@ export default function GraphPage() {
                         width: 48,
                         height: 48,
                         borderRadius: 12,
-                        background: selectedNode.type === "center" ? "#dbeafe" : "#eef2ff",
-                        color: selectedNode.type === "center" ? "#2563eb" : "#7c3aed",
+                        background: selectedNode.type === "center" ? "#2563eb" : "#7c3aed",
+                        color: "#fff",
                         display: "grid",
                         placeItems: "center",
                         flexShrink: 0,
+                        fontSize: 24,
                       }}
                     >
                       <EntityIcon type={selectedNode.type} />
@@ -1236,13 +1436,32 @@ export default function GraphPage() {
                       <div style={{ fontSize: 18, fontWeight: 700, color: "#1f2937" }}>
                         {selectedNode.name}
                       </div>
-                      <Space size={8} style={{ marginTop: 8 }} wrap>
+                      <Space size={6} style={{ marginTop: 8 }} wrap>
                         {selectedDetail.tag.map((tag) => (
-                          <Tag key={tag} color="blue">
+                          <Tag
+                            key={tag}
+                            style={{
+                              margin: 0,
+                              background: "#f0f5ff",
+                              color: "#5c8ced",
+                              border: "none",
+                              borderRadius: 10,
+                              padding: "2px 8px",
+                            }}
+                          >
                             {tag}
                           </Tag>
                         ))}
-                        <Tag color={selectedNode.type === "center" ? "geekblue" : "default"}>
+                        <Tag
+                          style={{
+                            margin: 0,
+                            background: "#f0f5ff",
+                            color: "#5c8ced",
+                            border: "none",
+                            borderRadius: 10,
+                            padding: "2px 8px",
+                          }}
+                        >
                           {getNodeTypeLabel(selectedNode.type)}
                         </Tag>
                       </Space>
@@ -1252,22 +1471,32 @@ export default function GraphPage() {
                   <div
                     style={{
                       marginTop: 16,
-                      borderRadius: 12,
-                      background: "#f8fafc",
-                      padding: 14,
-                      color: "#475569",
-                      lineHeight: 1.8,
+                      color: "#64748b",
+                      lineHeight: 1.6,
+                      fontSize: 13,
                     }}
                   >
                     {selectedDetail.desc}
                   </div>
+                </div>
 
-                  <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
-                    <DetailGridRow label="实体名称" value={selectedNode.name} />
-                    <DetailGridRow label="节点类型" value={getNodeTypeLabel(selectedNode.type)} />
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", marginBottom: 10 }}>
+                    基础信息
+                  </div>
+                  <div
+                    style={{
+                      border: "1px solid #eef2f7",
+                      borderRadius: 12,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <DetailGridRow label="实体名称" value={selectedNode.name} bordered />
+                    <DetailGridRow label="节点类型" value={getNodeTypeLabel(selectedNode.type)} bordered />
                     <DetailGridRow
                       label="来源方式"
                       value={hasPresetEntityRecord(selectedNode.name) ? "预置数据" : "动态图谱扩展"}
+                      bordered
                     />
                     <DetailGridRow
                       label="展开来源"
@@ -1276,20 +1505,50 @@ export default function GraphPage() {
                           ? `${selectedNode.parentId} / ${selectedNode.relationFromParent || "关联"}`
                           : "检索中心节点"
                       }
+                      bordered={false}
                     />
                   </div>
                 </div>
 
                 <PanelSection
                   title="关联关系"
+                  icon={<LinkOutlined style={{ color: "#3b82f6" }} />}
                   extra={
-                    <Button size="small" type="link" onClick={openAddRelationModal}>
-                      新增关系
-                    </Button>
+                    <Space size={12}>
+                      {selectedNode.expandable && expandedNodeIds.has(selectedNode.id) && expandHasMore[selectedNode.id] !== false && (
+                        <>
+                          <Button
+                            size="small"
+                            type="link"
+                            onClick={() => handleNodeExpand(selectedNode, "replace")}
+                            style={{ padding: 0, fontSize: 13 }}
+                          >
+                            换一批
+                          </Button>
+                          <Button
+                            size="small"
+                            type="link"
+                            onClick={() => handleNodeExpand(selectedNode, "append")}
+                            style={{ padding: 0, fontSize: 13 }}
+                          >
+                            加载更多
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        size="small"
+                        type="link"
+                        icon={<PlusOutlined />}
+                        onClick={openAddRelationModal}
+                        style={{ padding: 0, fontSize: 13 }}
+                      >
+                        新增关系
+                      </Button>
+                    </Space>
                   }
                 >
                   {selectedRelations.length > 0 ? (
-                    selectedRelations.slice(0, 5).map((link) => {
+                    selectedRelations.map((link) => {
                       const targetId = link.source === selectedNode.id ? link.target : link.source;
                       const targetNode = graphData.nodes.find((node) => node.id === targetId) || null;
                       return (
@@ -1303,31 +1562,66 @@ export default function GraphPage() {
                             background: "#fff",
                           }}
                         >
-                          <Row align="middle">
-                            <Col span={16}>
-                              <Space size={8}>
-                                <EntityTypeDot type={targetNode?.type || "value"} />
-                                <strong style={{ color: "#1f2937" }}>{link.relation}</strong>
-                              </Space>
-                            </Col>
-                            <Col span={8} style={{ textAlign: "right", color: "#94a3b8", fontSize: 12 }}>
-                              置信度 {buildRelationConfidence(link)}
-                            </Col>
-                          </Row>
-                          <Space size={8} style={{ marginTop: 8, color: "#475569" }}>
-                            <EntityIcon type={targetNode?.type || "value"} />
-                            <span>{targetId}</span>
-                          </Space>
-                          <Space size={6} style={{ marginTop: 10 }}>
-                            <Button size="small" type="link" onClick={() => openEditRelationModal(link)}>
-                              编辑
-                            </Button>
-                            <Popconfirm title="确认删除这条关系吗？" onConfirm={() => handleDeleteRelation(link)}>
-                              <Button size="small" type="link" danger>
-                                删除
-                              </Button>
-                            </Popconfirm>
-                          </Space>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                            <Space size={8}>
+                              <div
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: "50%",
+                                  background: "#f0f5ff",
+                                  color: "#3b82f6",
+                                  display: "grid",
+                                  placeItems: "center",
+                                }}
+                              >
+                                <UserOutlined style={{ fontSize: 14 }} />
+                              </div>
+                              <strong style={{ color: "#1f2937", fontSize: 14 }}>{link.relation}</strong>
+                            </Space>
+                            <Space size={6} style={{ color: "#64748b", fontSize: 12 }}>
+                              置信度
+                              <span
+                                style={{
+                                  background: "#ecfdf5",
+                                  color: "#10b981",
+                                  padding: "2px 8px",
+                                  borderRadius: 10,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {buildRelationConfidence(link)}
+                              </span>
+                            </Space>
+                          </div>
+                          
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              borderTop: "1px dashed #e2e8f0",
+                              paddingTop: 12,
+                            }}
+                          >
+                            <span style={{ color: "#64748b", fontSize: 13 }}>{targetId}</span>
+                            <Space size={12}>
+                              <a
+                                style={{ color: "#3b82f6", fontSize: 13, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}
+                                onClick={() => openEditRelationModal(link)}
+                              >
+                                <EditOutlined /> 编辑
+                              </a>
+                              <Popconfirm
+                                title="确认删除这条关系吗？"
+                                onConfirm={() => handleDeleteRelation(link)}
+                              >
+                                <a style={{ color: "#ef4444", fontSize: 13, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                                  <DeleteOutlined /> 删除
+                                </a>
+                              </Popconfirm>
+                            </Space>
+                          </div>
                         </div>
                       );
                     })
@@ -1336,32 +1630,34 @@ export default function GraphPage() {
                   )}
                 </PanelSection>
 
-                <PanelSection title="属性信息">
-                  {selectedDetail.avp.slice(0, 5).map(([label, value], index) => (
-                    <div
-                      key={`${label}-${value}-${index}`}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        padding: "10px 0",
-                        borderBottom:
-                          index === selectedDetail.avp.slice(0, 5).length - 1
-                            ? "none"
-                            : "1px solid #eef2f7",
-                      }}
-                    >
-                      <span style={{ color: "#64748b" }}>{label}</span>
-                      <strong style={{ color: "#334155", textAlign: "right" }}>{value}</strong>
-                    </div>
-                  ))}
-                </PanelSection>
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", marginBottom: 10 }}>
+                    属性信息
+                  </div>
+                  <div
+                    style={{
+                      border: "1px solid #eef2f7",
+                      borderRadius: 12,
+                      overflow: "hidden",
+                    }}
+                  >
+                    {selectedDetail.avp.slice(0, 5).map(([label, value], index) => (
+                      <DetailGridRow
+                        key={`${label}-${value}-${index}`}
+                        label={label}
+                        value={value}
+                        bordered={index !== selectedDetail.avp.slice(0, 5).length - 1}
+                      />
+                    ))}
+                  </div>
+                </div>
 
                 <PanelSection
                   title="社区网络发现"
+                  icon={<ClusterOutlined style={{ color: "#3b82f6" }} />}
                   extra={
                     activeCommunity ? (
-                      <Button size="small" type="link" onClick={handleClearCommunity}>
+                      <Button size="small" type="link" onClick={handleClearCommunity} style={{ padding: 0, fontSize: 13 }}>
                         清除聚焦
                       </Button>
                     ) : null
@@ -1387,7 +1683,10 @@ export default function GraphPage() {
                   </div>
                 </PanelSection>
 
-                <PanelSection title="来源文档">
+                <PanelSection
+                  title="来源文档"
+                  icon={<FileTextOutlined style={{ color: "#3b82f6" }} />}
+                >
                   {selectedDetail.sourceDocuments.map((doc) => (
                     <div
                       key={doc.id}
@@ -1395,24 +1694,25 @@ export default function GraphPage() {
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 10,
+                        gap: 12,
                         border: "1px solid #eef2f7",
                         borderRadius: 12,
-                        padding: 10,
+                        padding: 12,
                         marginBottom: 10,
                         cursor: "pointer",
                       }}
                     >
                       <div
                         style={{
-                          width: 36,
-                          height: 36,
+                          width: 40,
+                          height: 40,
                           borderRadius: 10,
-                          background: doc.type === "pdf" ? "#fff1f2" : "#eff6ff",
-                          color: doc.type === "pdf" ? "#ef4444" : "#2563eb",
+                          background: doc.type === "pdf" ? "#fef2f2" : "#ecfdf5",
+                          color: doc.type === "pdf" ? "#ef4444" : "#10b981",
                           display: "grid",
                           placeItems: "center",
                           flexShrink: 0,
+                          fontSize: 20,
                         }}
                       >
                         {doc.type === "pdf" ? <FilePdfOutlined /> : <FileTextOutlined />}
@@ -1420,18 +1720,22 @@ export default function GraphPage() {
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div
                           style={{
-                            color: "#334155",
+                            color: "#1f2937",
                             fontWeight: 600,
+                            fontSize: 14,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
+                            marginBottom: 4,
                           }}
                         >
                           {doc.title}
                         </div>
-                        <div style={{ color: "#94a3b8", fontSize: 12 }}>{doc.location}</div>
+                        <div style={{ color: "#64748b", fontSize: 12 }}>{doc.location}</div>
                       </div>
-                      <div style={{ color: "#94a3b8", fontSize: 12 }}>查看详情</div>
+                      <div style={{ color: "#3b82f6", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
+                        查看详情 <span style={{ fontSize: 12, fontWeight: 700 }}>↗</span>
+                      </div>
                     </div>
                   ))}
                 </PanelSection>
@@ -1444,27 +1748,30 @@ export default function GraphPage() {
           <div style={{ padding: 16, borderTop: "1px solid #e5e7eb", background: "#fff" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
               <Button
-                style={{ width: "100%", height: 40, borderRadius: 10 }}
+                style={{ width: "100%", height: 40, borderRadius: 20 }}
                 icon={<EditOutlined />}
                 onClick={openEditEntityModal}
               >
                 编辑
               </Button>
-              <Button style={{ width: "100%", height: 40, borderRadius: 10 }} onClick={openAddEntityModal}>
+              <Button style={{ width: "100%", height: 40, borderRadius: 20 }} icon={<PlusOutlined />} onClick={openAddEntityModal}>
                 新增实体
               </Button>
               <Button
-                style={{ width: "100%", height: 40, borderRadius: 10 }}
+                style={{ width: "100%", height: 40, borderRadius: 20 }}
                 type={selectedNode?.id === graphData.centerId ? "primary" : "default"}
                 danger={selectedNode?.id !== graphData.centerId}
-                icon={selectedNode?.id === graphData.centerId ? <FolderOpenOutlined /> : undefined}
                 onClick={() =>
                   selectedNode?.id === graphData.centerId
                     ? selectedNode && handleNodeExpand(selectedNode)
                     : handleDeleteEntity()
                 }
               >
-                {selectedNode?.id === graphData.centerId ? "查看更多" : "删除实体"}
+                {selectedNode?.id === graphData.centerId ? (
+                  <>查看更多 <span style={{ marginLeft: 4, fontWeight: 700 }}>↗</span></>
+                ) : (
+                  "删除实体"
+                )}
               </Button>
             </div>
           </div>
@@ -1531,22 +1838,25 @@ export default function GraphPage() {
 
 function SectionBlock({
   title,
+  extra,
   children,
 }: {
-  title: string;
+  title: string | ReactNode;
+  extra?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div style={{ marginTop: 26 }}>
+    <div style={{ marginTop: 28 }}>
       <div
         style={{
-          fontSize: 14,
-          fontWeight: 700,
-          color: "#1f2937",
-          marginBottom: 14,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
         }}
       >
-        {title}
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>{title}</div>
+        {extra && <div style={{ fontSize: 13, color: "#3b82f6", cursor: "pointer" }}>{extra}</div>}
       </div>
       {children}
     </div>
@@ -1560,6 +1870,7 @@ function SliderRow({
   step,
   value,
   onChange,
+  displayValue,
 }: {
   label: string;
   min: number;
@@ -1567,11 +1878,15 @@ function SliderRow({
   step: number;
   value: number;
   onChange: (value: number) => void;
+  displayValue?: string;
 }) {
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ color: "#64748b", marginBottom: 6 }}>{label}</div>
-      <Slider min={min} max={max} step={step} value={value} onChange={onChange} />
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", color: "#475569", fontSize: 13, marginBottom: 8 }}>
+        <span>{label}</span>
+        {displayValue && <span style={{ color: "#64748b" }}>{displayValue}</span>}
+      </div>
+      <Slider min={min} max={max} step={step} value={value} onChange={onChange} tooltip={{ formatter: null }} />
     </div>
   );
 }
@@ -1654,28 +1969,50 @@ function ModeSelectCard({
   active,
   accent,
   onClick,
+  icon,
 }: {
   title: string;
   description: string;
   active: boolean;
   accent: string;
   onClick: () => void;
+  icon: ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
         textAlign: "left",
-        padding: 12,
-        borderRadius: 14,
+        padding: "14px 16px",
+        borderRadius: 16,
         border: active ? `1px solid ${accent}` : "1px solid #e2e8f0",
-        background: active ? `${accent}12` : "#ffffff",
+        background: active ? `${accent}0a` : "#ffffff",
         cursor: "pointer",
       }}
     >
-      <div style={{ color: "#0f172a", fontWeight: 700 }}>{title}</div>
-      <div style={{ color: "#64748b", fontSize: 12, lineHeight: 1.6, marginTop: 6 }}>{description}</div>
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          background: active ? accent : "#f1f5f9",
+          color: active ? "#ffffff" : "#94a3b8",
+          display: "grid",
+          placeItems: "center",
+          fontSize: 20,
+          flexShrink: 0,
+        }}
+      >
+        {icon}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ color: "#0f172a", fontWeight: 700, fontSize: 14 }}>{title}</div>
+        <div style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>{description}</div>
+      </div>
     </button>
   );
 }
@@ -1696,21 +2033,41 @@ function CommunityCard({
       style={{
         width: "100%",
         textAlign: "left",
-        border: active ? "1px solid #f59e0b" : "1px solid #e2e8f0",
+        border: active ? "1px solid #f59e0b" : "1px solid #eef2f7",
         background: active ? "#fff7ed" : "#fff",
         borderRadius: 12,
-        padding: 12,
+        padding: 16,
         cursor: "pointer",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <strong style={{ color: "#1f2937" }}>{community.name}</strong>
-        <span style={{ color: "#b45309", fontSize: 12 }}>{community.nodeIds.length} 节点</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <strong style={{ color: "#1f2937", fontSize: 15 }}>{community.name}</strong>
+        <span
+          style={{
+            background: "#ffedd5",
+            color: "#ea580c",
+            fontSize: 12,
+            padding: "2px 8px",
+            borderRadius: 10,
+            fontWeight: 600,
+          }}
+        >
+          {community.nodeIds.length} 节点
+        </span>
       </div>
-      <div style={{ display: "flex", gap: 12, marginTop: 8, color: "#64748b", fontSize: 12, flexWrap: "wrap" }}>
-        <span>{community.relationCount} 条关系</span>
-        <span>{community.bridgeCount} 个桥接点</span>
-        <span>密度 {community.density}</span>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 0", textAlign: "center" }}>
+          <div style={{ color: "#1f2937", fontWeight: 700, fontSize: 16 }}>{community.relationCount}</div>
+          <div style={{ color: "#64748b", fontSize: 12 }}>条关系</div>
+        </div>
+        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 0", textAlign: "center" }}>
+          <div style={{ color: "#1f2937", fontWeight: 700, fontSize: 16 }}>{community.bridgeCount}</div>
+          <div style={{ color: "#64748b", fontSize: 12 }}>个桥接点</div>
+        </div>
+        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 0", textAlign: "center" }}>
+          <div style={{ color: "#1f2937", fontWeight: 700, fontSize: 16 }}>{community.density}</div>
+          <div style={{ color: "#64748b", fontSize: 12 }}>密度</div>
+        </div>
       </div>
     </button>
   );
@@ -1720,17 +2077,17 @@ function PanelSection({
   title,
   extra,
   children,
+  icon,
 }: {
   title: string;
   extra?: ReactNode;
   children: ReactNode;
+  icon?: ReactNode;
 }) {
   return (
     <section
       style={{
-        marginBottom: 16,
-        paddingBottom: 16,
-        borderBottom: "1px solid #edf1f5",
+        marginBottom: 24,
       }}
     >
       <div
@@ -1742,19 +2099,30 @@ function PanelSection({
           marginBottom: 12,
         }}
       >
-        <div style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>{title}</div>
-        {extra ? <div style={{ color: "#94a3b8", fontSize: 12, whiteSpace: "nowrap" }}>{extra}</div> : null}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "#475569" }}>
+          {icon}
+          {title}
+        </div>
+        {extra ? <div style={{ color: "#94a3b8", fontSize: 13, whiteSpace: "nowrap" }}>{extra}</div> : null}
       </div>
       {children}
     </section>
   );
 }
 
-function DetailGridRow({ label, value }: { label: string; value: string }) {
+function DetailGridRow({ label, value, bordered = true }: { label: string; value: string; bordered?: boolean }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-      <span style={{ color: "#64748b" }}>{label}</span>
-      <strong style={{ color: "#334155", textAlign: "right" }}>{value}</strong>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        padding: "12px 16px",
+        borderBottom: bordered ? "1px solid #eef2f7" : "none",
+        background: "#fff",
+      }}
+    >
+      <span style={{ color: "#64748b", fontSize: 13 }}>{label}</span>
+      <strong style={{ color: "#334155", fontSize: 13, textAlign: "right" }}>{value}</strong>
     </div>
   );
 }
