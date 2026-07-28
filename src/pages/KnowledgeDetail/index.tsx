@@ -1459,7 +1459,23 @@ export default function KnowledgeDetailPage() {
                   size="small"
                   icon={<EyeOutlined />}
                   disabled={!completed}
-                  onClick={() => history.push(`/data/document/${record.id}`)}
+                  onClick={() => {
+                    const detailQuery = new URLSearchParams();
+                    if (record.name && record.name !== '-') {
+                      detailQuery.set('title', record.name);
+                    }
+                    if (record.fileType && record.fileType !== '-') {
+                      detailQuery.set('type', record.fileType);
+                    }
+                    if (record.filePath) {
+                      detailQuery.set('filePath', record.filePath);
+                    }
+                    history.push(
+                      `/data/document/${record.id}${
+                        detailQuery.toString() ? `?${detailQuery.toString()}` : ''
+                      }`,
+                    );
+                  }}
                 >
                   详情
                 </Button>

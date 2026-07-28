@@ -1791,11 +1791,11 @@ export default function GraphPage() {
               >
                 {">"}
               </Button>
-              <Button
+              {/* <Button
                 type="text"
                 icon={<CloseOutlined />}
                 onClick={() => setSelectedNodeId(graphData.centerId)}
-              />
+              /> */}
             </Space>
           </div>
 

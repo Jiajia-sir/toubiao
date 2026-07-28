@@ -28,10 +28,11 @@ import {
   Input,
   message,
   Modal,
-  Spin,
   Progress,
   Row,
+  Segmented,
   Slider,
+  Spin,
   Space,
   Tag,
   Tooltip,
@@ -46,6 +47,7 @@ import {
   type ParseStep,
 } from '@/data/documentGraph';
 import type { EntityGraphData } from '@/data/entityGraphMock';
+import DocumentFilePreview, { extractPreviewFileName } from '@/components/DocumentFilePreview';
 import EntityRelationGraph from '@/components/Graph/EntityRelationGraph';
 import { getDocumentHtmlChunkPage, viewDocument } from '@/services/biz/document-query';
 import { getDocumentKnowledgeGraph, type DocumentKnowledgeGraphResult } from '@/services/biz/graph';
@@ -148,16 +150,16 @@ const toTextList = (value: any): string[] => {
     return value
       .map((item) => {
         if (typeof item === 'string') {
-          return item.trim();
+          return stripHtml(item);
         }
         if (typeof item?.name === 'string') {
-          return item.name.trim();
+          return stripHtml(item.name);
         }
         if (typeof item?.label === 'string') {
-          return item.label.trim();
+          return stripHtml(item.label);
         }
         if (typeof item?.value === 'string') {
-          return item.value.trim();
+          return stripHtml(item.value);
         }
         return '';
       })
@@ -166,7 +168,7 @@ const toTextList = (value: any): string[] => {
   if (typeof value === 'string') {
     return value
       .split(/[\n,，、]/)
-      .map((item) => item.trim())
+      .map((item) => stripHtml(item))
       .filter(Boolean);
   }
   return [];
@@ -181,6 +183,39 @@ const stripHtml = (value: string) =>
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim();
+
+const toPlainText = (value: any) => stripHtml(String(value ?? ''));
+
+const toRichTextList = (value: any): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') {
+          return item.trim();
+        }
+        if (typeof item?.name === 'string') {
+          return item.name.trim();
+        }
+        if (typeof item?.label === 'string') {
+          return item.label.trim();
+        }
+        if (typeof item?.value === 'string') {
+          return item.value.trim();
+        }
+        return '';
+      })
+      .filter((item) => stripHtml(item));
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(/[\n,，、]/)
+      .map((item) => item.trim())
+      .filter((item) => stripHtml(item));
+  }
+
+  return [];
+};
 
 const sanitizePreviewInlineStyle = (styleText: string) =>
   styleText
@@ -202,6 +237,31 @@ const sanitizePreviewHtml = (value: string) =>
       return sanitizedStyle ? ` style=${quote}${sanitizedStyle}${quote}` : '';
     })
     .replace(/javascript:/gi, '');
+
+const sanitizeInlineRichHtml = (value: string) =>
+  sanitizePreviewHtml(value)
+    .replace(/<!DOCTYPE[^>]*>/gi, '')
+    .replace(/<\/?(html|head|body|meta|title)[^>]*>/gi, '')
+    .replace(/<(?!\/?(span|mark|em|strong|b|i|u)\b)[^>]+>/gi, '');
+
+const renderInlineRichText = (value: any, fallback: ReactNode = '-') => {
+  const rawText = String(value ?? '').trim();
+  if (!rawText) {
+    return fallback;
+  }
+
+  const sanitizedHtml = sanitizeInlineRichHtml(rawText).trim();
+  const plainText = stripHtml(sanitizedHtml);
+  if (!plainText) {
+    return fallback;
+  }
+
+  if (!/<[a-z][\s\S]*>/i.test(sanitizedHtml)) {
+    return plainText;
+  }
+
+  return <span dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
+};
 
 const sanitizeEntityHtml = (value: string) => {
   const sanitized = sanitizePreviewHtml(String(value ?? ''));
@@ -318,22 +378,6 @@ const mapIntelligentStatus = (value: any): DocumentParseDetail['status'] => {
   }
 };
 
-const formatKnowledgeBase = (detail: any, fallback: string) => {
-  const names = toTextList(
-    detail?.knowledgeBaseNames ??
-      detail?.knowledgeBaseName ??
-      detail?.kbName ??
-      detail?.knowledgeName,
-  );
-  if (names.length > 0) {
-    return names.join('、');
-  }
-  if (Array.isArray(detail?.knowledgeBaseId) && detail.knowledgeBaseId.length > 0) {
-    return `宸插叧鑱?${detail.knowledgeBaseId.length} 涓煡璇嗗簱`;
-  }
-  return fallback;
-};
-
 const extractKnowledgeBases = (detail: any): Array<{ id: string; name: string }> => {
   if (Array.isArray(detail?.knowledgeBaseObj) && detail.knowledgeBaseObj.length > 0) {
     return detail.knowledgeBaseObj
@@ -341,29 +385,12 @@ const extractKnowledgeBases = (detail: any): Array<{ id: string; name: string }>
         id: String(knowledge?.id ?? knowledge?.knowledgeBaseId ?? ''),
         name: String(knowledge?.name ?? '').trim(),
       }))
-      .filter((knowledge: { id: string; name: string }) => knowledge.id && knowledge.name);
+      .filter(
+        (knowledge: { id: string; name: string }) => knowledge.id && stripHtml(knowledge.name),
+      );
   }
 
-  const ids = Array.isArray(detail?.knowledgeBaseIds)
-    ? detail.knowledgeBaseIds
-    : Array.isArray(detail?.knowledgeBaseId)
-      ? detail.knowledgeBaseId
-      : detail?.knowledgeBaseId !== undefined && detail?.knowledgeBaseId !== null
-        ? [detail.knowledgeBaseId]
-        : [];
-  const names = toTextList(
-    detail?.knowledgeBaseNames ??
-      detail?.knowledgeBaseName ??
-      detail?.kbName ??
-      detail?.knowledgeName,
-  );
-
-  return names
-    .map((name, index) => ({
-      id: String(ids[index] ?? ''),
-      name,
-    }))
-    .filter((knowledge) => knowledge.id && knowledge.name);
+  return [];
 };
 
 const hasProcessedValue = (value: any) => {
@@ -641,7 +668,7 @@ const buildDocumentDetail = (
       detail?.createBy ??
       baseDocument.uploader,
     uploadedAt: formatDateTime(detail?.createTime ?? detail?.uploadTime ?? baseDocument.uploadedAt),
-    knowledgeBase: formatKnowledgeBase(detail, baseDocument.knowledgeBase),
+    knowledgeBase: '未关联知识库',
     keywords: normalizedKeywords.length > 0 ? normalizedKeywords : baseDocument.keywords,
     tags: normalizedTags.length > 0 ? normalizedTags : baseDocument.tags,
     entities: normalizeEntities(detail),
@@ -663,6 +690,7 @@ export default function DataDetailPage() {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphData, setGraphData] = useState<DocumentKnowledgeGraphResult | null>(null);
   const [previewKeyword, setPreviewKeyword] = useState(searchParams.get('keyword') || '');
+  const [previewMode, setPreviewMode] = useState<'parsed' | 'original'>('parsed');
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [detailData, setDetailData] = useState<any>(null);
   const [previewPageNo, setPreviewPageNo] = useState(1);
@@ -819,9 +847,9 @@ export default function DataDetailPage() {
 
   const detailSummary = useMemo(
     () => ({
-      source: detailData?.channelName || '-',
-      catalog: detailData?.catalogName || '-',
-      knowledgeBase: document.knowledgeBase || '-',
+      source: toPlainText(detailData?.channelName) || '-',
+      catalog: toPlainText(detailData?.catalogName) || '-',
+      knowledgeBase: extractKnowledgeBases(detailData).length > 0 ? toPlainText(document.knowledgeBase) || '-' : '未关联知识库',
       knowledgeBases: extractKnowledgeBases(detailData),
       createdAt: formatDateTime(detailData?.createTime ?? detailData?.fileCreateTime),
       updatedAt: formatDateTime(detailData?.updateTime),
@@ -831,7 +859,55 @@ export default function DataDetailPage() {
     [detailData, document.knowledgeBase],
   );
 
+  const originalFilePath = useMemo(
+    () => String(detailData?.filePath ?? '').trim(),
+    [detailData],
+  );
+
+  const originalPreviewFileName = useMemo(() => {
+    const detailFileName = stripHtml(
+      String(detailData?.fileName ?? detailData?.name ?? detailData?.documentName ?? ''),
+    ).trim();
+    if (detailFileName) {
+      return detailFileName;
+    }
+
+    const sourceTitleText = stripHtml(String(sourceTitle || '')).trim();
+    if (/\.[a-z0-9]+$/i.test(sourceTitleText)) {
+      return sourceTitleText;
+    }
+
+    return (
+      stripHtml(extractPreviewFileName(originalFilePath)).trim() ||
+      sourceTitleText ||
+      stripHtml(document.title).trim()
+    );
+  }, [detailData, sourceTitle, originalFilePath, document.title]);
+
   const currentStatus = statusConfig[document.status];
+  const plainDocumentTitle = toPlainText(document.title);
+  const plainDocumentTitleWithoutExt = plainDocumentTitle.replace(/\.(pdf|docx|txt)$/i, '');
+  const plainUploader = toPlainText(document.uploader) || '-';
+  const plainKeywords = useMemo(
+    () => document.keywords.map((item) => toPlainText(item)).filter(Boolean),
+    [document.keywords],
+  );
+  const plainTags = useMemo(
+    () => document.tags.map((item) => toPlainText(item)).filter(Boolean),
+    [document.tags],
+  );
+  const richKeywords = useMemo(() => {
+    const values = toRichTextList(
+      detailData?.keywordsList ?? detailData?.keywords ?? detailData?.keywordList ?? detailData?.keywordNames,
+    );
+    return values.length > 0 ? values : plainKeywords;
+  }, [detailData, plainKeywords]);
+  const richTags = useMemo(() => {
+    const values = toRichTextList(
+      detailData?.fileTagNames ?? detailData?.tags ?? detailData?.tagList ?? detailData?.fileTags ?? detailData?.tagNames,
+    );
+    return values.length > 0 ? values : plainTags;
+  }, [detailData, plainTags]);
   const entityCount = Object.values(document.entities).flat().length;
   const completedStepCount = document.parseSteps.filter(
     (step) => step.status === 'completed',
@@ -1048,8 +1124,31 @@ export default function DataDetailPage() {
                   icon={<ClockCircleOutlined />}
                   text={`上传时间：${document.uploadedAt}`}
                 />
-                <InlineMeta icon={<UserOutlined />} text={`上传人：${document.uploader}`} />
-                <InlineMeta icon={<TagOutlined />} text={`来源：${detailSummary.source}`} />
+                <InlineMeta
+                  icon={<UserOutlined />}
+                  text={
+                    <>
+                      上传人：
+                      {renderInlineRichText(
+                        detailData?.creatorName ??
+                          detailData?.creator ??
+                          detailData?.uploader ??
+                          detailData?.createBy ??
+                          document.uploader,
+                        plainUploader,
+                      )}
+                    </>
+                  }
+                />
+                <InlineMeta
+                  icon={<TagOutlined />}
+                  text={
+                    <>
+                      来源：
+                      {renderInlineRichText(detailData?.channelName, detailSummary.source)}
+                    </>
+                  }
+                />
               </div>
               {fromEntity && (
                 <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>
@@ -1228,15 +1327,24 @@ export default function DataDetailPage() {
               title="内容预览"
               extra={
                 <Space size={8}>
-
-                  <Input
-                    allowClear
-                    value={previewKeyword}
-                    onChange={(event) => setPreviewKeyword(event.target.value)}
-                    placeholder="搜索内容"
-                    prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
-                    style={{ width: 220 }}
+                  <Segmented
+                    value={previewMode}
+                    onChange={(value) => setPreviewMode(value as 'parsed' | 'original')}
+                    options={[
+                      { label: '解析内容', value: 'parsed' },
+                      { label: '原文件预览', value: 'original' },
+                    ]}
                   />
+                  {previewMode === 'parsed' ? (
+                    <Input
+                      allowClear
+                      value={previewKeyword}
+                      onChange={(event) => setPreviewKeyword(event.target.value)}
+                      placeholder="搜索内容"
+                      prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                      style={{ width: 220 }}
+                    />
+                  ) : null}
                 </Space>
               }
               style={{
@@ -1249,38 +1357,41 @@ export default function DataDetailPage() {
               }}
               styles={{ body: { padding: 14, flex: 1, minHeight: 0 } }}
             >
-              <div
-                onScroll={handlePreviewScroll}
-                style={{
-                  border: '1px solid #dfe7f2',
-                  borderRadius: 12,
-                  background: '#fbfcff',
-                  padding: '16px 20px',
-                  height: '100%',
-                  overflowY: 'auto',
-                }}
-              >
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#1f2a44', marginBottom: 12 }}>
-                  {renderHighlightedText(
-                    document.title.replace(/\.(pdf|docx|txt)$/i, ''),
-                    previewKeyword,
-                  )}
-                </div>
+              {previewMode === 'parsed' ? (
                 <div
+                  onScroll={handlePreviewScroll}
                   style={{
-                    display: 'grid',
-                    gap: 4,
-                    color: '#64748b',
-                    marginBottom: 18,
-                    fontSize: 13,
+                    border: '1px solid #dfe7f2',
+                    borderRadius: 12,
+                    background: '#fbfcff',
+                    padding: '16px 20px',
+                    height: '100%',
+                    overflowY: 'auto',
                   }}
                 >
-                  <div>来源：{detailSummary.source}</div>
-                  <div>更新时间：{detailSummary.updatedAt}</div>
-                  <div>上传人：{document.uploader}</div>
-                </div>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 700, color: '#1f2a44', marginBottom: 12 }}
+                  >
+                    {renderHighlightedText(
+                      document.title.replace(/\.(pdf|docx|txt)$/i, ''),
+                      previewKeyword,
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 4,
+                      color: '#64748b',
+                      marginBottom: 18,
+                      fontSize: 13,
+                    }}
+                  >
+                    <div>来源：{detailSummary.source}</div>
+                    <div>更新时间：{detailSummary.updatedAt}</div>
+                    <div>上传人：{plainUploader}</div>
+                  </div>
 
-                <style>{`
+                  <style>{`
                   .document-preview-html {
                     color: #334155;
                     font-size: 15px;
@@ -1338,57 +1449,124 @@ export default function DataDetailPage() {
                   }
                 `}</style>
 
-                {filteredPreviewBlocks.length > 0 ? (
-                  <>
-                    {filteredPreviewBlocks.map((block, index) => (
-                      <div
-                        key={`${block.seq}-${index}`}
-                        style={{
-                          marginBottom: index === filteredPreviewBlocks.length - 1 ? 0 : 18,
-                        }}
-                      >
-                        {block.hit && (
-                          <div style={{ marginBottom: 8 }}>
-                            <Tag color="processing" style={{ margin: 0 }}>
-                              命中片段
-                            </Tag>
+                  {filteredPreviewBlocks.length > 0 ? (
+                    <>
+                      {filteredPreviewBlocks.map((block, index) => (
+                        <div
+                          key={`${block.seq}-${index}`}
+                          style={{
+                            marginBottom: index === filteredPreviewBlocks.length - 1 ? 0 : 18,
+                          }}
+                        >
+                          {block.hit && (
+                            <div style={{ marginBottom: 8 }}>
+                              <Tag color="processing" style={{ margin: 0 }}>
+                                命中片段
+                              </Tag>
+                            </div>
+                          )}
+                          <PreviewBlock type={block.type} keyword={previewKeyword}>
+                            {block.value}
+                          </PreviewBlock>
+                        </div>
+                      ))}
+                      <div style={{ display: 'grid', gap: 8, marginTop: 20, paddingBottom: 4 }}>
+                        {previewLoading && (
+                          <div style={{ textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+                            正在加载更多内容...
                           </div>
                         )}
-                        <PreviewBlock type={block.type} keyword={previewKeyword}>
-                          {block.value}
-                        </PreviewBlock>
+                        {!previewHasMore && previewInitialized && previewChunks.length > 0 && (
+                          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                            已加载全部内容
+                          </div>
+                        )}
+                        {!previewLoading && previewHasMore && (
+                          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                            下滑继续加载更多内容
+                          </div>
+                        )}
                       </div>
-                    ))}
-                    <div style={{ display: 'grid', gap: 8, marginTop: 20, paddingBottom: 4 }}>
-                      {previewLoading && (
-                        <div style={{ textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                          正在加载更多内容...
-                        </div>
-                      )}
-                      {!previewHasMore && previewInitialized && previewChunks.length > 0 && (
-                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-                          已加载全部内容
-                        </div>
-                      )}
-                      {!previewLoading && previewHasMore && (
-                        <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-                          下滑继续加载更多内容
-                        </div>
+                    </>
+                  ) : !previewLoading && previewInitialized ? (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="未找到匹配内容"
+                      style={{ marginTop: 48 }}
+                    />
+                  ) : (
+                    <div style={{ textAlign: 'center', color: '#64748b', paddingTop: 48 }}>
+                      内容加载中...
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    border: '1px solid #dfe7f2',
+                    borderRadius: 12,
+                    background: '#fbfcff',
+                    height: '100%',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      borderBottom: '1px solid #e2e8f0',
+                      background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
+                    }}
+                  >
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#1f2a44' }}>
+                      {renderInlineRichText(
+                        sourceTitle ??
+                          detailData?.name ??
+                          detailData?.fileName ??
+                          detailData?.documentName ??
+                          detailData?.title ??
+                          document.title,
+                        plainDocumentTitle,
                       )}
                     </div>
-                  </>
-                ) : !previewLoading && previewInitialized ? (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="未找到匹配内容"
-                    style={{ marginTop: 48 }}
-                  />
-                ) : (
-                  <div style={{ textAlign: 'center', color: '#64748b', paddingTop: 48 }}>
-                    内容加载中...
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        marginTop: 8,
+                        color: '#64748b',
+                        fontSize: 13,
+                      }}
+                    >
+                      <span>文件类型：{document.type || '-'}</span>
+                      <span>
+                        来源：{renderInlineRichText(detailData?.channelName, detailSummary.source)}
+                      </span>
+                      <span>
+                        上传人：
+                        {renderInlineRichText(
+                          detailData?.creatorName ??
+                            detailData?.creator ??
+                            detailData?.uploader ??
+                            detailData?.createBy ??
+                            document.uploader,
+                          plainUploader,
+                        )}
+                      </span>
+                    </div>
                   </div>
-                )}
-              </div>
+                  <div style={{ flex: 1, minHeight: 0 }}>
+                    <DocumentFilePreview
+                      filePath={originalFilePath}
+                      fileName={originalPreviewFileName}
+                      searchKeyword={sourceKeyword}
+                      height="100%"
+                    />
+                  </div>
+                </div>
+              )}
             </Card>
           </Col>
 
@@ -1408,9 +1586,30 @@ export default function DataDetailPage() {
               >
                 <InfoList
                   items={[
-                    ['文档标题', document.title.replace(/\.(pdf|docx|txt)$/i, '')],
-                    ['来源', detailSummary.source],
-                    ['上传人', document.uploader],
+                    [
+                      '文档标题',
+                      renderInlineRichText(
+                        sourceTitle ??
+                          detailData?.name ??
+                          detailData?.fileName ??
+                          detailData?.documentName ??
+                          detailData?.title ??
+                          document.title,
+                        plainDocumentTitleWithoutExt,
+                      ),
+                    ],
+                    ['来源', renderInlineRichText(detailData?.channelName, detailSummary.source)],
+                    [
+                      '上传人',
+                      renderInlineRichText(
+                        detailData?.creatorName ??
+                          detailData?.creator ??
+                          detailData?.uploader ??
+                          detailData?.createBy ??
+                          document.uploader,
+                        plainUploader,
+                      ),
+                    ],
                     ['创建时间', detailSummary.createdAt],
                     ['更新时间', detailSummary.updatedAt],
                     ['文件格式', document.type],
@@ -1426,7 +1625,7 @@ export default function DataDetailPage() {
                               style={{ cursor: 'pointer', marginInlineEnd: 0 }}
                               onClick={() => history.push(`/knowledge/detail/${knowledge.id}`)}
                             >
-                              {knowledge.name}
+                              {renderInlineRichText(knowledge.name, toPlainText(knowledge.name))}
                             </Tag>
                           ))}
                         </Space>
@@ -1434,7 +1633,7 @@ export default function DataDetailPage() {
                         detailSummary.knowledgeBase
                       ),
                     ],
-                    ['类目', detailSummary.catalog],
+                    ['类目', renderInlineRichText(detailData?.catalogName, detailSummary.catalog)],
                   ]}
                 />
               </Card>
@@ -1442,7 +1641,7 @@ export default function DataDetailPage() {
               <Card
                 bordered={false}
                 title="提取关键词"
-                extra={<span style={{ color: '#94a3b8' }}>共 {document.keywords.length} 个</span>}
+                extra={<span style={{ color: '#94a3b8' }}>共 {plainKeywords.length} 个</span>}
                 style={{
                   ...surfaceCardStyle,
                   height: KEYWORD_CARD_HEIGHT,
@@ -1452,14 +1651,14 @@ export default function DataDetailPage() {
                 }}
                 styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
               >
-                {document.keywords.length > 0 ? (
+                {plainKeywords.length > 0 ? (
                   <Space wrap size={[8, 10]}>
-                    {document.keywords.map((item, index) => (
+                    {richKeywords.map((item, index) => (
                       <ColorTag
-                        key={item}
+                        key={`${plainKeywords[index] || stripHtml(item) || item}-${index}`}
                         palette={keywordPalettes[index % keywordPalettes.length]}
                       >
-                        {item}
+                        {renderInlineRichText(item, plainKeywords[index] || stripHtml(item))}
                       </ColorTag>
                     ))}
                   </Space>
@@ -1553,7 +1752,7 @@ export default function DataDetailPage() {
               <Card
                 bordered={false}
                 title="标签分类结果"
-                extra={<span style={{ color: '#94a3b8' }}>共 {document.tags.length} 个</span>}
+                extra={<span style={{ color: '#94a3b8' }}>共 {plainTags.length} 个</span>}
                 style={{
                   ...surfaceCardStyle,
                   height: TAG_CARD_HEIGHT,
@@ -1563,11 +1762,14 @@ export default function DataDetailPage() {
                 }}
                 styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
               >
-                {document.tags.length > 0 ? (
+                {plainTags.length > 0 ? (
                   <Space wrap size={[8, 10]}>
-                    {document.tags.map((item, index) => (
-                      <ColorTag key={item} palette={tagPalettes[index % tagPalettes.length]}>
-                        {item}
+                    {richTags.map((item, index) => (
+                      <ColorTag
+                        key={`${plainTags[index] || stripHtml(item) || item}-${index}`}
+                        palette={tagPalettes[index % tagPalettes.length]}
+                      >
+                        {renderInlineRichText(item, plainTags[index] || stripHtml(item))}
                       </ColorTag>
                     ))}
                   </Space>
@@ -1688,7 +1890,7 @@ function InlineMeta({
   tinted = false,
 }: {
   icon: ReactNode;
-  text: string;
+  text: ReactNode;
   tinted?: boolean;
 }) {
   return (
