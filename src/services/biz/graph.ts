@@ -33,6 +33,10 @@ export interface SearchGraphNode {
   relationFromParent?: string;
   depth?: number;
   branchId?: string;
+  sourceDocuments?: Array<{
+    documentId?: number | string;
+    documentName?: string;
+  }>;
 }
 
 export interface SearchGraphLink {
@@ -55,7 +59,7 @@ export async function getDocumentKnowledgeGraph(id: number | string) {
   });
 }
 
-export async function searchGraph(params: { entity: string; mode?: string }) {
+export async function searchGraph(params: { entity: string; way?: string }) {
   return request<SearchGraphResult>(`${API_PREFIX}/biz/graph/search`, {
     method: "GET",
     params,
@@ -232,4 +236,3 @@ export async function deleteGraphNode(data: DeleteGraphNodeReqVO) {
     data,
   });
 }
-

@@ -50,7 +50,7 @@ const nodeBaseStyleMap: Record<
   }
 > = {
   center: {
-    radius: 28,
+    radius: 18,
     text: "#ffffff",
   },
   entity: {
@@ -137,10 +137,11 @@ function drawValueNodeTag(
   y: number,
   text: string,
   accentColor: string,
+  nodeSize: number,
 ) {
-  const fontSize = 11;
-  const paddingX = 10;
-  const paddingY = 5;
+  const fontSize = Math.max(10, Math.min(18, Math.round(nodeSize * 0.72)));
+  const paddingX = Math.max(8, Math.round(fontSize * 0.75));
+  const paddingY = Math.max(4, Math.round(fontSize * 0.42));
   const accentWidth = 4;
   context.font = `500 ${fontSize}px sans-serif`;
   const textWidth = context.measureText(text).width;
@@ -186,6 +187,13 @@ function drawValueNodeTag(
   context.textBaseline = "middle";
   context.fillText(text, x + accentWidth / 2, y);
 }
+
+function getValueNodeFullText(node: EntityGraphNode) {
+  const key = String(node.relationFromParent || node.desc || "属性").trim();
+  const value = String(node.name || "").trim();
+  return key ? `${key}: ${value}` : value;
+}
+
 
 function drawStableEdgeLabel(
   context: CanvasRenderingContext2D,
@@ -544,9 +552,17 @@ const EntityRelationGraph = forwardRef<
         size: visibleNodeSize,
         label: (showNodes && showLabels !== false) ? label : "",
         color: showNodes ? (isValueNode ? "rgba(0, 0, 0, 0)" : colors.fill) : "rgba(0, 0, 0, 0)",
-        borderColor: showNodes ? (isValueNode ? "rgba(0, 0, 0, 0)" : (isSelected ? "#d8b15d" : colors.stroke)) : "rgba(0, 0, 0, 0)",
-        borderSize: isValueNode ? 0.01 : (isSelected ? 4 : (node.type === "center" ? 2 : 1.2)),
-        hidden: false,
+        borderColor: showNodes
+          ? (
+              isValueNode
+                ? "rgba(0, 0, 0, 0)"
+                : (isSelected ? "#d8b15d" : (node.expandable ? colors.stroke : "rgba(148, 163, 184, 0.55)"))
+            )
+          : "rgba(0, 0, 0, 0)",
+        borderSize: isValueNode
+          ? 0.01
+          : (isSelected ? 4 : (node.expandable ? (node.type === "center" ? 2.6 : 1.8) : 0.9)),
+        hidden: !showNodes,
         customColor: colors.fill,
         originalData: node
       };
@@ -650,13 +666,15 @@ const EntityRelationGraph = forwardRef<
       renderEdgeLabels: showLinks,
       zIndex: true,
       defaultDrawNodeHover: (context, data, settings) => {
+        if (!showNodes) return;
         const nodeId = (data as any).key;
         const originalData = (data as any).originalData || (nodeId && graphRef.current ? graphRef.current.getNodeAttribute(nodeId, "originalData") : null);
         
         if (originalData && originalData.type === "value") {
-          const text = `${originalData.relationFromParent || "属性"}: ${originalData.name}`;
+          const capsuleText = getValueNodeFullText(originalData);
+          if (!capsuleText) return;
           const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
-          drawValueNodeTag(context, data.x!, data.y!, String(originalData.name || ""), accentColor);
+          drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, data.size || 14);
         } else {
           const label = data.label;
           if (!label) return;
@@ -690,13 +708,15 @@ const EntityRelationGraph = forwardRef<
         }
       },
       defaultDrawNodeLabel: (context, data, settings) => {
+        if (!showNodes) return;
         const nodeId = (data as any).key;
         const originalData = (data as any).originalData || (nodeId && graphRef.current ? graphRef.current.getNodeAttribute(nodeId, "originalData") : null);
         
         if (originalData && originalData.type === "value") {
-          const text = `${originalData.relationFromParent || "属性"}: ${originalData.name}`;
+          const capsuleText = String(data.label || originalData.name || "");
+          if (!capsuleText) return;
           const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
-          drawValueNodeTag(context, data.x!, data.y!, String(originalData.name || ""), accentColor);
+          drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, data.size || 14);
         } else {
           // Fallback label drawer for entities
           const label = data.label;

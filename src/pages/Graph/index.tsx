@@ -53,7 +53,6 @@ import EntityRelationGraph, { getEntityTypePalette } from "@/components/Graph/En
 import {
 
   getNodeDetail,
-  getSuggestedEntities,
   hasPresetEntityRecord,
   hashText,
   type EntityGraphData,
@@ -73,6 +72,14 @@ const typeMeta: Record<EntityGraphNodeType, { label: string; color: string; coun
 };
 
 type WorkspaceMode = "auto-upload" | "manual-upload";
+
+function getGraphWay(workspaceMode: WorkspaceMode) {
+  return workspaceMode === "auto-upload" ? "auto_read" : "front_upload";
+}
+
+function getExpandNodeKind(node: EntityGraphNode) {
+  return node.type === "value" ? "property" : "entity";
+}
 
 interface GraphCommunity {
   id: string;
@@ -143,6 +150,28 @@ function parseTagInput(value?: string) {
 
 function extractResultData<T>(response: any): T {
   return (response?.data?.data ?? response?.data ?? response ?? {}) as T;
+}
+
+function mapSourceDocuments(
+  documents?: Array<{ documentId?: number | string; documentName?: string }>,
+): SourceDocument[] {
+  return (documents || [])
+    .map((doc) => {
+      const id = String(doc?.documentId ?? "").trim();
+      const title = String(doc?.documentName ?? "").trim();
+      if (!id || !title) {
+        return null;
+      }
+      const lowerTitle = title.toLowerCase();
+      const type: SourceDocument["type"] = lowerTitle.endsWith(".pdf") ? "pdf" : "docx";
+      return {
+        id,
+        title,
+        location: title,
+        type,
+      };
+    })
+    .filter(Boolean) as SourceDocument[];
 }
 
 function checkApiResponse(res: any, defaultErrorMsg = "操作失败") {
@@ -247,6 +276,7 @@ function buildGraphFromSearchResult(result: SearchGraphResult, fallbackCenterNam
           relationFromParent: node?.relationFromParent,
           depth: Number(node?.depth ?? (node?.type === "center" ? 0 : 1)),
           branchId: node?.branchId ?? nodeId,
+          sourceDocuments: mapSourceDocuments(node?.sourceDocuments),
         };
       })
       .filter(Boolean) as EntityGraphData["nodes"],
@@ -290,9 +320,11 @@ export default function GraphPage() {
   const [activeCommunityId, setActiveCommunityId] = useState<string | null>(null);
   const [nodeScale, setNodeScale] = useState(1);
   const [linkWidth, setLinkWidth] = useState(1.4);
-  const [labelMaxLength, setLabelMaxLength] = useState(6);
+  const [labelMaxLength, setLabelMaxLength] = useState(12);
   const [showNodes, setShowNodes] = useState(true);
   const [showLinks, setShowLinks] = useState(true);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [entityOverrides, setEntityOverrides] = useState<Record<string, EntityOverride>>({});
   const [entityModalOpen, setEntityModalOpen] = useState(false);
   const [entityModalMode, setEntityModalMode] = useState<"add" | "edit">("edit");
@@ -386,7 +418,8 @@ export default function GraphPage() {
       ...baseDetail,
       desc: override?.desc ?? selectedNode?.desc ?? baseDetail.desc,
       tag: override?.tag ?? selectedNode?.tag ?? baseDetail.tag,
-      avp: override?.avp ?? baseDetail.avp,
+      avp: override?.avp ?? [],
+      sourceDocuments: selectedNode?.sourceDocuments ?? [],
     } as EntityNodeDetail;
   }, [entityOverrides, graphData.centerId, selectedNode]);
 
@@ -398,6 +431,36 @@ export default function GraphPage() {
       (link) => link.source === selectedNode.id || link.target === selectedNode.id,
     );
   }, [graphData.links, selectedNode]);
+
+  const selectedPropertyList = useMemo(() => {
+    if (!selectedNode) {
+      return [];
+    }
+    const override = entityOverrides[selectedNode.id] || entityOverrides[selectedNode.name];
+    const overrideAvp = override?.avp || [];
+
+    const graphAvp =
+      selectedNode.type === "value"
+        ? [[selectedNode.relationFromParent || selectedNode.desc || "属性", selectedNode.name] as [string, string]]
+        : graphData.nodes
+            .filter((node) => node.type === "value" && node.parentId === selectedNode.id)
+            .map((node) => [node.relationFromParent || node.desc || "属性", node.name] as [string, string]);
+
+    return [...overrideAvp, ...graphAvp].filter(
+      ([label, value], index, array) =>
+        array.findIndex((item) => item[0] === label && item[1] === value) === index,
+    );
+  }, [entityOverrides, graphData.nodes, selectedNode]);
+
+  const canShowRelationLoadActions = useMemo(() => {
+    if (!selectedNode?.expandable) {
+      return false;
+    }
+    if (selectedRelations.length === 0) {
+      return false;
+    }
+    return nodeExpandMap[selectedNode.id]?.hasMore !== false;
+  }, [nodeExpandMap, selectedNode, selectedRelations.length]);
 
   const graphSummary = useMemo(
     () => ({
@@ -413,8 +476,6 @@ export default function GraphPage() {
       graphData.nodes.length,
     ],
   );
-
-  const suggestedEntities = useMemo(() => getSuggestedEntities(), []);
 
   async function loadEntityTypes() {
     try {
@@ -455,7 +516,7 @@ export default function GraphPage() {
 
     try {
       setGraphLoading(true);
-      const response = await searchGraph({ entity: target, mode });
+      const response = await searchGraph({ entity: target, way: getGraphWay(mode) });
       const result = extractResultData<SearchGraphResult>(response);
       const nextGraph = buildGraphFromSearchResult(result, target);
 
@@ -492,6 +553,7 @@ export default function GraphPage() {
     overrideType?: string,
     resetCursor = false,
     mode: "replace" | "append" = "replace",
+    workspaceOverride?: WorkspaceMode,
   ) {
     if (entityListLoading) return;
     if (!resetCursor && entityListHasMore === false) {
@@ -507,7 +569,7 @@ export default function GraphPage() {
       const targetType = overrideType !== undefined ? overrideType : activeEntityTypeName;
       const cursorToUse = resetCursor ? undefined : previewCursor;
       const response = await getGraphEntities({
-        way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
+        way: getGraphWay(workspaceOverride ?? workspaceMode),
         nodeKind: "entity",
         entityType: targetType || undefined,
         name: entityNameKeyword.trim() || undefined,
@@ -574,6 +636,7 @@ export default function GraphPage() {
 
   function switchWorkspaceMode(mode: WorkspaceMode) {
     setWorkspaceMode(mode);
+    void handleLoadGraphEntities(activeEntityTypeName || undefined, true, "replace", mode);
     if (keyword.trim()) {
       void handleSearch(keyword, mode);
     }
@@ -612,9 +675,9 @@ export default function GraphPage() {
 
       const requestCursor = currentNodeState.nextCursor;
       const response = await expandGraphNode({
-        way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
+        way: getGraphWay(workspaceMode),
         nodeId: String(node.id),
-        nodeKind: "entity",
+        nodeKind: getExpandNodeKind(node),
         direction: "both",
         includeProperty: true,
         limit: 20,
@@ -637,6 +700,7 @@ export default function GraphPage() {
             id: nid,
             name: String(n.name ?? nid).trim(),
             type: n.type ?? "entity",
+            sourceDocuments: mapSourceDocuments(n.sourceDocuments),
           };
         })
         .filter(Boolean) as SearchGraphNode[];
@@ -696,9 +760,12 @@ export default function GraphPage() {
         }
 
         validNodes.forEach((n) => {
-          if (!nextNodesMap.has(n.id)) {
-            nextNodesMap.set(n.id, n as any);
-          }
+          const existingNode = nextNodesMap.get(n.id);
+          nextNodesMap.set(n.id, {
+            ...(existingNode || {}),
+            ...(n as any),
+            sourceDocuments: n.sourceDocuments ?? existingNode?.sourceDocuments ?? [],
+          });
         });
         
         validLinks.forEach((l) => {
@@ -851,7 +918,7 @@ export default function GraphPage() {
 
     try {
       const values = await entityForm.validateFields();
-      const currentWay = workspaceMode === "auto-upload" ? "auto_read" : "front_upload";
+      const currentWay = getGraphWay(workspaceMode);
       const isProperty = values.nodeKind === "property";
 
       if (entityModalMode === "add") {
@@ -1088,7 +1155,7 @@ export default function GraphPage() {
           const deleteId = selectedNode.id;
           const targetNodeId = String(deleteId);
           const res = await deleteGraphNode({
-            way: workspaceMode === "auto-upload" ? "auto_read" : "front_upload",
+            way: getGraphWay(workspaceMode),
             nodeId: targetNodeId,
             nodeKind: selectedNode.type === "value" ? "property" : "entity",
           });
@@ -1236,7 +1303,7 @@ export default function GraphPage() {
         style={{
           height: "calc(100vh - 112px)",
           display: "grid",
-          gridTemplateColumns: "320px 1fr 350px",
+          gridTemplateColumns: `${leftPanelCollapsed ? "0px" : "320px"} 1fr ${rightPanelCollapsed ? "0px" : "350px"}`,
           background: "#f7f9fc",
           borderRadius: 16,
           overflow: "hidden",
@@ -1247,9 +1314,11 @@ export default function GraphPage() {
           className="hide-scrollbar"
           style={{
             background: "#fff",
-            borderRight: "1px solid #e5e7eb",
-            padding: 16,
+            borderRight: leftPanelCollapsed ? "none" : "1px solid #e5e7eb",
+            padding: leftPanelCollapsed ? 0 : 16,
             overflowY: "auto",
+            overflowX: "hidden",
+            minWidth: 0,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
@@ -1271,6 +1340,13 @@ export default function GraphPage() {
               <div style={{ fontSize: 15, fontWeight: 700, color: "#1f2937", lineHeight: 1.2 }}>图谱检索</div>
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>知识图谱实体检索</div>
             </div>
+            <Button
+              type="text"
+              onClick={() => setLeftPanelCollapsed(true)}
+              style={{ marginLeft: "auto", width: 28, height: 28, borderRadius: 14, padding: 0, flexShrink: 0 }}
+            >
+              {"<"}
+            </Button>
           </div>
 
           <Input
@@ -1498,11 +1574,11 @@ export default function GraphPage() {
             <SliderRow
               label="节点字数"
               min={2}
-              max={20}
+              max={60}
               step={1}
               value={labelMaxLength}
               onChange={setLabelMaxLength}
-              displayValue={`${Math.round(((labelMaxLength - 2) / 18) * 100)}%`}
+              displayValue={`${Math.round(((labelMaxLength - 2) / 58) * 100)}%`}
             />
             <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
               <CheckboxOptionRow
@@ -1534,28 +1610,6 @@ export default function GraphPage() {
               <OverviewMetricCard label="当前可见" value={String(graphSummary.visibleCount)} accent="#b45309" />
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              <div style={{ color: "#64748b", fontSize: 12, marginBottom: 10 }}>推荐检索</div>
-              <Space wrap size={[8, 10]}>
-                {suggestedEntities.map((item) => (
-                  <Tag
-                    key={item}
-                    style={{
-                      cursor: "pointer",
-                      margin: 0,
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      borderColor: keyword === item ? "#2563eb" : "#d9e2f1",
-                      background: keyword === item ? "#eff6ff" : "#fff",
-                      color: keyword === item ? "#2563eb" : "#475569",
-                    }}
-                    onClick={() => void handleSearch(item)}
-                  >
-                    {item}
-                  </Tag>
-                ))}
-              </Space>
-            </div>
           </SectionBlock>
         </aside>
 
@@ -1570,6 +1624,44 @@ export default function GraphPage() {
             height: "100%",
           }}
         >
+          {leftPanelCollapsed ? (
+            <Button
+              type="default"
+              onClick={() => setLeftPanelCollapsed(false)}
+              style={{
+                position: "absolute",
+                top: 16,
+                left: 16,
+                zIndex: 12,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                padding: 0,
+                boxShadow: "0 6px 18px rgba(15, 23, 42, 0.08)",
+              }}
+            >
+              {">"}
+            </Button>
+          ) : null}
+          {rightPanelCollapsed ? (
+            <Button
+              type="default"
+              onClick={() => setRightPanelCollapsed(false)}
+              style={{
+                position: "absolute",
+                top: 16,
+                right: 16,
+                zIndex: 12,
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                padding: 0,
+                boxShadow: "0 6px 18px rgba(15, 23, 42, 0.08)",
+              }}
+            >
+              {"<"}
+            </Button>
+          ) : null}
           {/* 图例 */}
           <div 
             style={{
@@ -1674,10 +1766,12 @@ export default function GraphPage() {
         <aside
           style={{
             background: "#fff",
-            borderLeft: "1px solid #e5e7eb",
+            borderLeft: rightPanelCollapsed ? "none" : "1px solid #e5e7eb",
             display: "flex",
             flexDirection: "column",
             minHeight: 0,
+            minWidth: 0,
+            overflow: "hidden",
           }}
         >
           <div
@@ -1689,11 +1783,20 @@ export default function GraphPage() {
             }}
           >
             <div style={{ fontSize: 15, fontWeight: 700, color: "#1f2937" }}>实体详情</div>
-            <Button
-              type="text"
-              icon={<CloseOutlined />}
-              onClick={() => setSelectedNodeId(graphData.centerId)}
-            />
+            <Space size={4}>
+              <Button
+                type="text"
+                onClick={() => setRightPanelCollapsed(true)}
+                style={{ width: 28, height: 28, borderRadius: 14, padding: 0 }}
+              >
+                {">"}
+              </Button>
+              <Button
+                type="text"
+                icon={<CloseOutlined />}
+                onClick={() => setSelectedNodeId(graphData.centerId)}
+              />
+            </Space>
           </div>
 
           <div className="hide-scrollbar" style={{ flex: 1, overflowY: "auto", padding: 16 }}>
@@ -1806,7 +1909,7 @@ export default function GraphPage() {
                   icon={<LinkOutlined style={{ color: "#3b82f6" }} />}
                   extra={
                     <Space size={12}>
-                      {selectedNode.expandable && nodeExpandMap[selectedNode.id]?.hasMore !== false && (
+                      {canShowRelationLoadActions && (
                         <>
                           <Button
                             size="small"
@@ -1930,22 +2033,26 @@ export default function GraphPage() {
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#475569", marginBottom: 10 }}>
                     属性信息
                   </div>
-                  <div
-                    style={{
-                      border: "1px solid #eef2f7",
-                      borderRadius: 12,
-                      overflow: "hidden",
-                    }}
-                  >
-                    {selectedDetail.avp.slice(0, 5).map(([label, value], index) => (
-                      <DetailGridRow
-                        key={`${label}-${value}-${index}`}
-                        label={label}
-                        value={value}
-                        bordered={index !== selectedDetail.avp.slice(0, 5).length - 1}
-                      />
-                    ))}
-                  </div>
+                  {selectedPropertyList.length > 0 ? (
+                    <div
+                      style={{
+                        border: "1px solid #eef2f7",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                      }}
+                    >
+                      {selectedPropertyList.slice(0, 5).map(([label, value], index) => (
+                        <DetailGridRow
+                          key={`${label}-${value}-${index}`}
+                          label={label}
+                          value={value}
+                          bordered={index !== selectedPropertyList.slice(0, 5).length - 1}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前实体暂无属性信息" />
+                  )}
                 </div>
 
                 <PanelSection
@@ -1983,7 +2090,7 @@ export default function GraphPage() {
                   title="来源文档"
                   icon={<FileTextOutlined style={{ color: "#3b82f6" }} />}
                 >
-                  {selectedDetail.sourceDocuments.map((doc) => (
+                  {selectedDetail.sourceDocuments.length > 0 ? selectedDetail.sourceDocuments.map((doc) => (
                     <div
                       key={doc.id}
                       onClick={() => handleOpenDocument(doc)}
@@ -2033,7 +2140,7 @@ export default function GraphPage() {
                         查看详情 <span style={{ fontSize: 12, fontWeight: 700 }}>↗</span>
                       </div>
                     </div>
-                  ))}
+                  )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前实体暂无来源文档" />}
                 </PanelSection>
               </>
             ) : (

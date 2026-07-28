@@ -31,6 +31,7 @@ export interface EntityGraphNode {
   branchId?: string;
   entityType?: string;
   nodeKind?: string;
+  sourceDocuments?: SourceDocument[];
 }
 
 export interface EntityGraphLink {
