@@ -521,35 +521,50 @@ const EntityRelationGraph = forwardRef<
       }
     });
 
-    const sortedNodes = [...data.nodes].sort((left, right) => {
-      const leftWeight = left.type === "center" ? 0 : left.type === "entity" ? 1 : 2;
-      const rightWeight = right.type === "center" ? 0 : right.type === "entity" ? 1 : 2;
-      if (leftWeight !== rightWeight) return leftWeight - rightWeight;
-      return (right.relationCount || 0) - (left.relationCount || 0);
-    });
-    const limit = maxVisibleLabels !== undefined ? maxVisibleLabels : data.nodes.length;
-    const visibleLabelNodeIds = new Set(
-      sortedNodes
-        .slice(0, Math.max(limit, 0))
-        .map((item) => item.id),
-    );
+    const anchorNodeId =
+      (selectedNodeId && targetPositions.has(selectedNodeId) ? selectedNodeId : null) ||
+      (targetPositions.has(data.centerId) ? data.centerId : null) ||
+      data.nodes[0]?.id;
+    const anchorTargetPosition = anchorNodeId ? targetPositions.get(anchorNodeId) : null;
+    const anchorCurrentPosition =
+      anchorNodeId && graph.hasNode(anchorNodeId)
+        ? {
+            x: Number(graph.getNodeAttribute(anchorNodeId, "x") ?? 0),
+            y: Number(graph.getNodeAttribute(anchorNodeId, "y") ?? 0),
+          }
+        : null;
+    const layoutOffset =
+      anchorTargetPosition && anchorCurrentPosition
+        ? {
+            x: anchorCurrentPosition.x - anchorTargetPosition.x,
+            y: anchorCurrentPosition.y - anchorTargetPosition.y,
+          }
+        : { x: 0, y: 0 };
 
     data.nodes.forEach(node => {
-      const pos = targetPositions.get(node.id) || { x: 0, y: 0 };
+      const existingPosition = graph.hasNode(node.id)
+        ? {
+            x: Number(graph.getNodeAttribute(node.id, "x") ?? 0),
+            y: Number(graph.getNodeAttribute(node.id, "y") ?? 0),
+          }
+        : null;
+      const targetPosition = targetPositions.get(node.id) || { x: 0, y: 0 };
+      const pos = existingPosition || {
+        x: targetPosition.x + layoutOffset.x,
+        y: targetPosition.y + layoutOffset.y,
+      };
       const radius = getRadius(node, nodeScale);
       const colors = getBranchColor(node, nodeMap);
       const isSelected = node.id === selectedNodeId;
       const isValueNode = node.type === "value";
       const maxLength = labelMaxLength || (node.type === "center" ? 6 : node.type === "entity" ? 5 : 4);
-      const label = visibleLabelNodeIds.has(node.id) || isValueNode
-        ? truncateLabel(node.name, maxLength)
-        : "";
+      const label = truncateLabel(node.name, maxLength);
       const visibleNodeSize = isValueNode ? Math.max(12, radius * 0.9) : radius;
 
       const nodeData = {
         x: pos.x,
         y: pos.y,
-        size: visibleNodeSize,
+        size: isValueNode ? 0.01 : visibleNodeSize,
         label: (showNodes && showLabels !== false) ? label : "",
         color: showNodes ? (isValueNode ? "rgba(0, 0, 0, 0)" : colors.fill) : "rgba(0, 0, 0, 0)",
         borderColor: showNodes
@@ -560,10 +575,11 @@ const EntityRelationGraph = forwardRef<
             )
           : "rgba(0, 0, 0, 0)",
         borderSize: isValueNode
-          ? 0.01
+          ? 0
           : (isSelected ? 4 : (node.expandable ? (node.type === "center" ? 2.6 : 1.8) : 0.9)),
         hidden: !showNodes,
         customColor: colors.fill,
+        customLabelSize: visibleNodeSize,
         originalData: node
       };
 
@@ -635,7 +651,7 @@ const EntityRelationGraph = forwardRef<
     });
 
     sigmaRef.current?.refresh();
-  }, [data, nodeScale, linkWidth, showNodes, showLinks, showLabels, selectedNodeId, labelMaxLength, maxVisibleLabels]);
+  }, [data, nodeScale, linkWidth, showNodes, showLinks, showLabels, selectedNodeId, labelMaxLength]);
 
   const onNodeClickRef = useRef(onNodeClick);
   const onNodeDoubleClickRef = useRef(onNodeDoubleClick);
@@ -662,7 +678,10 @@ const EntityRelationGraph = forwardRef<
       // unlabeled points while dragging or right after animated camera updates.
       hideLabelsOnMove: false,
       hideEdgesOnMove: false,
-      labelRenderedSizeThreshold: 1,
+      labelRenderedSizeThreshold: 0,
+      labelDensity: 1,
+      labelGridCellSize: 1,
+      renderLabels: true,
       renderEdgeLabels: showLinks,
       zIndex: true,
       defaultDrawNodeHover: (context, data, settings) => {
@@ -674,7 +693,7 @@ const EntityRelationGraph = forwardRef<
           const capsuleText = getValueNodeFullText(originalData);
           if (!capsuleText) return;
           const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
-          drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, data.size || 14);
+          drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, (data as any).customLabelSize || 14);
         } else {
           const label = data.label;
           if (!label) return;
@@ -716,7 +735,7 @@ const EntityRelationGraph = forwardRef<
           const capsuleText = String(data.label || originalData.name || "");
           if (!capsuleText) return;
           const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
-          drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, data.size || 14);
+          drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, (data as any).customLabelSize || 14);
         } else {
           // Fallback label drawer for entities
           const label = data.label;

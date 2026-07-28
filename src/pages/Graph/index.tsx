@@ -62,7 +62,7 @@ import {
   type EntityNodeDetail,
   type SourceDocument,
 } from "@/data/entityGraphMock";
-import { getGraphEntities, searchGraph, expandGraphNode, createGraphNode, updateGraphNode, deleteGraphNode, renameGraphEntity, type SearchGraphResult, type GraphEntityResult, type GraphExpandResult, type SearchGraphNode, type SearchGraphLink } from "@/services/biz/graph";
+import { getGraphEntities, expandGraphNode, createGraphNode, updateGraphNode, deleteGraphNode, renameGraphEntity, type GraphEntityResult, type GraphExpandResult, type SearchGraphNode, type SearchGraphLink } from "@/services/biz/graph";
 import { getEntityTypePage, type EntityTypeItem } from "@/services/biz/entity-type";
 
 const typeMeta: Record<EntityGraphNodeType, { label: string; color: string; countColor: string }> = {
@@ -75,6 +75,16 @@ type WorkspaceMode = "auto-upload" | "manual-upload";
 
 function getGraphWay(workspaceMode: WorkspaceMode) {
   return workspaceMode === "auto-upload" ? "auto_read" : "front_upload";
+}
+
+function getWorkspaceModeFromParams(source: string | null, accessMode: string | null): WorkspaceMode {
+  if (accessMode === "manual-upload" || accessMode === "front_upload") {
+    return "manual-upload";
+  }
+  if (source === "页面上传") {
+    return "manual-upload";
+  }
+  return "auto-upload";
 }
 
 function getExpandNodeKind(node: EntityGraphNode) {
@@ -135,10 +145,6 @@ function getNodeTypeLabel(type: EntityGraphNodeType) {
 function buildRelationConfidence(link: EntityGraphLink) {
   const score = 0.82 + (hashText(getRelationKey(link)) % 16) / 100;
   return score.toFixed(2);
-}
-
-function collectExpandedNodeIds(graph: EntityGraphData) {
-  return new Set(graph.links.map((link) => link.source));
 }
 
 function parseTagInput(value?: string) {
@@ -251,49 +257,6 @@ function buildCommunities(graph: EntityGraphData): GraphCommunity[] {
     .slice(0, 8);
 }
 
-function buildGraphFromSearchResult(result: SearchGraphResult, fallbackCenterName: string): EntityGraphData {
-  const rawNodes = Array.isArray(result?.nodes) ? result.nodes : [];
-  const rawLinks = Array.isArray(result?.links) ? result.links : [];
-
-  return {
-    centerId: String(result?.centerId ?? fallbackCenterName),
-    nodes: rawNodes
-      .map((node) => {
-        const nodeId = String(node?.id ?? "").trim();
-        const nodeName = String(node?.name ?? "").trim();
-        if (!nodeId || !nodeName) {
-          return null;
-        }
-
-        return {
-          id: nodeId,
-          name: nodeName,
-          type: node?.type ?? (nodeId === result?.centerId ? "center" : "entity"),
-          desc: node?.desc,
-          expandable: Boolean(node?.expandable),
-          relationCount: Number(node?.relationCount ?? 0),
-          parentId: node?.parentId,
-          relationFromParent: node?.relationFromParent,
-          depth: Number(node?.depth ?? (node?.type === "center" ? 0 : 1)),
-          branchId: node?.branchId ?? nodeId,
-          sourceDocuments: mapSourceDocuments(node?.sourceDocuments),
-        };
-      })
-      .filter(Boolean) as EntityGraphData["nodes"],
-    links: rawLinks
-      .map((link) => {
-        const source = String(link?.source ?? "").trim();
-        const target = String(link?.target ?? "").trim();
-        const relation = String(link?.relation ?? "").trim();
-        if (!source || !target || !relation) {
-          return null;
-        }
-        return { source, target, relation };
-      })
-      .filter(Boolean) as EntityGraphData["links"],
-  };
-}
-
 export default function GraphPage() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -301,9 +264,14 @@ export default function GraphPage() {
   const graphCanvasRef = useRef<HTMLElement | null>(null);
 
   const incomingEntity = searchParams.get("entity");
+  const incomingEntityId = searchParams.get("entityId");
+  const incomingEntityType = searchParams.get("type") || searchParams.get("entityType");
+  const incomingSource = searchParams.get("source");
+  const incomingAccessMode = searchParams.get("accessMode");
   const initialEntity = incomingEntity || "";
+  const initialWorkspaceMode = getWorkspaceModeFromParams(incomingSource, incomingAccessMode);
 
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("auto-upload");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(initialWorkspaceMode);
   const [keyword, setKeyword] = useState(initialEntity);
   const [graphLoading, setGraphLoading] = useState(false);
   const [entityTypeLoading, setEntityTypeLoading] = useState(false);
@@ -315,8 +283,10 @@ export default function GraphPage() {
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(new Set());
   const [nodeExpandMap, setNodeExpandMap] = useState<Record<string, NodeExpandState>>({});
   const [entityTypes, setEntityTypes] = useState<EntityTypeItem[]>([]);
-  const [activeEntityTypeName, setActiveEntityTypeName] = useState<string | null>(null);
-  const [entityNameKeyword, setEntityNameKeyword] = useState("");
+  const [activeEntityTypeName, setActiveEntityTypeName] = useState<string | null>(
+    incomingEntityType || null,
+  );
+  const [entityNameKeyword, setEntityNameKeyword] = useState(initialEntity);
   const [activeCommunityId, setActiveCommunityId] = useState<string | null>(null);
   const [nodeScale, setNodeScale] = useState(1);
   const [linkWidth, setLinkWidth] = useState(1.4);
@@ -337,9 +307,14 @@ export default function GraphPage() {
 
   useEffect(() => {
     if (initialEntity) {
-      void handleSearch(initialEntity, workspaceMode);
+      void handleSearch(
+        initialEntity,
+        initialWorkspaceMode,
+        incomingEntityType || undefined,
+        incomingEntityId || undefined,
+      );
     }
-  }, [initialEntity]);
+  }, [initialEntity, initialWorkspaceMode, incomingEntityType, incomingEntityId]);
 
   useEffect(() => {
     void loadEntityTypes();
@@ -365,7 +340,6 @@ export default function GraphPage() {
   );
 
   const filteredGraphData = useMemo(() => {
-    const hasTypeFilter = Boolean(activeEntityTypeName);
     const hasNameFilter = Boolean(entityNameKeyword.trim());
     const focusIds = new Set(entityNameOptions.map((node) => node.id));
     const communityNodeIds = activeCommunity
@@ -376,21 +350,17 @@ export default function GraphPage() {
       if (communityNodeIds && !communityNodeIds.has(node.id)) {
         return false;
       }
-      if (node.id === graphData.centerId || node.type === "center" || expandedNodeIds.has(node.id)) {
-        return true;
-      }
-      const isConnectedToExpanded = graphData.links.some(
-        (l) =>
-          (l.source === node.id && (l.target === graphData.centerId || expandedNodeIds.has(l.target))) ||
-          (l.target === node.id && (l.source === graphData.centerId || expandedNodeIds.has(l.source))),
-      );
-      if (isConnectedToExpanded) {
-        return true;
-      }
       if (!hasNameFilter) {
         return true;
       }
-      return focusIds.has(node.id);
+      if (focusIds.has(node.id) || node.id === graphData.centerId || node.type === "center") {
+        return true;
+      }
+      return graphData.links.some(
+        (l) =>
+          (l.source === node.id && focusIds.has(l.target)) ||
+          (l.target === node.id && focusIds.has(l.source)),
+      );
     });
 
     const nodeIds = new Set(nodes.map((node) => node.id));
@@ -401,7 +371,7 @@ export default function GraphPage() {
         (link) => nodeIds.has(link.source) && nodeIds.has(link.target),
       ),
     };
-  }, [activeCommunity, activeEntityTypeName, entityNameKeyword, entityNameOptions, graphData]);
+  }, [activeCommunity, entityNameKeyword, entityNameOptions, graphData]);
 
   const selectedNode = useMemo(
     () => graphData.nodes.find((node) => node.id === selectedNodeId) ?? null,
@@ -494,7 +464,7 @@ export default function GraphPage() {
           setActiveEntityTypeName(defaultName);
           void handleLoadGraphEntities(defaultName);
         } else {
-          void handleLoadGraphEntities();
+          void handleLoadGraphEntities(activeEntityTypeName || undefined);
         }
       }
     } catch (error) {
@@ -507,7 +477,12 @@ export default function GraphPage() {
     }
   }
 
-  async function handleSearch(entityName = keyword, mode = workspaceMode) {
+  async function handleSearch(
+    entityName = keyword,
+    mode = workspaceMode,
+    overrideType?: string,
+    preferredEntityId?: string,
+  ) {
     const target = entityName.trim();
     if (!target) {
       message.warning("请输入实体名称后再检索");
@@ -516,22 +491,53 @@ export default function GraphPage() {
 
     try {
       setGraphLoading(true);
-      const response = await searchGraph({ entity: target, way: getGraphWay(mode) });
-      const result = extractResultData<SearchGraphResult>(response);
-      const nextGraph = buildGraphFromSearchResult(result, target);
+      const targetType = overrideType !== undefined ? overrideType : activeEntityTypeName || undefined;
+      const response = await getGraphEntities({
+        way: getGraphWay(mode),
+        nodeKind: "entity",
+        entityType: targetType || undefined,
+        name: target,
+        pageSize: 20,
+      });
+      const result = extractResultData<GraphEntityResult>(response);
+      const nodes: EntityGraphNode[] = (result?.list || []).map((item) => ({
+        id: String(item.nodeId || item.graphNodeId || item.name || "").trim(),
+        name: item.name,
+        type: item.nodeKind === "entity" ? "entity" : "value",
+        nodeKind: item.nodeKind,
+        entityType: item.type || undefined,
+        desc: item.value || "",
+        tag: item.type ? [item.type] : [],
+        expandable: item.nodeKind === "entity",
+        relationCount: 0,
+      }));
+      const preferredNode =
+        nodes.find((node) => String(node.id) === String(preferredEntityId || "")) ||
+        nodes.find((node) => node.name === target) ||
+        nodes[0];
+      const nextGraph: EntityGraphData = {
+        centerId: preferredNode?.id || nodes[0]?.id || "",
+        nodes,
+        links: [],
+      };
 
       setKeyword(target);
       setGraphData(nextGraph);
-      setSelectedNodeId(nextGraph.nodes[0]?.id || "");
-      setExpandedNodeIds(collectExpandedNodeIds(nextGraph));
+      setSelectedNodeId(preferredNode?.id || nextGraph.nodes[0]?.id || "");
+      setExpandedNodeIds(new Set());
       setNodeExpandMap({});
-      setActiveEntityTypeName(null);
-      setEntityNameKeyword("");
+      setPreviewCursor(result?.nextCursor);
+      setEntityListHasMore(result?.hasMore !== false);
+      setActiveEntityTypeName(targetType || null);
+      setEntityNameKeyword(target);
       setActiveCommunityId(null);
       setLinkWidth(1.4);
       window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+      if (preferredNode?.expandable) {
+        window.setTimeout(() => handleNodeExpand(preferredNode), 80);
+      }
 
-      if (nextGraph.nodes.length === 0) {
+      if (nodes.length === 0) {
         message.info("未检索到相关图谱实体");
       }
     } catch (error) {
@@ -540,8 +546,8 @@ export default function GraphPage() {
       setGraphData(createEmptyGraph(target));
       setSelectedNodeId("");
       setExpandedNodeIds(new Set());
-      setActiveEntityTypeName(null);
-      setEntityNameKeyword("");
+      setActiveEntityTypeName(overrideType !== undefined ? overrideType : activeEntityTypeName);
+      setEntityNameKeyword(target);
       setActiveCommunityId(null);
       message.error("图谱检索失败");
     } finally {
@@ -582,6 +588,8 @@ export default function GraphPage() {
         id: String(item.nodeId || item.graphNodeId || item.name || "").trim(),
         name: item.name,
         type: item.nodeKind === "entity" ? "entity" : "value",
+        nodeKind: item.nodeKind,
+        entityType: item.type || undefined,
         desc: item.value || "",
         tag: item.type ? [item.type] : [],
         expandable: item.nodeKind === "entity",
@@ -638,7 +646,12 @@ export default function GraphPage() {
     setWorkspaceMode(mode);
     void handleLoadGraphEntities(activeEntityTypeName || undefined, true, "replace", mode);
     if (keyword.trim()) {
-      void handleSearch(keyword, mode);
+      void handleSearch(
+        keyword,
+        mode,
+        activeEntityTypeName || undefined,
+        selectedNodeId || incomingEntityId || undefined,
+      );
     }
   }
 
@@ -695,11 +708,20 @@ export default function GraphPage() {
           if (!n) return null;
           const nid = String(n.id ?? (n as any).nodeId ?? (n as any).graphNodeId ?? n.name ?? "").trim();
           if (!nid) return null;
+          const nodeKind = String((n as any).nodeKind ?? "").trim();
+          const nodeType =
+            nodeKind === "property"
+              ? "value"
+              : n.type === "value" || n.type === "center" || n.type === "entity"
+                ? n.type
+                : "entity";
           return {
             ...n,
             id: nid,
             name: String(n.name ?? nid).trim(),
-            type: n.type ?? "entity",
+            type: nodeType,
+            nodeKind: nodeKind || (nodeType === "value" ? "property" : "entity"),
+            expandable: nodeType !== "value" && Boolean((n as any).expandable ?? true),
             sourceDocuments: mapSourceDocuments(n.sourceDocuments),
           };
         })
@@ -827,7 +849,7 @@ export default function GraphPage() {
 
   function handleNodeClick(node: EntityGraphNode) {
     setSelectedNodeId(node.id);
-    if (node.expandable && !expandedNodeIds.has(node.id)) {
+    if (node.type !== "value" && node.expandable && !expandedNodeIds.has(node.id)) {
       handleNodeExpand(node);
     }
   }
@@ -845,7 +867,7 @@ export default function GraphPage() {
 
   function handleEntityNameSelect(node: EntityGraphNode) {
     setSelectedNodeId(node.id);
-    if (node.expandable && !expandedNodeIds.has(node.id)) {
+    if (node.type !== "value" && node.expandable && !expandedNodeIds.has(node.id)) {
       handleNodeExpand(node);
     }
     window.setTimeout(() => graphRef.current?.resetZoom(), 40);
@@ -1349,32 +1371,6 @@ export default function GraphPage() {
             </Button>
           </div>
 
-          <Input
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            onPressEnter={() => void handleSearch()}
-            prefix={<SearchOutlined style={{ color: "#94a3b8", marginRight: 4 }} />}
-            placeholder="搜索实体名称"
-            allowClear
-            style={{ height: 44, borderRadius: 22 }}
-          />
-          <Button
-            type="primary"
-            block
-            icon={<span style={{ fontSize: 15 }}>✨</span>}
-            style={{
-              marginTop: 16,
-              height: 44,
-              borderRadius: 22,
-              background: "#3b82f6",
-              boxShadow: "0 4px 12px rgba(59, 130, 246, 0.2)",
-              fontWeight: 600,
-            }}
-            onClick={() => void handleSearch()}
-          >
-            开始检索
-          </Button>
-
           <SectionBlock title="文档类型">
             <div style={{ display: "grid", gap: 10 }}>
               <ModeSelectCard
@@ -1416,6 +1412,7 @@ export default function GraphPage() {
               >
                 {entityTypes.map((item) => {
                   const active = activeEntityTypeName === item.name;
+                  const palette = getEntityTypePalette(item.name);
                   return (
                     <Tooltip key={String(item.id)} title={item.name} placement="top">
                       <button
@@ -1424,17 +1421,21 @@ export default function GraphPage() {
                         style={{
                           display: "block",
                           width: "100%",
-                          padding: "8px 6px",
+                          height: 40,
+                          padding: "0 8px",
                           borderRadius: 12,
-                          border: active ? "1px solid #93c5fd" : "1px solid #e2e8f0",
-                          background: active ? "#eff6ff" : "#fff",
-                          color: active ? "#3b82f6" : "#475569",
+                          border: active ? `1px solid ${palette.stroke}` : `1px solid ${palette.stroke}88`,
+                          background: active ? `${palette.strong}18` : `${palette.strong}08`,
+                          color: active ? palette.strong : palette.strong,
                           cursor: "pointer",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
                           whiteSpace: "nowrap",
                           fontSize: 13,
+                          fontWeight: active ? 700 : 600,
                           textAlign: "center",
+                          lineHeight: "38px",
+                          boxShadow: active ? `inset 0 0 0 1px ${palette.strong}22` : "none",
                         }}
                       >
                         {item.name}
@@ -1511,7 +1512,8 @@ export default function GraphPage() {
                         style={{
                           display: "block",
                           width: "100%",
-                          padding: "8px 6px",
+                          height: 40,
+                          padding: "0 8px",
                           borderRadius: 12,
                           border: active
                             ? `1px solid ${typeMeta[node.type].color}`
@@ -1521,9 +1523,10 @@ export default function GraphPage() {
                           cursor: "pointer",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
                           fontSize: 13,
                           textAlign: "center",
+                          whiteSpace: "nowrap",
+                          lineHeight: "38px",
                         }}
                       >
                         {node.name}

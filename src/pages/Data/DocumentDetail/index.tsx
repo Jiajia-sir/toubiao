@@ -46,7 +46,7 @@ import {
   type KnowledgeGraphData,
   type ParseStep,
 } from '@/data/documentGraph';
-import type { EntityGraphData } from '@/data/entityGraphMock';
+import type { EntityGraphData, EntityGraphNode } from '@/data/entityGraphMock';
 import DocumentFilePreview, { extractPreviewFileName } from '@/components/DocumentFilePreview';
 import EntityRelationGraph from '@/components/Graph/EntityRelationGraph';
 import { getDocumentHtmlChunkPage, viewDocument } from '@/services/biz/document-query';
@@ -612,6 +612,7 @@ const buildEntityGraphData = (
           id: nodeId,
           name: nodeName,
           type: nodeId === centerNodeId ? ('center' as const) : ('entity' as const),
+          entityType: String(node?.type ?? '').trim() || undefined,
           desc: node?.description,
           depth: nodeId === centerNodeId ? 0 : 1,
         };
@@ -990,11 +991,23 @@ export default function DataDetailPage() {
     }
   };
 
-  const handleGraphNodeClick = (nodeName: string) => {
+  const handleGraphNodeClick = (node: EntityGraphNode) => {
+    const sourceText = toPlainText(detailData?.channelName);
+    const accessMode =
+      sourceText === '页面上传' ? 'manual-upload' : 'auto-upload';
     const query = new URLSearchParams({
-      entity: nodeName,
+      entity: node.name,
       docId: document.id,
+      source: sourceText || '',
+      accessMode,
     });
+    if (node.id) {
+      query.set('entityId', String(node.id));
+    }
+    if (node.entityType) {
+      query.set('entityType', String(node.entityType));
+      query.set('type', String(node.entityType));
+    }
     setGraphOpen(false);
     history.push(`/graph?${query.toString()}`);
   };
@@ -1831,7 +1844,7 @@ export default function DataDetailPage() {
               data={entityGraphData}
               height={750}
               labelMaxLength={labelMaxLength}
-              onNodeClick={(node) => handleGraphNodeClick(node.name)}
+              onNodeClick={handleGraphNodeClick}
             />
           ) : (
             <div
