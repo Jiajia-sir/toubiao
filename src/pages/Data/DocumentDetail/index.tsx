@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -11,7 +11,6 @@ import {
   CloudDownloadOutlined,
   ClusterOutlined,
   FileOutlined,
-  FileTextOutlined,
   KeyOutlined,
   ReloadOutlined,
   SaveOutlined,
@@ -166,7 +165,7 @@ const toTextList = (value: any): string[] => {
   }
   if (typeof value === 'string') {
     return value
-      .split(/[\n,，;；]/)
+      .split(/[\n,，、]/)
       .map((item) => item.trim())
       .filter(Boolean);
   }
@@ -183,10 +182,25 @@ const stripHtml = (value: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+const sanitizePreviewInlineStyle = (styleText: string) =>
+  styleText
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter(
+      (rule) =>
+        !/^(overflow|overflow-x|overflow-y|height|min-height|max-height)\s*:/i.test(rule),
+    )
+    .join('; ');
+
 const sanitizePreviewHtml = (value: string) =>
   String(value ?? '')
     .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
     .replace(/\son\w+=(["']).*?\1/gi, '')
+    .replace(/\sstyle=(["'])(.*?)\1/gi, (_match, quote: string, styleText: string) => {
+      const sanitizedStyle = sanitizePreviewInlineStyle(styleText);
+      return sanitizedStyle ? ` style=${quote}${sanitizedStyle}${quote}` : '';
+    })
     .replace(/javascript:/gi, '');
 
 const sanitizeEntityHtml = (value: string) => {
@@ -268,24 +282,24 @@ const renderHighlightedText = (text: string, keyword: string) => {
 
 const mapEntityType = (value: any): EntityType => {
   const text = String(value ?? '').toLowerCase();
-  if (text.includes('person') || text.includes('人物') || text.includes('人名')) {
+  if (text.includes('person') || text.includes('浜虹墿') || text.includes('浜哄悕')) {
     return 'person';
   }
   if (
     text.includes('organization') ||
     text.includes('company') ||
-    text.includes('组织') ||
-    text.includes('公司')
+    text.includes('缁勭粐') ||
+    text.includes('鍏徃')
   ) {
     return 'organization';
   }
-  if (text.includes('time') || text.includes('date') || text.includes('时间')) {
+  if (text.includes('time') || text.includes('date') || text.includes('鏃堕棿')) {
     return 'time';
   }
-  if (text.includes('product') || text.includes('产品')) {
+  if (text.includes('product') || text.includes('浜у搧')) {
     return 'product';
   }
-  if (text.includes('project') || text.includes('项目')) {
+  if (text.includes('project') || text.includes('椤圭洰')) {
     return 'project';
   }
   return 'term';
@@ -315,7 +329,7 @@ const formatKnowledgeBase = (detail: any, fallback: string) => {
     return names.join('、');
   }
   if (Array.isArray(detail?.knowledgeBaseId) && detail.knowledgeBaseId.length > 0) {
-    return `已关联 ${detail.knowledgeBaseId.length} 个知识库`;
+    return `宸插叧鑱?${detail.knowledgeBaseId.length} 涓煡璇嗗簱`;
   }
   return fallback;
 };
@@ -371,7 +385,7 @@ const buildParseSteps = (detail: any): ParseStep[] => {
     { name: '文本提取', status: 'completed' as const },
     { name: '关键词提取', status: 'pending' as const },
     { name: '标签提取', status: 'pending' as const },
-    { name: '实体抽取', status: 'pending' as const },
+    { name: '实体提取', status: 'pending' as const },
   ];
 
   const intelligentStatus = Number(detail?.intelligentStatus);
@@ -423,7 +437,7 @@ const buildParseSteps = (detail: any): ParseStep[] => {
       duration: '--',
     },
     {
-      name: '实体抽取',
+      name: '实体提取',
       status: entityDone ? 'completed' : 'pending',
       completed: entityDone,
       duration: '--',
@@ -926,7 +940,7 @@ export default function DataDetailPage() {
             items={[
               { title: '首页' },
               { title: '知识库' },
-              { title: <span style={{ color: '#1f2937', fontWeight: 600 }}>文件解析详情</span> },
+              { title: <span style={{ color: '#1f2937', fontWeight: 600 }}>文档解析详情</span> },
             ]}
           />
         </div>
@@ -1214,8 +1228,7 @@ export default function DataDetailPage() {
               title="内容预览"
               extra={
                 <Space size={8}>
-                  <Button icon={<FileTextOutlined />} style={toolbarIconButtonStyle} />
-                  <Button icon={<AppstoreOutlined />} style={toolbarIconButtonStyle} />
+
                   <Input
                     allowClear
                     value={previewKeyword}
@@ -1273,6 +1286,12 @@ export default function DataDetailPage() {
                     font-size: 15px;
                     line-height: 1.9;
                     overflow-x: auto;
+                  }
+
+                  .document-preview-html,
+                  .document-preview-html * {
+                    box-sizing: border-box;
+                    max-width: 100%;
                   }
 
                   .document-preview-html table {
@@ -1415,7 +1434,7 @@ export default function DataDetailPage() {
                         detailSummary.knowledgeBase
                       ),
                     ],
-                    ['编目', detailSummary.catalog],
+                    ['类目', detailSummary.catalog],
                   ]}
                 />
               </Card>
@@ -1451,16 +1470,15 @@ export default function DataDetailPage() {
 
               <Card
                 bordered={false}
-                title="实体抽取"
+                title="实体提取"
                 extra={
                   <Space size={8}>
                     <span style={{ color: '#94a3b8' }}>共 {entityCount} 个</span>
-                    <Tooltip title={entityCount > 0 ? '查看本文档知识图谱' : '暂无实体可查看'}>
+                    <Tooltip title="查看本文档知识图谱">
                       <Button
                         type="text"
                         shape="circle"
                         icon={<ClusterOutlined />}
-                        disabled={entityCount === 0}
                         onClick={handleOpenDocumentGraph}
                       />
                     </Tooltip>
@@ -1644,14 +1662,6 @@ const actionButtonStyle = {
   borderRadius: 10,
   borderColor: '#d9e3ef',
   paddingInline: 12,
-};
-
-const toolbarIconButtonStyle = {
-  width: 32,
-  height: 32,
-  borderRadius: 8,
-  borderColor: '#dbe3ef',
-  color: '#64748b',
 };
 
 const keywordPalettes = [
@@ -1846,3 +1856,4 @@ function PreviewBlock({
     </div>
   );
 }
+
