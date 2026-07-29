@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   forwardRef,
@@ -99,6 +99,14 @@ export function getEntityTypePalette(typeName: string) {
 }
 
 function getBranchColor(node: EntityGraphNode, nodeMap?: Map<string, EntityGraphNode>) {
+  if (node.color) {
+    return {
+      fill: node.color,
+      medium: node.color,
+      stroke: node.color,
+      text: "#ffffff",
+    };
+  }
   if (node.type === "center") {
     return {
       fill: "#5D5CDE",
@@ -129,6 +137,13 @@ function getBranchColor(node: EntityGraphNode, nodeMap?: Map<string, EntityGraph
 
 function truncateLabel(name: string, maxLength: number) {
   return name.length > maxLength ? `${name.slice(0, maxLength)}...` : name;
+}
+
+function resolveNodeLabel(node: EntityGraphNode, maxLength: number) {
+  if (node.type === "value") {
+    return truncateLabel(getValueNodeFullText(node), maxLength);
+  }
+  return truncateLabel(node.name, maxLength);
 }
 
 function drawValueNodeTag(
@@ -202,6 +217,23 @@ function drawStableEdgeLabel(
   targetData: Record<string, any>,
   settings: Record<string, any>,
 ) {
+  const sourceX = Number(sourceData?.x ?? 0);
+  const sourceY = Number(sourceData?.y ?? 0);
+  const targetX = Number(targetData?.x ?? 0);
+  const targetY = Number(targetData?.y ?? 0);
+
+  if (edgeData?.isBridgeLink || edgeData?.relation === "跨社区边" || edgeData?.relation === "跨社区联系") {
+    context.save();
+    context.beginPath();
+    context.setLineDash([5, 5]);
+    context.strokeStyle = "#64748b";
+    context.lineWidth = 1.8;
+    context.moveTo(sourceX, sourceY);
+    context.lineTo(targetX, targetY);
+    context.stroke();
+    context.restore();
+  }
+
   const label = String(edgeData?.label || "").trim();
   if (!label) return;
 
@@ -213,10 +245,6 @@ function drawStableEdgeLabel(
       ? settings.edgeLabelColor.color
       : "#475569";
 
-  const sourceX = Number(sourceData?.x ?? 0);
-  const sourceY = Number(sourceData?.y ?? 0);
-  const targetX = Number(targetData?.x ?? 0);
-  const targetY = Number(targetData?.y ?? 0);
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
   const length = Math.hypot(dx, dy);
@@ -250,12 +278,91 @@ function drawStableEdgeLabel(
   context.restore();
 }
 
+function buildCommunityClustersLayout(nodes: EntityGraphNode[]) {
+  const positionMap = new Map<
+    string,
+    { x: number; y: number; angle: number; sectorStart: number; sectorEnd: number; radius: number }
+  >();
+
+  const clusterCenters: Record<string, { x: number; y: number }> = {
+    comm_fin: { x: -330, y: -190 },
+    comm_semi: { x: 330, y: -190 },
+    comm_energy: { x: -330, y: 190 },
+    comm_ai: { x: 330, y: 190 },
+  };
+
+  const groups = new Map<string, EntityGraphNode[]>();
+  nodes.forEach((node) => {
+    const cid = String(node.branchId || "comm_fin");
+    if (!groups.has(cid)) groups.set(cid, []);
+    groups.get(cid)!.push(node);
+  });
+
+  const fallbackCenters = [
+    { x: -330, y: -190 },
+    { x: 330, y: -190 },
+    { x: -330, y: 190 },
+    { x: 330, y: 190 },
+  ];
+
+  let groupIdx = 0;
+  groups.forEach((groupNodes, cid) => {
+    const center = clusterCenters[cid] || fallbackCenters[groupIdx % fallbackCenters.length];
+    groupIdx += 1;
+
+    const seedIds = ["node_seq", "node_tsmc", "node_catl", "node_baai"];
+    const seedNode =
+      groupNodes.find((n) => seedIds.includes(n.id)) ||
+      groupNodes.find((n) => n.type === "center") ||
+      groupNodes[0];
+
+    const otherNodes = groupNodes.filter((n) => n.id !== seedNode?.id);
+
+    if (seedNode) {
+      positionMap.set(seedNode.id, {
+        x: center.x,
+        y: center.y,
+        angle: 0,
+        sectorStart: -Math.PI,
+        sectorEnd: Math.PI,
+        radius: 0,
+      });
+    }
+
+    const r = Math.max(115, 88 + otherNodes.length * 3.5);
+    const count = Math.max(1, otherNodes.length);
+    otherNodes.forEach((node, idx) => {
+      const angle = (2 * Math.PI * idx) / count - Math.PI / 2 + (groupIdx * Math.PI) / 10;
+      positionMap.set(node.id, {
+        x: center.x + Math.cos(angle) * r,
+        y: center.y + Math.sin(angle) * r,
+        angle,
+        sectorStart: angle - 0.1,
+        sectorEnd: angle + 0.1,
+        radius: r,
+      });
+    });
+  });
+
+  nodes.forEach((node) => {
+    if (!positionMap.has(node.id)) {
+      positionMap.set(node.id, { x: 0, y: 0, angle: 0, sectorStart: 0, sectorEnd: 0, radius: 0 });
+    }
+  });
+
+  return positionMap;
+}
+
 function buildGroupedLayout(
   nodes: EntityGraphNode[],
   links: EntityGraphLink[],
   centerId: string,
   focusNodeId?: string | null,
 ) {
+  const isCommunityGraph = nodes.some((n) => n.branchId && String(n.branchId).startsWith("comm_"));
+  if (isCommunityGraph) {
+    return buildCommunityClustersLayout(nodes);
+  }
   const positionMap = new Map<
     string,
     { x: number; y: number; angle: number; sectorStart: number; sectorEnd: number; radius: number }
@@ -460,6 +567,7 @@ const EntityRelationGraph = forwardRef<
   const sigmaRef = useRef<Sigma | null>(null);
   const graphRef = useRef<Graph | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const isCommunityGraphData = data.nodes.some((node) => String(node.id).startsWith("comm_"));
 
   useImperativeHandle(actionRef || ref, () => ({
     zoomIn: () => {
@@ -549,23 +657,30 @@ const EntityRelationGraph = forwardRef<
           }
         : null;
       const targetPosition = targetPositions.get(node.id) || { x: 0, y: 0 };
-      const pos = existingPosition || {
-        x: targetPosition.x + layoutOffset.x,
-        y: targetPosition.y + layoutOffset.y,
-      };
+      const pos = isCommunityGraphData
+        ? {
+            x: targetPosition.x,
+            y: targetPosition.y,
+          }
+        : existingPosition || {
+            x: targetPosition.x + layoutOffset.x,
+            y: targetPosition.y + layoutOffset.y,
+          };
       const radius = getRadius(node, nodeScale);
       const colors = getBranchColor(node, nodeMap);
       const isSelected = node.id === selectedNodeId;
       const isValueNode = node.type === "value";
       const maxLength = labelMaxLength || (node.type === "center" ? 6 : node.type === "entity" ? 5 : 4);
-      const label = truncateLabel(node.name, maxLength);
+      const label = resolveNodeLabel(node, maxLength);
       const visibleNodeSize = isValueNode ? Math.max(12, radius * 0.9) : radius;
 
       const nodeData = {
         x: pos.x,
         y: pos.y,
-        size: isValueNode ? 0.01 : visibleNodeSize,
+        size: visibleNodeSize,
         label: (showNodes && showLabels !== false) ? label : "",
+        forceLabel: showNodes && showLabels !== false,
+        zIndex: isSelected ? 3 : 1,
         color: showNodes ? (isValueNode ? "rgba(0, 0, 0, 0)" : colors.fill) : "rgba(0, 0, 0, 0)",
         borderColor: showNodes
           ? (
@@ -580,6 +695,7 @@ const EntityRelationGraph = forwardRef<
         hidden: !showNodes,
         customColor: colors.fill,
         customLabelSize: visibleNodeSize,
+        isBridgeNode: (node as any).isBridgeNode,
         originalData: node
       };
 
@@ -604,8 +720,11 @@ const EntityRelationGraph = forwardRef<
       if (!graph.hasNode(link.source) || !graph.hasNode(link.target)) return;
 
       const targetNode = data.nodes.find(n => n.id === link.target);
-      // 加深连线颜色，由 stroke 改为 medium
-      const color = "#98a2b3";
+      const isBridgeEdge =
+        (link as any).isBridgeLink ||
+        link.relation === "跨社区边" ||
+        link.relation === "跨社区联系";
+      const color = isBridgeEdge ? "rgba(0, 0, 0, 0)" : "#94a3b8";
 
       // 判断是否存在反向关系，或者同方向存在多条关系
       const pairEdges = data.links.filter(l => 
@@ -619,7 +738,7 @@ const EntityRelationGraph = forwardRef<
       if (pairEdges.length > 1) {
         type = "curvedArrow";
         
-        // 区分同向的连线，使同向多条线左右交替散开，双向线各自向右弯曲形成对称
+        // 区分同向连线，让同向多条线左右交替散开，双向线各自向外弯曲形成对称
         const sameDirEdges = pairEdges.filter(l => l.source === link.source);
         const indexInSameDir = sameDirEdges.indexOf(link);
         
@@ -634,13 +753,14 @@ const EntityRelationGraph = forwardRef<
       const edgeData = {
         label: link.relation,
         color: color,
-        size: linkWidth,
+        size: isBridgeEdge ? Math.max(1, linkWidth * 0.75) : linkWidth,
         hidden: !showLinks,
         // Sigma only renders a subset of edge labels by default.
         // Force relation labels to stay visible without hover.
         forceLabel: showLinks,
         type: type,
         curvature: curvature,
+        isBridgeLink: isBridgeEdge,
       };
 
       if (!graph.hasEdge(edgeId)) {
@@ -661,6 +781,13 @@ const EntityRelationGraph = forwardRef<
   useEffect(() => {
     onNodeDoubleClickRef.current = onNodeDoubleClick;
   }, [onNodeDoubleClick]);
+
+  const selectedNodeIdRef = useRef(selectedNodeId);
+  const hoveredNodeRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId;
+    sigmaRef.current?.refresh();
+  }, [selectedNodeId]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -689,8 +816,21 @@ const EntityRelationGraph = forwardRef<
         const nodeId = (data as any).key;
         const originalData = (data as any).originalData || (nodeId && graphRef.current ? graphRef.current.getNodeAttribute(nodeId, "originalData") : null);
         
+        if (originalData && (originalData.isBridgeNode || originalData.isBridge)) {
+          context.save();
+          context.beginPath();
+          context.setLineDash([3.5, 3.5]);
+          context.strokeStyle = "#0284c7";
+          context.lineWidth = 1.8;
+          context.arc(data.x!, data.y!, data.size! + 5, 0, Math.PI * 2);
+          context.stroke();
+          context.restore();
+        }
+
         if (originalData && originalData.type === "value") {
-          const capsuleText = getValueNodeFullText(originalData);
+          const maxLength =
+            labelMaxLength || (originalData.type === "center" ? 6 : originalData.type === "entity" ? 5 : 4);
+          const capsuleText = resolveNodeLabel(originalData, maxLength);
           if (!capsuleText) return;
           const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
           drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, (data as any).customLabelSize || 14);
@@ -727,12 +867,26 @@ const EntityRelationGraph = forwardRef<
         }
       },
       defaultDrawNodeLabel: (context, data, settings) => {
-        if (!showNodes) return;
+        if (!showNodes || data.hidden || (data as any).zIndex === 0) return;
         const nodeId = (data as any).key;
         const originalData = (data as any).originalData || (nodeId && graphRef.current ? graphRef.current.getNodeAttribute(nodeId, "originalData") : null);
         
+        const isBridge = (originalData && (originalData.isBridgeNode || originalData.isBridge)) || (data as any).isBridgeNode;
+        if (isBridge) {
+          context.save();
+          context.beginPath();
+          context.setLineDash([4, 4]);
+          context.strokeStyle = "#64748b";
+          context.lineWidth = 1.8;
+          context.arc(data.x!, data.y!, data.size! + 6, 0, Math.PI * 2);
+          context.stroke();
+          context.restore();
+        }
+
         if (originalData && originalData.type === "value") {
-          const capsuleText = String(data.label || originalData.name || "");
+          const maxLength =
+            labelMaxLength || (originalData.type === "center" ? 6 : originalData.type === "entity" ? 5 : 4);
+          const capsuleText = String(data.label || resolveNodeLabel(originalData, maxLength) || "");
           if (!capsuleText) return;
           const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
           drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, (data as any).customLabelSize || 14);
@@ -749,7 +903,7 @@ const EntityRelationGraph = forwardRef<
       defaultDrawEdgeLabel: (context, edgeData, sourceData, targetData, settings) => {
         drawStableEdgeLabel(context, edgeData as Record<string, any>, sourceData as Record<string, any>, targetData as Record<string, any>, settings as Record<string, any>);
       },
-      edgeLabelColor: { color: "#475569" }, // 加深连线上的文字颜色
+      edgeLabelColor: { color: "#475569" }, // 加深连线文字颜色
       edgeLabelSize: 11,
       edgeLabelWeight: "600",
       nodeProgramClasses: {
@@ -772,11 +926,117 @@ const EntityRelationGraph = forwardRef<
       defaultNodeType: "border",
       defaultEdgeType: "arrow",
       allowInvalidContainer: true,
+      nodeReducer: (node, data) => {
+        const res: Record<string, any> = { ...data };
+        const hovered = hoveredNodeRef.current;
+        const sel = selectedNodeIdRef.current;
+        const isSelectedCommunityNode = Boolean(isCommunityGraphData && sel && node === sel && sel.startsWith("comm_"));
+
+        const isNodeHoverHighlighted = (n: string, h: string): boolean =>
+          n === h || graph.areNeighbors(n, h);
+
+        if (hovered && isCommunityGraphData) {
+          if (!isNodeHoverHighlighted(node, hovered)) {
+            res.color = "rgba(148, 163, 184, 0.16)";
+            res.label = "";
+            res.zIndex = 0;
+          } else {
+            res.zIndex = 2;
+          }
+        } else if (isCommunityGraphData && sel && sel.startsWith("comm_")) {
+          let targetCommId = sel;
+          const commNum = targetCommId.replace("comm_", "");
+          const originalData = data.originalData;
+          const isBelong =
+            originalData &&
+            (originalData.branchId === targetCommId ||
+              originalData.branchId === `comm_${commNum}` ||
+              originalData.branchId === commNum);
+
+          if (isSelectedCommunityNode) {
+            res.color = data.customColor || data.color;
+            res.borderColor = "#d8b15d";
+            res.borderSize = Math.max(Number(data.borderSize || 0), 4);
+            res.zIndex = 3;
+          } else if (!isBelong) {
+            res.color = "rgba(148, 163, 184, 0.16)";
+            res.label = "";
+            res.zIndex = 0;
+          } else {
+            res.zIndex = 2;
+          }
+        }
+        return res;
+      },
+      edgeReducer: (edge, data) => {
+        const res: Record<string, any> = { ...data };
+        const hovered = hoveredNodeRef.current;
+        const sel = selectedNodeIdRef.current;
+
+        const isNodeHoverHighlighted = (n: string, h: string): boolean =>
+          n === h || graph.areNeighbors(n, h);
+
+        if (hovered && isCommunityGraphData) {
+          const extremities = graph.extremities(edge);
+          const u = extremities[0];
+          const v = extremities[1];
+          const isHighlighted = isNodeHoverHighlighted(u, hovered) && isNodeHoverHighlighted(v, hovered);
+          const isBridgeEdge = Boolean((data as any).isBridgeLink);
+
+          if (isHighlighted) {
+            res.color = isBridgeEdge ? "#94a3b8" : "#64748b";
+            res.size = (res.size || 1.8) * 1.5;
+            res.zIndex = 2;
+          } else {
+            res.color = "rgba(148, 163, 184, 0.08)";
+            res.label = "";
+            res.zIndex = 0;
+          }
+        } else if (isCommunityGraphData && sel && sel.startsWith("comm_")) {
+          let targetCommId = sel;
+          const commNum = targetCommId.replace("comm_", "");
+          const extremities = graph.extremities(edge);
+          let bothInComm = true;
+          for (const u of extremities) {
+            const uData = graph.getNodeAttribute(u, "originalData");
+            if (
+              !uData ||
+              (uData.branchId !== targetCommId &&
+                uData.branchId !== `comm_${commNum}` &&
+                uData.branchId !== commNum)
+            ) {
+              bothInComm = false;
+              break;
+            }
+          }
+          if (!bothInComm) {
+            res.color = "rgba(148, 163, 184, 0.08)";
+            res.label = "";
+            res.zIndex = 0;
+          } else {
+            res.zIndex = 2;
+            res.size = (res.size || 1.8) * 1.3;
+          }
+        }
+        return res;
+      },
     });
     sigmaRef.current = sigma;
 
     let draggedNode: string | null = null;
     let movedDuringDrag = false;
+
+    sigma.on("enterNode", (e) => {
+      if (movedDuringDrag) return;
+      hoveredNodeRef.current = e.node;
+      sigma.refresh();
+    });
+
+    sigma.on("leaveNode", () => {
+      if (movedDuringDrag) return;
+      hoveredNodeRef.current = null;
+      sigma.refresh();
+    });
 
     sigma.on("clickNode", (e) => {
       if (movedDuringDrag) return;

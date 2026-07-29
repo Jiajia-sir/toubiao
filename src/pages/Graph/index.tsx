@@ -17,6 +17,7 @@ import {
   Popconfirm,
   Radio,
   Row,
+  Segmented,
   Select,
   Slider,
   Space,
@@ -64,6 +65,7 @@ import {
 } from "@/data/entityGraphMock";
 import { getGraphEntities, expandGraphNode, createGraphNode, updateGraphNode, deleteGraphNode, renameGraphEntity, type GraphEntityResult, type GraphExpandResult, type SearchGraphNode, type SearchGraphLink } from "@/services/biz/graph";
 import { getEntityTypePage, type EntityTypeItem } from "@/services/biz/entity-type";
+import CommunityAnalysisView, { CommunityMiddleCanvas, CommunityRightSidebar } from "./CommunityAnalysisView";
 
 const typeMeta: Record<EntityGraphNodeType, { label: string; color: string; countColor: string }> = {
   center: { label: "中心实体", color: "#2563eb", countColor: "#dbeafe" },
@@ -91,7 +93,7 @@ function getExpandNodeKind(node: EntityGraphNode) {
   return node.type === "value" ? "property" : "entity";
 }
 
-interface GraphCommunity {
+export interface GraphCommunity {
   id: string;
   name: string;
   seedNodeId: string;
@@ -272,6 +274,7 @@ export default function GraphPage() {
   const initialWorkspaceMode = getWorkspaceModeFromParams(incomingSource, incomingAccessMode);
 
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(initialWorkspaceMode);
+  const [graphViewMode, setGraphViewMode] = useState<"raw" | "community">("raw");
   const [keyword, setKeyword] = useState(initialEntity);
   const [graphLoading, setGraphLoading] = useState(false);
   const [entityTypeLoading, setEntityTypeLoading] = useState(false);
@@ -342,14 +345,8 @@ export default function GraphPage() {
   const filteredGraphData = useMemo(() => {
     const hasNameFilter = Boolean(entityNameKeyword.trim());
     const focusIds = new Set(entityNameOptions.map((node) => node.id));
-    const communityNodeIds = activeCommunity
-      ? new Set([...activeCommunity.nodeIds, graphData.centerId])
-      : null;
 
     const nodes = graphData.nodes.filter((node) => {
-      if (communityNodeIds && !communityNodeIds.has(node.id)) {
-        return false;
-      }
       if (!hasNameFilter) {
         return true;
       }
@@ -371,11 +368,121 @@ export default function GraphPage() {
         (link) => nodeIds.has(link.source) && nodeIds.has(link.target),
       ),
     };
-  }, [activeCommunity, entityNameKeyword, entityNameOptions, graphData]);
+  }, [entityNameKeyword, entityNameOptions, graphData]);
+
+  const communityGraphData = useMemo(() => {
+    if (communities.length === 0) {
+      return filteredGraphData;
+    }
+    const centerNode = graphData.nodes.find((n) => n.id === graphData.centerId || n.type === "center");
+    const nextNodes: EntityGraphNode[] = [];
+    if (centerNode) {
+      nextNodes.push({
+        ...centerNode,
+        type: "center",
+      });
+    }
+    const communityMap = new Map<string, GraphCommunity>();
+    const nodeToCommunityMap = new Map<string, string>();
+
+    communities.forEach((community) => {
+      communityMap.set(community.id, community);
+      community.nodeIds.forEach((nid) => {
+        if (nid !== graphData.centerId) {
+          nodeToCommunityMap.set(nid, community.id);
+        }
+      });
+
+      nextNodes.push({
+        id: `comm_${community.id}`,
+        name: `${community.name} 社区`,
+        type: "entity",
+        entityType: "社区",
+        desc: `该社区共包含 ${community.nodeIds.length} 个实体，${community.relationCount} 条内部关联，${community.bridgeCount} 个桥接点，密度 ${community.density}。`,
+        tag: ["社区聚类", `${community.nodeIds.length}节点`],
+        expandable: false,
+        relationCount: community.relationCount,
+        branchId: community.id,
+      });
+    });
+
+    const addedCoreNodeIds = new Set<string>();
+    const nextLinks: EntityGraphLink[] = [];
+
+    communities.forEach((community) => {
+      if (graphData.centerId) {
+        nextLinks.push({
+          source: graphData.centerId,
+          target: `comm_${community.id}`,
+          relation: `社区归属 (${community.nodeIds.length})`,
+        });
+      }
+
+      const candidateIds = community.nodeIds.filter(
+        (nid) => nid !== graphData.centerId && nid !== community.id,
+      );
+      const coreIds = candidateIds.slice(0, 2);
+      coreIds.forEach((coreId) => {
+        const origNode = graphData.nodes.find((n) => n.id === coreId);
+        if (origNode && !addedCoreNodeIds.has(origNode.id)) {
+          addedCoreNodeIds.add(origNode.id);
+          nextNodes.push({
+            ...origNode,
+            type: "entity",
+            entityType: origNode.entityType || "核心实体",
+            desc: origNode.desc || `社区 ${community.name} 核心成员`,
+            tag: ["核心成员", ...(origNode.tag || [])],
+            branchId: community.id,
+          });
+          nextLinks.push({
+            source: `comm_${community.id}`,
+            target: origNode.id,
+            relation: "核心成员",
+          });
+        }
+      });
+    });
+
+    const bridgeCounts = new Map<string, number>();
+    graphData.links.forEach((link) => {
+      const sourceComm = nodeToCommunityMap.get(link.source);
+      const targetComm = nodeToCommunityMap.get(link.target);
+      if (sourceComm && targetComm && sourceComm !== targetComm) {
+        const pairKey =
+          sourceComm < targetComm
+            ? `${sourceComm}__${targetComm}`
+            : `${targetComm}__${sourceComm}`;
+        bridgeCounts.set(pairKey, (bridgeCounts.get(pairKey) || 0) + 1);
+      }
+    });
+
+    bridgeCounts.forEach((count, pairKey) => {
+      const [c1, c2] = pairKey.split("__");
+      nextLinks.push({
+        source: `comm_${c1}`,
+        target: `comm_${c2}`,
+        relation: `社区间桥接 (${count})`,
+      });
+    });
+
+    return {
+      centerId: graphData.centerId,
+      nodes: nextNodes,
+      links: nextLinks,
+    };
+  }, [communities, filteredGraphData, graphData]);
+
+  const currentDisplayGraphData = useMemo(
+    () => (graphViewMode === "community" ? communityGraphData : filteredGraphData),
+    [communityGraphData, filteredGraphData, graphViewMode],
+  );
 
   const selectedNode = useMemo(
-    () => graphData.nodes.find((node) => node.id === selectedNodeId) ?? null,
-    [graphData.nodes, selectedNodeId],
+    () => {
+      const allNodes = graphViewMode === "community" ? communityGraphData.nodes : graphData.nodes;
+      return allNodes.find((node) => node.id === selectedNodeId) ?? graphData.nodes.find((node) => node.id === selectedNodeId) ?? null;
+    },
+    [communityGraphData.nodes, graphData.nodes, graphViewMode, selectedNodeId],
   );
 
   const selectedDetail = useMemo(() => {
@@ -397,10 +504,11 @@ export default function GraphPage() {
     if (!selectedNode) {
       return [];
     }
-    return graphData.links.filter(
+    const allLinks = graphViewMode === "community" ? communityGraphData.links : graphData.links;
+    return allLinks.filter(
       (link) => link.source === selectedNode.id || link.target === selectedNode.id,
     );
-  }, [graphData.links, selectedNode]);
+  }, [communityGraphData.links, graphData.links, graphViewMode, selectedNode]);
 
   const selectedPropertyList = useMemo(() => {
     if (!selectedNode) {
@@ -437,11 +545,11 @@ export default function GraphPage() {
       nodeCount: graphData.nodes.length,
       relationCount: graphData.links.length,
       expandedCount: expandedNodeIds.size,
-      visibleCount: filteredGraphData.nodes.length,
+      visibleCount: currentDisplayGraphData.nodes.length,
     }),
     [
+      currentDisplayGraphData.nodes.length,
       expandedNodeIds.size,
-      filteredGraphData.nodes.length,
       graphData.links.length,
       graphData.nodes.length,
     ],
@@ -875,12 +983,19 @@ export default function GraphPage() {
 
   function handleFocusCommunity(community: GraphCommunity) {
     setActiveCommunityId(community.id);
-    setSelectedNodeId(community.seedNodeId);
+    if (graphViewMode === "community") {
+      setSelectedNodeId(`comm_${community.id}`);
+    } else {
+      setSelectedNodeId(community.seedNodeId);
+    }
     window.setTimeout(() => graphRef.current?.resetZoom(), 40);
   }
 
   function handleClearCommunity() {
     setActiveCommunityId(null);
+    if (graphViewMode === "community") {
+      setSelectedNodeId(graphData.centerId);
+    }
     window.setTimeout(() => graphRef.current?.resetZoom(), 40);
   }
 
@@ -1322,16 +1437,16 @@ export default function GraphPage() {
         }
       `}</style>
       <div
-        style={{
-          height: "calc(100vh - 112px)",
-          display: "grid",
-          gridTemplateColumns: `${leftPanelCollapsed ? "0px" : "320px"} 1fr ${rightPanelCollapsed ? "0px" : "350px"}`,
-          background: "#f7f9fc",
-          borderRadius: 16,
-          overflow: "hidden",
-          border: "1px solid #e5edf8",
-        }}
-      >
+          style={{
+            height: "calc(100vh - 112px)",
+            display: "grid",
+            gridTemplateColumns: `${leftPanelCollapsed ? "0px" : "320px"} 1fr ${rightPanelCollapsed ? "0px" : "350px"}`,
+            background: "#f7f9fc",
+            borderRadius: 16,
+            overflow: "hidden",
+            border: "1px solid #e5edf8",
+          }}
+        >
         <aside
           className="hide-scrollbar"
           style={{
@@ -1627,7 +1742,84 @@ export default function GraphPage() {
             height: "100%",
           }}
         >
-          {leftPanelCollapsed ? (
+          {/* 视图模式双向切换 Tab 按钮 - 全局顶置显示 */}
+          <div
+            style={{
+              position: "absolute",
+              top: 16,
+              left: 220,
+              zIndex: 100,
+              backgroundColor: "rgba(255, 255, 255, 0.95)",
+              backdropFilter: "blur(4px)",
+              borderRadius: 12,
+              padding: "6px 8px",
+              boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
+              border: "1px solid #eef2f7",
+            }}
+          >
+            <Segmented
+              value={graphViewMode}
+              onChange={(val) => {
+                const mode = val as "raw" | "community";
+                setGraphViewMode(mode);
+                if (mode === "raw" && selectedNodeId.startsWith("comm_")) {
+                  const commId = selectedNodeId.replace("comm_", "");
+                  const targetComm = communities.find((c) => c.id === commId);
+                  setSelectedNodeId(targetComm?.seedNodeId || graphData.centerId);
+                } else if (mode === "community" && activeCommunityId) {
+                  setSelectedNodeId(`comm_${activeCommunityId}`);
+                }
+                window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+              }}
+              options={[
+                {
+                  label: (
+                    <div style={{ padding: "0 6px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                      <ApiOutlined />
+                      <span>原始图</span>
+                    </div>
+                  ),
+                  value: "raw",
+                },
+                {
+                  label: (
+                    <div style={{ padding: "0 6px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                      <ClusterOutlined />
+                      <span>社区网络图</span>
+                    </div>
+                  ),
+                  value: "community",
+                },
+              ]}
+            />
+          </div>
+
+          {graphViewMode === "community" ? (
+            <CommunityMiddleCanvas
+              graphData={graphData}
+              communities={communities}
+              activeCommunity={activeCommunity}
+              activeCommunityId={activeCommunityId}
+              onFocusCommunity={handleFocusCommunity}
+              onClearCommunity={handleClearCommunity}
+              graphViewMode={graphViewMode}
+              onSwitchViewMode={(mode) => {
+                setGraphViewMode(mode);
+                if (mode === "raw" && selectedNodeId.startsWith("comm_")) {
+                  const commId = selectedNodeId.replace("comm_", "");
+                  const targetComm = communities.find((c) => c.id === commId);
+                  setSelectedNodeId(targetComm?.seedNodeId || graphData.centerId);
+                } else if (mode === "community" && activeCommunityId) {
+                  setSelectedNodeId(`comm_${activeCommunityId}`);
+                }
+                window.setTimeout(() => graphRef.current?.resetZoom(), 40);
+              }}
+              nodeScale={nodeScale}
+              graphRef={graphRef}
+            />
+          ) : (
+            <>
+              {leftPanelCollapsed ? (
             <Button
               type="default"
               onClick={() => setLeftPanelCollapsed(false)}
@@ -1665,6 +1857,7 @@ export default function GraphPage() {
               {"<"}
             </Button>
           ) : null}
+
           {/* 图例 */}
           <div 
             style={{
@@ -1747,10 +1940,10 @@ export default function GraphPage() {
             <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
               <Spin size="large" tip="图谱检索中..." />
             </div>
-          ) : filteredGraphData.nodes.length > 0 ? (
+          ) : currentDisplayGraphData.nodes.length > 0 ? (
             <EntityRelationGraph
               actionRef={graphRef}
-              data={filteredGraphData}
+              data={currentDisplayGraphData}
               selectedNodeId={selectedNodeId}
               height="100%"
               nodeScale={nodeScale}
@@ -1764,9 +1957,25 @@ export default function GraphPage() {
           ) : (
             <Empty description="当前筛选条件下暂无图谱数据" style={{ marginTop: 220 }} />
           )}
+        </>
+        )}
         </main>
 
-        <aside
+        {graphViewMode === "community" ? (
+          <CommunityRightSidebar
+            graphData={graphData}
+            communities={communities}
+            activeCommunity={activeCommunity}
+            activeCommunityId={activeCommunityId}
+            onFocusCommunity={handleFocusCommunity}
+            onClearCommunity={handleClearCommunity}
+            graphViewMode={graphViewMode}
+            onSwitchViewMode={(mode) => setGraphViewMode(mode)}
+            nodeScale={nodeScale}
+            graphRef={graphRef}
+          />
+        ) : (
+          <aside
           style={{
             background: "#fff",
             borderLeft: rightPanelCollapsed ? "none" : "1px solid #e5e7eb",
@@ -2058,36 +2267,7 @@ export default function GraphPage() {
                   )}
                 </div>
 
-                <PanelSection
-                  title="社区网络发现"
-                  icon={<ClusterOutlined style={{ color: "#3b82f6" }} />}
-                  extra={
-                    activeCommunity ? (
-                      <Button size="small" type="link" onClick={handleClearCommunity} style={{ padding: 0, fontSize: 13 }}>
-                        清除聚焦
-                      </Button>
-                    ) : null
-                  }
-                >
-                  <div style={{ color: "#64748b", fontSize: 12, marginBottom: 10 }}>
-                    {activeCommunity
-                      ? `当前聚焦：${activeCommunity.name}`
-                      : "基于当前图谱结构自动识别高关联社区"}
-                  </div>
-                  <div style={{ display: "grid", gap: 10 }}>
-                    {communities.slice(0, 4).map((community) => (
-                      <CommunityCard
-                        key={community.id}
-                        community={community}
-                        active={activeCommunityId === community.id}
-                        onClick={() => handleFocusCommunity(community)}
-                      />
-                    ))}
-                    {communities.length === 0 ? (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前图谱规模较小，暂无社区发现结果" />
-                    ) : null}
-                  </div>
-                </PanelSection>
+
 
                 <PanelSection
                   title="来源文档"
@@ -2192,6 +2372,7 @@ export default function GraphPage() {
             </div>
           </div>
         </aside>
+        )}
       </div>
 
       <Modal
@@ -2489,61 +2670,7 @@ function ModeSelectCard({
   );
 }
 
-function CommunityCard({
-  community,
-  active,
-  onClick,
-}: {
-  community: GraphCommunity;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        width: "100%",
-        textAlign: "left",
-        border: active ? "1px solid #f59e0b" : "1px solid #eef2f7",
-        background: active ? "#fff7ed" : "#fff",
-        borderRadius: 12,
-        padding: 16,
-        cursor: "pointer",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <strong style={{ color: "#1f2937", fontSize: 15 }}>{community.name}</strong>
-        <span
-          style={{
-            background: "#ffedd5",
-            color: "#ea580c",
-            fontSize: 12,
-            padding: "2px 8px",
-            borderRadius: 10,
-            fontWeight: 600,
-          }}
-        >
-          {community.nodeIds.length} 节点
-        </span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 0", textAlign: "center" }}>
-          <div style={{ color: "#1f2937", fontWeight: 700, fontSize: 16 }}>{community.relationCount}</div>
-          <div style={{ color: "#64748b", fontSize: 12 }}>条关系</div>
-        </div>
-        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 0", textAlign: "center" }}>
-          <div style={{ color: "#1f2937", fontWeight: 700, fontSize: 16 }}>{community.bridgeCount}</div>
-          <div style={{ color: "#64748b", fontSize: 12 }}>个桥接点</div>
-        </div>
-        <div style={{ background: "#f8fafc", borderRadius: 8, padding: "8px 0", textAlign: "center" }}>
-          <div style={{ color: "#1f2937", fontWeight: 700, fontSize: 16 }}>{community.density}</div>
-          <div style={{ color: "#64748b", fontSize: 12 }}>密度</div>
-        </div>
-      </div>
-    </button>
-  );
-}
+
 
 function PanelSection({
   title,
