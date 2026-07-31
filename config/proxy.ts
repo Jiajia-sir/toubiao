@@ -20,7 +20,12 @@ export default {
     '/profile/avatar/': {
       target: 'http://192.168.31.244:42026',
       changeOrigin: true,
-    }
+    },
+    //算法-问答
+    '/api/': {
+      target: 'http://192.168.31.55:7860',
+      changeOrigin: true,
+    },
   },
 
   /**

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
@@ -28,6 +28,17 @@ import {
 import { getAccessToken } from '@/access';
 import { API_PREFIX } from '@/constants';
 import { getKnowledgeBaseList } from '@/services/biz/knowledge-base';
+import {
+  type AssistantItem,
+  type ChatItem,
+  assertSuccessResponse,
+  getAssistantList,
+  getChatList,
+  getResponseData,
+  normalizeAssistant,
+  normalizeChat,
+  pickList,
+} from '@/services/biz/rag-system';
 import './SmartQA.css';
 
 const { Text } = Typography;
@@ -42,26 +53,6 @@ type MessageItem = {
   status?: 'streaming' | 'done' | 'error';
 };
 
-type AssistantItem = {
-  id: number | string;
-  name: string;
-  openingStatement?: string;
-  prompt?: string;
-  chatModelName?: string;
-  chatModelUrl?: string;
-  embeddingModelName?: string;
-  embeddingModelUrl?: string;
-  knowledgeBaseIds: Array<number | string>;
-};
-
-type ChatItem = {
-  id: number | string;
-  assistantId: number | string;
-  title: string;
-  createTime?: string;
-  messages: MessageItem[];
-};
-
 type KnowledgeBaseOption = {
   label: string;
   value: number | string;
@@ -72,27 +63,28 @@ type AssistantFormValues = {
   name: string;
   openingStatement?: string;
   prompt?: string;
-  chatModelName: string;
-  chatModelUrl: string;
-  embeddingModelName: string;
-  embeddingModelUrl: string;
+  chatModelName?: string;
+  chatModelUrl?: string;
+  embeddingModelName?: string;
+  embeddingModelUrl?: string;
   knowledgeBaseIds: Array<number | string>;
 };
 
 type ChatStreamRequestPayload = {
-  sessionId: number | string;
-  assistantId: number | string;
   question: string;
-  assistantName?: string;
-  knowledgeBaseIds?: Array<number | string>;
-  chatModelName?: string;
-  chatModelUrl?: string;
-  stream?: boolean;
+  knowledge_base_id: Array<number | string>;
+  embed_api_type?: 'auto' | 'ollama' | 'openai';
+  embed_base_url?: string;
+  embed_model?: string;
+  llm_base_url?: string;
+  llm_model?: string;
+  enable_thinking?: 'true' | 'false';
   history?: Array<{
     role: 'user' | 'assistant';
     content: string;
   }>;
-  metadata?: Record<string, unknown>;
+  max_history_turns?: number;
+  max_history_chars?: number;
 };
 
 type ChatStreamChunk = {
@@ -111,22 +103,24 @@ type ChatStreamChunk = {
   };
 };
 
-const CHAT_STREAM_ENDPOINT = `${API_PREFIX}/biz/qa-chat/stream`;
+const QA_STREAM_ENDPOINT = '/api/knowledge/qa';
+const MAX_HISTORY_TURNS = 5;
+const MAX_HISTORY_CHARS = 8000;
 
-const recommendQuestions = [
-  {
-    title: '请总结这个助理的主要能力',
-    desc: '快速了解当前助理可以处理哪些类型的问题。',
-  },
-  {
-    title: '帮我整理一份标准问答模板',
-    desc: '适用于客服、运营或业务支持等常见问答场景。',
-  },
-  {
-    title: '请根据当前配置给出回答示例',
-    desc: '直接查看这个助理的输出风格和回复效果。',
-  },
-];
+// const recommendQuestions = [
+//   {
+//     title: '请总结这个助理的主要能力',
+//     desc: '快速了解当前助理可以处理哪些类型的问题。',
+//   },
+//   {
+//     title: '帮我整理一份标准问答模板',
+//     desc: '适用于客服、运营或业务支持等常见问答场景。',
+//   },
+//   {
+//     title: '请根据当前配置给出回答示例',
+//     desc: '直接查看这个助理的输出风格和回复效果。',
+//   },
+// ];
 
 const CHAT_DELETE_MODAL_TEXT = {
   title: '确认删除会话',
@@ -167,55 +161,6 @@ const formatDateTime = (value?: string) => {
   });
 };
 
-const toIdArray = (value: unknown): Array<number | string> => {
-  if (Array.isArray(value)) {
-    return value.filter((item) => item !== undefined && item !== null && item !== '');
-  }
-  if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  if (value === undefined || value === null || value === '') {
-    return [];
-  }
-  return [value as number | string];
-};
-
-const normalizeAssistant = (item: any): AssistantItem => ({
-  id: item?.id ?? item?.assistantId ?? item?.qaAssistantId,
-  name: String(item?.name ?? item?.assistantName ?? '未命名助理'),
-  openingStatement: item?.openingStatement ?? item?.openingRemark ?? item?.welcomeMessage ?? '',
-  prompt: item?.prompt ?? item?.systemPrompt ?? '',
-  chatModelName: item?.chatModelName ?? item?.modelName ?? item?.chatModel ?? '',
-  chatModelUrl: item?.chatModelUrl ?? item?.modelUrl ?? '',
-  embeddingModelName: item?.embeddingModelName ?? item?.embeddingName ?? '',
-  embeddingModelUrl: item?.embeddingModelUrl ?? item?.embeddingUrl ?? '',
-  knowledgeBaseIds: toIdArray(item?.knowledgeBaseIds ?? item?.knowledgeBaseId),
-});
-
-const normalizeChat = (item: any, fallbackAssistantId: number | string): ChatItem => ({
-  id: item?.id ?? item?.chatId ?? item?.qaChatId,
-  assistantId: item?.assistantId ?? item?.qaAssistantId ?? fallbackAssistantId,
-  title: String(item?.title ?? item?.name ?? item?.chatName ?? '未命名会话'),
-  createTime: item?.updateTime ?? item?.gmtModified ?? item?.modifiedAt ?? item?.createTime ?? '',
-  messages: Array.isArray(item?.messages) ? item.messages : [],
-});
-
-const getResponseData = <T,>(response: any): T | undefined =>
-  (response?.data?.data ?? response?.data ?? response) as T | undefined;
-
-const pickList = (response: any): any[] => {
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.list)) return response.list;
-  if (Array.isArray(response?.rows)) return response.rows;
-  if (Array.isArray(response?.data?.list)) return response.data.list;
-  if (Array.isArray(response?.data?.rows)) return response.data.rows;
-  if (Array.isArray(response?.data)) return response.data;
-  return [];
-};
-
 const getResponseMessage = (response: any, fallback: string) =>
   response?.msg || response?.message || response?.data?.msg || fallback;
 
@@ -223,39 +168,6 @@ const isSuccessResponse = (response: any) => {
   if (!response || typeof response !== 'object') return true;
   if (typeof response.code === 'number') return response.code === 200;
   return true;
-};
-
-const assertSuccessResponse = <T,>(response: T, fallback: string) => {
-  if (!isSuccessResponse(response)) {
-    throw new Error(getResponseMessage(response, fallback));
-  }
-  return response;
-};
-
-const requestFirstList = async (
-  configs: Array<{ url: string; method?: 'GET' | 'POST'; params?: any; data?: any }>,
-) => {
-  let lastError: Error | null = null;
-
-  for (const config of configs) {
-    try {
-      const result = assertSuccessResponse(
-        await request(config.url, {
-          method: config.method ?? 'GET',
-          params: config.params,
-          data: config.data,
-        }),
-        '列表加载失败',
-      );
-      const list = pickList(result);
-      if (Array.isArray(list)) return list;
-    } catch (error: any) {
-      lastError = error instanceof Error ? error : new Error('列表加载失败');
-    }
-  }
-
-  if (lastError) throw lastError;
-  return [];
 };
 
 export default function RagSystemPage() {
@@ -333,14 +245,8 @@ export default function RagSystemPage() {
   const loadAssistants = async () => {
     setAssistantLoading(true);
     try {
-      const list = await requestFirstList([
-        { url: `${API_PREFIX}/biz/qa-assistant/list`, method: 'GET' },
-        {
-          url: `${API_PREFIX}/biz/qa-assistant/page`,
-          method: 'GET',
-          params: { pageNo: 1, pageSize: 999 },
-        },
-      ]);
+      const response = await getAssistantList();
+      const list = pickList(assertSuccessResponse(response, '加载助理列表失败'));
 
       const normalized = list
         .map(normalizeAssistant)
@@ -378,16 +284,10 @@ export default function RagSystemPage() {
     const requestPromise = (async () => {
       setChatLoading(true);
       try {
-        const list = await requestFirstList([
-          {
-            url: `${API_PREFIX}/biz/qa-chat/page`,
-            method: 'GET',
-            params: { pageNo: 1, pageSize: 999, assistantId },
-          },
-        ]);
+        const list = await getChatList(assistantId);
 
         const normalized = list
-          .map((item) => normalizeChat(item, assistantId))
+          .map((item) => normalizeChat(item))
           .filter((item) => item.id !== undefined && item.id !== null && item.id !== '');
 
         setChats(normalized);
@@ -460,6 +360,13 @@ export default function RagSystemPage() {
     void loadChats(activeAssistantId);
   }, [activeAssistantId]);
 
+  useEffect(() => {
+    if (!assistantModalOpen || !editingAssistant) return;
+    assistantForm.setFieldsValue({
+      ...editingAssistant,
+    });
+  }, [assistantForm, assistantModalOpen, editingAssistant]);
+
   const openCreateAssistant = () => {
     setEditingAssistant(null);
     assistantForm.resetFields();
@@ -471,12 +378,12 @@ export default function RagSystemPage() {
 
   const openEditAssistant = (assistant: AssistantItem) => {
     setEditingAssistant(assistant);
-    assistantForm.setFieldsValue(assistant);
     setAssistantModalOpen(true);
   };
 
   const handleSaveAssistant = async () => {
     const values = await assistantForm.validateFields();
+
     const payload = {
       id: editingAssistant?.id,
       name: values.name,
@@ -488,7 +395,6 @@ export default function RagSystemPage() {
       embeddingModelUrl: values.embeddingModelUrl,
       knowledgeBaseIds: values.knowledgeBaseIds,
     };
-
     setSavingAssistant(true);
     try {
       if (editingAssistant) {
@@ -550,9 +456,11 @@ export default function RagSystemPage() {
         }),
         '创建会话失败',
       );
-      const createdChat = getResponseData<{ id?: number | string; chatId?: number | string; qaChatId?: number | string }>(
-        createResponse,
-      );
+      const createdChat = getResponseData<{
+        id?: number | string;
+        chatId?: number | string;
+        qaChatId?: number | string;
+      }>(createResponse);
       const createdChatId = createdChat?.id ?? createdChat?.chatId ?? createdChat?.qaChatId;
       message.success('创建成功');
       setNewChatTitle('');
@@ -656,22 +564,22 @@ export default function RagSystemPage() {
     setMessagesLoading(true);
 
     const requestPayload: ChatStreamRequestPayload = {
-      sessionId: activeChat.id,
-      assistantId: activeAssistant.id,
       question: question.trim(),
-      assistantName: activeAssistant.name,
-      knowledgeBaseIds: activeAssistant.knowledgeBaseIds,
-      chatModelName: activeAssistant.chatModelName,
-      chatModelUrl: activeAssistant.chatModelUrl,
-      stream: true,
-      history: activeChat.messages.map((item) => ({
-        role: item.role,
-        content: item.content,
-      })),
-      metadata: {
-        source: 'rag-system-page',
-        requestedAt: new Date().toISOString(),
-      },
+      knowledge_base_id: activeAssistant.knowledgeBaseIds,
+      embed_api_type: 'auto',
+      embed_base_url: activeAssistant.embeddingModelUrl,
+      embed_model: activeAssistant.embeddingModelName,
+      llm_base_url: activeAssistant.chatModelUrl,
+      llm_model: activeAssistant.chatModelName,
+      enable_thinking: 'false',
+      history: activeChat.messages
+        .filter((item) => item.role === 'user' || item.role === 'assistant')
+        .map((item) => ({
+          role: item.role,
+          content: item.content,
+        })),
+      max_history_turns: MAX_HISTORY_TURNS,
+      max_history_chars: MAX_HISTORY_CHARS,
     };
 
     const updateAssistantMessage = (updater: (messageItem: MessageItem) => MessageItem) => {
@@ -704,11 +612,12 @@ export default function RagSystemPage() {
     streamAbortRef.current = abortController;
 
     try {
-      await fetchEventSource(CHAT_STREAM_ENDPOINT, {
+      await fetchEventSource(QA_STREAM_ENDPOINT, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${getAccessToken() || ''}`,
-          'Content-Type': 'application/json;charset=utf-8',
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestPayload),
         signal: abortController.signal,
@@ -764,7 +673,7 @@ export default function RagSystemPage() {
         onerror(error) {
           finishStreamMessage({
             status: 'error',
-            content: '对话接口暂未配置完成，当前为流式调用预留状态。后端联调后这里会展示实时回复。',
+            content: '对话接口调用失败，请稍后重试。',
           });
           throw error;
         },
@@ -780,9 +689,9 @@ export default function RagSystemPage() {
 
       finishStreamMessage({
         status: 'error',
-        content: '对话接口暂未配置完成，当前为流式调用预留状态。后端联调后这里会展示实时回复。',
+        content: '对话接口调用失败，请稍后重试。',
       });
-      message.warning(error?.message || '对话接口暂未接入，已保留流式调用骨架');
+      message.warning(error?.message || '对话接口暂不可用');
     }
   };
 
@@ -887,7 +796,7 @@ export default function RagSystemPage() {
         <aside className="chat-sidebar">
           <div className="sidebar-header">
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="sidebar-title">会话（{chats.length}）</div>
+              <div className="sidebar-title">{`会话（${chats.length}）`}</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <Input
                   value={newChatTitle}
@@ -976,10 +885,17 @@ export default function RagSystemPage() {
               </div>
               {activeAssistant && (
                 <Space size={8} wrap>
-                  <Button className="clear-button" icon={<ClearOutlined />} onClick={handleClearChat}>
+                  <Button
+                    className="clear-button"
+                    icon={<ClearOutlined />}
+                    onClick={handleClearChat}
+                  >
                     清空对话
                   </Button>
-                  <Button icon={<SettingOutlined />} onClick={() => openEditAssistant(activeAssistant)}>
+                  <Button
+                    icon={<SettingOutlined />}
+                    onClick={() => openEditAssistant(activeAssistant)}
+                  >
                     配置
                   </Button>
                 </Space>
@@ -1007,7 +923,8 @@ export default function RagSystemPage() {
                   </div>
                 </div>
               </div>
-
+              {/* 推荐问题功能先注释 */}
+              {/* 
               {activeChat && (
                 <div className="recommend-section">
                   <div className="recommend-header">
@@ -1029,7 +946,7 @@ export default function RagSystemPage() {
                     ))}
                   </div>
                 </div>
-              )}
+              )} */}
             </div>
           ) : (
             <div className="messages-area">
@@ -1233,7 +1150,6 @@ export default function RagSystemPage() {
           </Form.Item>
         </Form>
       </Modal>
-
     </div>
   );
 }
