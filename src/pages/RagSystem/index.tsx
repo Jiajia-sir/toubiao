@@ -1090,6 +1090,7 @@ export default function RagSystemPage() {
             <Form.Item
               name="name"
               label="助理名称"
+              className="assistant-form-full-row"
               rules={[{ required: true, message: '请输入助理名称' }]}
             >
               <Input placeholder="例如：法规问答助理" />
