@@ -23,6 +23,32 @@ export interface ChatItem {
   messages: any[];
 }
 
+export interface ReferenceChunkItem {
+  text?: string;
+  score?: number;
+  docId?: BizId;
+  page?: number;
+  knowledge_base_id?: BizId[];
+  file_name?: string;
+  file_path?: string;
+  chunk_index?: number;
+}
+
+export interface ChatReference {
+  total?: number;
+  chunks?: ReferenceChunkItem[];
+}
+
+export interface ChatMessageRecord {
+  id: BizId;
+  chatId: BizId;
+  messageIndex?: number;
+  question?: string;
+  answer?: string;
+  reference?: ChatReference;
+  createTime?: string;
+}
+
 export interface AssistantSaveParams {
   id?: BizId;
   name: string;
@@ -100,6 +126,16 @@ export const normalizeChat = (item: any): ChatItem => ({
   messages: Array.isArray(item.messages) ? item.messages : [],
 });
 
+export const normalizeChatMessage = (item: any): ChatMessageRecord => ({
+  id: item.id,
+  chatId: item.chatId,
+  messageIndex: item.messageIndex,
+  question: item.question ?? '',
+  answer: item.answer ?? '',
+  reference: item.reference ?? { total: 0, chunks: [] },
+  createTime: item.createTime ?? '',
+});
+
 export async function getAssistantList() {
   return request(`${API_PREFIX}/biz/qa-assistant/page`, {
     method: 'GET',
@@ -148,4 +184,24 @@ export async function removeChat(id: BizId) {
     method: 'DELETE',
     params: { id },
   });
+}
+
+export async function saveChatMessage(data: {
+  chatId: BizId;
+  question: string;
+  answer: string;
+  reference?: ChatReference;
+}) {
+  return request(`${API_PREFIX}/biz/qa-chat/savaChat`, {
+    method: 'POST',
+    data,
+  });
+}
+
+export async function getChatMessages(chatId: BizId) {
+  const response = await request(`${API_PREFIX}/biz/qa-chat/messages`, {
+    method: 'GET',
+    params: { chatId },
+  });
+  return pickList(assertSuccessResponse(response, '加载聊天记录失败'));
 }

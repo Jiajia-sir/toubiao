@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
-import { request, useModel } from '@umijs/max';
+import { history, request, useModel } from '@umijs/max';
 import {
   ClearOutlined,
   CopyOutlined,
@@ -30,14 +30,19 @@ import { API_PREFIX } from '@/constants';
 import { getKnowledgeBaseList } from '@/services/biz/knowledge-base';
 import {
   type AssistantItem,
+  type ChatReference,
   type ChatItem,
+  type ReferenceChunkItem,
   assertSuccessResponse,
   getAssistantList,
   getChatList,
+  getChatMessages,
   getResponseData,
+  normalizeChatMessage,
   normalizeAssistant,
   normalizeChat,
   pickList,
+  saveChatMessage,
 } from '@/services/biz/rag-system';
 import './SmartQA.css';
 
@@ -50,6 +55,7 @@ type MessageItem = {
   content: string;
   timestamp: string;
   sources?: string[];
+  reference?: ChatReference;
   status?: 'streaming' | 'done' | 'error';
 };
 
@@ -98,6 +104,7 @@ type ChatStreamChunk = {
     text?: string;
     sources?: string[];
     sourceList?: string[];
+    reference?: ChatReference;
     sessionId?: number | string;
     messageId?: string;
   };
@@ -170,6 +177,39 @@ const isSuccessResponse = (response: any) => {
   return true;
 };
 
+const qaConsoleStyles = {
+  connect: 'background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+  event: 'background:#0f766e;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+  chunk: 'background:#7c3aed;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+  done: 'background:#15803d;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+  error: 'background:#b91c1c;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+};
+
+const getReferenceChunkFileName = (chunk: ReferenceChunkItem) =>
+  String(chunk.file_name ?? chunk.file_path ?? chunk.docId ?? '未命名文档');
+
+const getReferenceSourceNames = (reference?: ChatReference) => {
+  if (!reference || Number(reference.total ?? 0) <= 0) return [];
+  const chunks = Array.isArray(reference.chunks) ? reference.chunks : [];
+  return Array.from(new Set(chunks.map(getReferenceChunkFileName).filter(Boolean)));
+};
+
+const getReferenceChunks = (reference?: ChatReference) => {
+  if (!reference || Number(reference.total ?? 0) <= 0) return [];
+  return Array.isArray(reference.chunks) ? reference.chunks : [];
+};
+
+const getUniqueReferenceChunks = (reference?: ChatReference) => {
+  const chunks = getReferenceChunks(reference);
+  const seen = new Set<string>();
+  return chunks.filter((chunk, index) => {
+    const key = String(chunk.docId ?? chunk.file_name ?? chunk.file_path ?? index);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 export default function RagSystemPage() {
   const { initialState } = useModel('@@initialState');
   const [assistantForm] = Form.useForm<AssistantFormValues>();
@@ -192,6 +232,7 @@ export default function RagSystemPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const loadedChatMessagesRef = useRef<Record<string, boolean>>({});
   const chatRequestRef = useRef<{
     assistantId: number | string;
     promise: Promise<void>;
@@ -206,6 +247,22 @@ export default function RagSystemPage() {
     () => chats.find((item) => item.id === activeChatId),
     [chats, activeChatId],
   );
+
+  const updateChatMessages = (
+    chatId: number | string,
+    updater: (messages: MessageItem[]) => MessageItem[],
+  ) => {
+    setChats((prev) =>
+      prev.map((item) =>
+        item.id === chatId
+          ? {
+              ...item,
+              messages: updater((item.messages as MessageItem[]) || []),
+            }
+          : item,
+      ),
+    );
+  };
 
   const welcomeText = useMemo(() => {
     if (activeChat) {
@@ -291,6 +348,7 @@ export default function RagSystemPage() {
           .filter((item) => item.id !== undefined && item.id !== null && item.id !== '');
 
         setChats(normalized);
+        loadedChatMessagesRef.current = {};
         setActiveChatId((prev) => {
           if (
             options?.preferredChatId !== undefined &&
@@ -359,6 +417,56 @@ export default function RagSystemPage() {
   useEffect(() => {
     void loadChats(activeAssistantId);
   }, [activeAssistantId]);
+
+  useEffect(() => {
+    const loadCurrentChatMessages = async () => {
+      if (!activeChatId) return;
+      const chatKey = String(activeChatId);
+      if (loadedChatMessagesRef.current[chatKey]) return;
+
+      setMessagesLoading(true);
+      try {
+        const list = await getChatMessages(activeChatId);
+        const normalized = list.map(normalizeChatMessage);
+        const historyMessages: MessageItem[] = normalized.flatMap((item, index) => {
+          const baseTimestamp = formatDateTime(item.createTime);
+          const questionMessage: MessageItem[] = item.question
+            ? [
+                {
+                  id: `history-q-${item.id ?? index}`,
+                  role: 'user',
+                  content: item.question,
+                  timestamp: baseTimestamp,
+                },
+              ]
+            : [];
+          const answerMessage: MessageItem[] = item.answer
+            ? [
+                {
+                  id: `history-a-${item.id ?? index}`,
+                  role: 'assistant',
+                  content: item.answer,
+                  timestamp: baseTimestamp,
+                  reference: item.reference,
+                  sources: getReferenceSourceNames(item.reference),
+                  status: 'done',
+                },
+              ]
+            : [];
+          return [...questionMessage, ...answerMessage];
+        });
+
+        updateChatMessages(activeChatId, () => historyMessages);
+        loadedChatMessagesRef.current[chatKey] = true;
+      } catch (error: any) {
+        message.error(error?.message || '加载聊天记录失败');
+      } finally {
+        setMessagesLoading(false);
+      }
+    };
+
+    void loadCurrentChatMessages();
+  }, [activeChatId]);
 
   useEffect(() => {
     if (!assistantModalOpen || !editingAssistant) return;
@@ -516,11 +624,20 @@ export default function RagSystemPage() {
     }
   };
 
+  const handleOpenReferenceDoc = (chunk: ReferenceChunkItem) => {
+    if (!chunk.docId) {
+      message.warning('未获取到文档ID');
+      return;
+    }
+    history.push(`/data/document/${chunk.docId}`);
+  };
+
   const handleClearChat = () => {
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
 
     if (!activeChat) return;
+    loadedChatMessagesRef.current[String(activeChat.id)] = true;
     setChats((prev) =>
       prev.map((item) => (item.id === activeChat.id ? { ...item, messages: [] } : item)),
     );
@@ -531,31 +648,28 @@ export default function RagSystemPage() {
     if (!question.trim() || !activeChat || !activeAssistant) return;
 
     streamAbortRef.current?.abort();
+    const trimmedQuestion = question.trim();
+    const targetChatId = activeChat.id;
+    let latestReference: ChatReference | undefined;
+    let latestAnswerSnapshot = '';
+    let hasSavedCurrentRound = false;
 
     const userMessage: MessageItem = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: question.trim(),
+      content: trimmedQuestion,
       timestamp: getNowLabel(),
     };
 
     const assistantMessageId = `assistant-${Date.now()}`;
-    const assistantPlaceholder: MessageItem = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      timestamp: getNowLabel(),
-      sources: [],
-      status: 'streaming',
-    };
 
     setChats((prev) =>
       prev.map((item) =>
-        item.id === activeChat.id
+        item.id === targetChatId
           ? {
               ...item,
-              title: item.messages.length === 0 ? question.trim().slice(0, 16) : item.title,
-              messages: [...item.messages, userMessage, assistantPlaceholder],
+              title: item.messages.length === 0 ? trimmedQuestion.slice(0, 16) : item.title,
+              messages: [...item.messages, userMessage],
             }
           : item,
       ),
@@ -564,7 +678,7 @@ export default function RagSystemPage() {
     setMessagesLoading(true);
 
     const requestPayload: ChatStreamRequestPayload = {
-      question: question.trim(),
+      question: trimmedQuestion,
       knowledge_base_id: activeAssistant.knowledgeBaseIds,
       embed_api_type: 'auto',
       embed_base_url: activeAssistant.embeddingModelUrl,
@@ -582,10 +696,38 @@ export default function RagSystemPage() {
       max_history_chars: MAX_HISTORY_CHARS,
     };
 
+    const ensureAssistantMessage = (initialPatch?: Partial<MessageItem>) => {
+      setChats((prev) =>
+        prev.map((item) => {
+          if (item.id !== targetChatId) return item;
+          const hasAssistantMessage = item.messages.some(
+            (messageItem) => messageItem.id === assistantMessageId,
+          );
+          if (hasAssistantMessage) return item;
+          return {
+            ...item,
+            messages: [
+              ...item.messages,
+              {
+                id: assistantMessageId,
+                role: 'assistant',
+                content: '',
+                timestamp: getNowLabel(),
+                sources: [],
+                reference: undefined,
+                status: 'streaming',
+                ...initialPatch,
+              },
+            ],
+          };
+        }),
+      );
+    };
+
     const updateAssistantMessage = (updater: (messageItem: MessageItem) => MessageItem) => {
       setChats((prev) =>
         prev.map((item) =>
-          item.id === activeChat.id
+          item.id === targetChatId
             ? {
                 ...item,
                 messages: item.messages.map((messageItem) =>
@@ -598,6 +740,7 @@ export default function RagSystemPage() {
     };
 
     const finishStreamMessage = (patch?: Partial<MessageItem>) => {
+      ensureAssistantMessage(patch);
       updateAssistantMessage((messageItem) => ({
         ...messageItem,
         ...patch,
@@ -606,6 +749,22 @@ export default function RagSystemPage() {
       }));
       setMessagesLoading(false);
       streamAbortRef.current = null;
+    };
+
+    const persistChatRound = async (answer: string, reference?: ChatReference) => {
+      if (hasSavedCurrentRound) return;
+      hasSavedCurrentRound = true;
+      try {
+        await saveChatMessage({
+          chatId: targetChatId,
+          question: trimmedQuestion,
+          answer,
+          reference,
+        });
+      } catch (error: any) {
+        hasSavedCurrentRound = false;
+        message.warning(error?.message || '聊天记录保存失败');
+      }
     };
 
     const abortController = new AbortController();
@@ -623,13 +782,35 @@ export default function RagSystemPage() {
         signal: abortController.signal,
         openWhenHidden: true,
         async onopen(response) {
+          console.groupCollapsed('%cQA STREAM 连接建立', qaConsoleStyles.connect, {
+            url: QA_STREAM_ENDPOINT,
+            status: response.status,
+            ok: response.ok,
+            time: new Date().toLocaleString('zh-CN'),
+            requestPayload,
+          });
+          console.log('response headers:', Object.fromEntries(response.headers.entries()));
+          console.groupEnd();
           if (!response.ok) {
             throw new Error(`对话接口连接失败：${response.status}`);
           }
         },
         onmessage(event) {
+          console.groupCollapsed('%cQA STREAM EVENT', qaConsoleStyles.event, {
+            event: event.event || 'message',
+            id: event.id || '',
+            retry: event.retry ?? '',
+            time: new Date().toLocaleString('zh-CN'),
+          });
+          console.log('raw event.data:', event.data);
+          console.groupEnd();
+
           if (!event.data || event.data === 'connected') return;
           if (event.data === '[DONE]') {
+            console.log('%cQA STREAM DONE', qaConsoleStyles.done, {
+              reason: '[DONE]',
+              time: new Date().toLocaleString('zh-CN'),
+            });
             finishStreamMessage();
             return;
           }
@@ -638,6 +819,12 @@ export default function RagSystemPage() {
           try {
             chunk = JSON.parse(event.data) as ChatStreamChunk;
           } catch {
+            console.log('%cQA STREAM CHUNK', qaConsoleStyles.chunk, {
+              mode: 'plain-text',
+              text: event.data,
+              time: new Date().toLocaleString('zh-CN'),
+            });
+            ensureAssistantMessage();
             updateAssistantMessage((messageItem) => ({
               ...messageItem,
               content: `${messageItem.content}${event.data}`,
@@ -650,27 +837,81 @@ export default function RagSystemPage() {
           }
 
           const chunkData = chunk?.data;
-          const delta =
-            chunkData?.delta ?? chunkData?.content ?? chunkData?.answer ?? chunkData?.text ?? '';
+          const streamedAnswer =
+            chunkData?.answer ?? chunkData?.content ?? chunkData?.text ?? chunkData?.delta ?? '';
+          const delta = chunkData?.delta ?? chunkData?.content ?? chunkData?.text ?? '';
+          latestReference = chunkData?.reference ?? latestReference;
+          const sourceNames = getReferenceSourceNames(latestReference);
 
-          if (delta) {
+          if (streamedAnswer) {
+            latestAnswerSnapshot = streamedAnswer;
+          }
+
+          console.log('%cQA STREAM CHUNK', qaConsoleStyles.chunk, {
+            code: chunk?.code ?? 200,
+            done: chunkData?.done ?? false,
+            delta,
+            answer: chunkData?.answer ?? '',
+            reference: chunkData?.reference ?? null,
+            sources: chunkData?.sources ?? chunkData?.sourceList ?? [],
+            raw: chunk,
+            time: new Date().toLocaleString('zh-CN'),
+          });
+
+          if (streamedAnswer) {
+            ensureAssistantMessage();
             updateAssistantMessage((messageItem) => ({
               ...messageItem,
-              content: `${messageItem.content}${delta}`,
-              sources: chunkData?.sources ?? chunkData?.sourceList ?? messageItem.sources,
+              content:
+                chunkData?.answer && chunkData.answer.startsWith(messageItem.content)
+                  ? chunkData.answer
+                  : `${messageItem.content}${delta || streamedAnswer}`,
+              reference: latestReference ?? messageItem.reference,
+              sources:
+                sourceNames.length > 0
+                  ? sourceNames
+                  : chunkData?.sources || chunkData?.sourceList || messageItem.sources,
             }));
           }
 
           if (chunkData?.done) {
+            void persistChatRound(
+              latestAnswerSnapshot,
+              latestReference,
+            );
+            console.log('%cQA STREAM DONE', qaConsoleStyles.done, {
+              reason: 'chunk.data.done',
+              sources: chunkData.sources ?? chunkData.sourceList ?? [],
+              time: new Date().toLocaleString('zh-CN'),
+            });
             finishStreamMessage({
-              sources: chunkData.sources ?? chunkData.sourceList,
+              content: latestAnswerSnapshot,
+              reference: latestReference,
+              sources:
+                sourceNames.length > 0
+                  ? sourceNames
+                  : chunkData.sources ?? chunkData.sourceList,
             });
           }
         },
         onclose() {
-          finishStreamMessage();
+          if (latestAnswerSnapshot) {
+            void persistChatRound(latestAnswerSnapshot, latestReference);
+          }
+          console.log('%cQA STREAM CLOSED', qaConsoleStyles.done, {
+            time: new Date().toLocaleString('zh-CN'),
+          });
+          finishStreamMessage({
+            content: latestAnswerSnapshot,
+            reference: latestReference,
+            sources: getReferenceSourceNames(latestReference),
+          });
         },
         onerror(error) {
+          console.error('%cQA STREAM ERROR', qaConsoleStyles.error, {
+            error,
+            time: new Date().toLocaleString('zh-CN'),
+          });
           finishStreamMessage({
             status: 'error',
             content: '对话接口调用失败，请稍后重试。',
@@ -986,6 +1227,41 @@ export default function RagSystemPage() {
                         />
                         {msg.role === 'assistant' && (
                           <div className="message-tools">
+                            {Number(msg.reference?.total ?? 0) > 0 && (
+                              <div
+                                style={{
+                                  width: '100%',
+                                  marginBottom: 10,
+                                  padding: '10px 12px',
+                                  borderRadius: 12,
+                                  background: '#f8fafc',
+                                  border: '1px solid #e2e8f0',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: '#475569',
+                                    marginBottom: 8,
+                                  }}
+                                >
+                                  引用文档
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                  {getUniqueReferenceChunks(msg.reference).map((chunk, index) => (
+                                    <Button
+                                      key={`${chunk.docId ?? chunk.file_name ?? index}`}
+                                      size="small"
+                                      type="default"
+                                      onClick={() => handleOpenReferenceDoc(chunk)}
+                                    >
+                                      {getReferenceChunkFileName(chunk)}
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             {msg.sources?.map((source) => (
                               <span key={source} className="sidebar-mini-tag">
                                 {source}
