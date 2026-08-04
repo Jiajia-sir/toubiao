@@ -6,7 +6,6 @@ import { history, request, useModel } from '@umijs/max';
 import {
   ApiOutlined,
   ClearOutlined,
-  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   MessageOutlined,
@@ -34,7 +33,6 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { getAccessToken } from '@/access';
 import { API_PREFIX } from '@/constants';
-import { getKnowledgeBaseList } from '@/services/biz/knowledge-base';
 import {
   addEmbedModelConfig,
   getEmbedModelConfigPage,
@@ -266,6 +264,32 @@ const getUniqueReferenceChunks = (reference?: ChatReference) => {
   });
 };
 
+const formatReferenceValue = (value: unknown, fallback = '-') => {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(', ') : fallback;
+  }
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  return String(value);
+};
+
+const formatReferenceScore = (score?: number) => {
+  if (score === undefined || score === null || Number.isNaN(Number(score))) {
+    return '-';
+  }
+  return `${(Number(score) * 100).toFixed(2)}%`;
+};
+
+const buildAssistantKnowledgeBaseMap = (assistant?: AssistantItem | null) => {
+  if (!assistant) return {};
+
+  return assistant.knowledgeBaseIds.reduce((result: Record<string, string>, id, index) => {
+    result[String(id)] = assistant.knowledgeBaseNames?.[index] || `知识库 ${id}`;
+    return result;
+  }, {});
+};
+
 export default function RagSystemPage() {
   const { initialState } = useModel('@@initialState');
   const [assistantForm] = Form.useForm<AssistantFormValues>();
@@ -314,53 +338,72 @@ export default function RagSystemPage() {
     [chats, activeChatId],
   );
 
-  const modelTableColumns: ColumnsType<ModelPageItem> = [
-    {
-      title: '模型名称',
-      dataIndex: 'name',
-      key: 'name',
-      width: 220,
-    },
-    {
-      title: '提供方',
-      dataIndex: 'providerType',
-      key: 'providerType',
-      width: 120,
-      render: (value: string) => <Tag color="blue">{value || '-'}</Tag>,
-    },
-    {
-      title: '协议',
-      dataIndex: 'apiType',
-      key: 'apiType',
-      width: 120,
-      render: (value: string) => <Tag color="purple">{value || '-'}</Tag>,
-    },
-    {
-      title: '模型编码',
-      dataIndex: 'modelCode',
-      key: 'modelCode',
-      width: 220,
-      render: (value: string) => value || '-',
-    },
-    {
-      title: '模型地址',
-      dataIndex: 'baseUrl',
-      key: 'baseUrl',
-      ellipsis: true,
-      render: (value: string) => value || '-',
-    },
-    {
-      title: '状态',
-      dataIndex: 'enabled',
-      key: 'enabled',
-      width: 100,
-      render: (value: number) => (
-        <Tag color={Number(value) === 1 ? 'success' : 'default'}>
-          {Number(value) === 1 ? '启用' : '停用'}
-        </Tag>
-      ),
-    },
-    {
+  const activeAssistantKnowledgeBaseMap = useMemo(
+    () => buildAssistantKnowledgeBaseMap(activeAssistant),
+    [activeAssistant],
+  );
+
+  const modelTableColumns = useMemo<ColumnsType<ModelPageItem>>(() => {
+    const columns: ColumnsType<ModelPageItem> = [
+      {
+        title: '模型名称',
+        dataIndex: 'name',
+        key: 'name',
+        width: 220,
+        render: (_value, record) => (
+          <Space size={8} wrap>
+            <span>{record.name || '-'}</span>
+            {modelSelectorMode === 'embed' && Number(record.defaulted) === 1 && (
+              <Tag color="gold">默认</Tag>
+            )}
+          </Space>
+        ),
+      },
+      {
+        title: '提供方',
+        dataIndex: 'providerType',
+        key: 'providerType',
+        width: 120,
+        render: (value: string) => <Tag color="blue">{value || '-'}</Tag>,
+      },
+      {
+        title: '协议',
+        dataIndex: 'apiType',
+        key: 'apiType',
+        width: 120,
+        render: (value: string) => <Tag color="purple">{value || '-'}</Tag>,
+      },
+      {
+        title: '模型编码',
+        dataIndex: 'modelCode',
+        key: 'modelCode',
+        width: 220,
+        render: (value: string) => value || '-',
+      },
+      {
+        title: '模型地址',
+        dataIndex: 'baseUrl',
+        key: 'baseUrl',
+        ellipsis: true,
+        render: (value: string) => value || '-',
+      },
+    ];
+
+    if (modelSelectorMode === 'llm') {
+      columns.push({
+        title: '状态',
+        dataIndex: 'enabled',
+        key: 'enabled',
+        width: 100,
+        render: (value: number) => (
+          <Tag color={Number(value) === 1 ? 'success' : 'default'}>
+            {Number(value) === 1 ? '启用' : '停用'}
+          </Tag>
+        ),
+      });
+    }
+
+    columns.push({
       title: '操作',
       key: 'action',
       width: 100,
@@ -373,8 +416,10 @@ export default function RagSystemPage() {
           选择
         </Button>
       ),
-    },
-  ];
+    });
+
+    return columns;
+  }, [modelSelectorMode]);
 
   const updateChatMessages = (
     chatId: number | string,
@@ -583,12 +628,12 @@ export default function RagSystemPage() {
   const handleSelectModel = (model: ModelConfigItem) => {
     if (modelSelectorMode === 'llm') {
       assistantForm.setFieldsValue({
-        chatModelName: model.name,
+        chatModelName: model.modelCode || model.name,
         chatModelUrl: model.baseUrl,
       });
     } else {
       assistantForm.setFieldsValue({
-        embeddingModelName: model.name,
+        embeddingModelName: model.modelCode || model.name,
         embeddingModelUrl: model.baseUrl,
       });
     }
@@ -693,7 +738,10 @@ export default function RagSystemPage() {
     const loadKnowledgeBases = async () => {
       setLoadingKnowledge(true);
       try {
-        const response: any = await getKnowledgeBaseList();
+        const response: any = await request(`${API_PREFIX}/biz/knowledge-base/page`, {
+          method: 'GET',
+          params: { pageNo: 1, pageSize: 1000 },
+        });
         const list = pickList(response);
         setKnowledgeOptions(
           list.map((item: any) => ({
@@ -912,21 +960,20 @@ export default function RagSystemPage() {
     }
   };
 
-  const handleCopy = async (content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      message.success('已复制');
-    } catch {
-      message.error('复制失败');
-    }
-  };
-
   const handleOpenReferenceDoc = (chunk: ReferenceChunkItem) => {
     if (!chunk.docId) {
       message.warning('未获取到文档ID');
       return;
     }
     history.push(`/data/document/${chunk.docId}`);
+  };
+
+  const handleOpenKnowledgeBase = (knowledgeBaseId: number | string) => {
+    if (knowledgeBaseId === undefined || knowledgeBaseId === null || knowledgeBaseId === '') {
+      message.warning('未获取到知识库ID');
+      return;
+    }
+    history.push(`/knowledge/detail/${knowledgeBaseId}`);
   };
 
   const handleClearChat = () => {
@@ -1262,13 +1309,16 @@ export default function RagSystemPage() {
             ) : (
               assistants.map((item) => {
                 const selected = item.id === activeAssistantId;
-                const kbNames = item.knowledgeBaseIds
-                  .map(
-                    (id) =>
-                      knowledgeOptions.find((option) => option.value === id)?.label ||
-                      `知识库 ${id}`,
-                  )
-                  .slice(0, 2);
+                const allKbNames =
+                  item.knowledgeBaseNames && item.knowledgeBaseNames.length > 0
+                    ? item.knowledgeBaseNames
+                    : item.knowledgeBaseIds.map(
+                        (id) =>
+                          knowledgeOptions.find((option) => option.value === id)?.label ||
+                          `知识库 ${id}`,
+                      );
+                const kbNames = allKbNames.slice(0, 2);
+                const hiddenKbCount = Math.max(allKbNames.length - kbNames.length, 0);
 
                 return (
                   <div
@@ -1288,6 +1338,13 @@ export default function RagSystemPage() {
                             {name}
                           </span>
                         ))}
+                        {hiddenKbCount > 0 && (
+                          <Tooltip title={allKbNames.join('、')}>
+                            <span className="sidebar-mini-tag sidebar-mini-tag-more">
+                              +{hiddenKbCount}
+                            </span>
+                          </Tooltip>
+                        )}
                       </div>
                     </div>
                     <Space size={6}>
@@ -1513,60 +1570,126 @@ export default function RagSystemPage() {
                             msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                         }}
                       >
-                        <div
-                          style={{ lineHeight: 1.7 }}
-                          dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
-                        />
+                        {msg.role === 'user' ? (
+                          <div
+                            style={{ lineHeight: 1.7 }}
+                            dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
+                          />
+                        ) : (
+                          <div className="message-answer-section">
+                            <div
+                              className="message-answer-body"
+                              style={{ lineHeight: 1.7 }}
+                              dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
+                            />
+                          </div>
+                        )}
                         {msg.role === 'assistant' && (
                           <div className="message-tools">
                             {Number(msg.reference?.total ?? 0) > 0 && (
-                              <div
-                                style={{
-                                  width: '100%',
-                                  marginBottom: 10,
-                                  padding: '10px 12px',
-                                  borderRadius: 12,
-                                  background: '#f8fafc',
-                                  border: '1px solid #e2e8f0',
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    color: '#475569',
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  引用文档
+                              <div className="message-reference-panel">
+                                <div className="message-reference-panel-header">
+                                  <span className="message-reference-panel-title">引用来源</span>
+                                  <span className="message-reference-panel-subtitle">
+                                    共 {Number(msg.reference?.total ?? 0)} 条
+                                  </span>
                                 </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                  {getUniqueReferenceChunks(msg.reference).map((chunk, index) => (
-                                    <Button
-                                      key={`${chunk.docId ?? chunk.file_name ?? index}`}
-                                      size="small"
-                                      type="default"
-                                      onClick={() => handleOpenReferenceDoc(chunk)}
+                                <div className="message-reference-list">
+                                  {getReferenceChunks(msg.reference).map((chunk, index) => (
+                                    <div
+                                      key={`${chunk.docId ?? chunk.file_name ?? index}-${chunk.chunk_index ?? index}`}
+                                      className="message-reference-card"
                                     >
-                                      {getReferenceChunkFileName(chunk)}
-                                    </Button>
+                                      <div className="message-reference-card-header">
+                                        <div className="message-reference-card-title">
+                                          {chunk.docId ? (
+                                            <Button
+                                              size="small"
+                                              type="link"
+                                              style={{ paddingInline: 0, height: 'auto' }}
+                                              onClick={() => handleOpenReferenceDoc(chunk)}
+                                            >
+                                              {getReferenceChunkFileName(chunk)}
+                                            </Button>
+                                          ) : (
+                                            getReferenceChunkFileName(chunk)
+                                          )}
+                                        </div>
+                                        <Space size={8} wrap>
+                                          <Tag color="geekblue">
+                                            相似度得分 {formatReferenceScore(chunk.score)}
+                                          </Tag>
+                                        </Space>
+                                      </div>
+                                      <div className="message-reference-text">
+                                        <div className="message-reference-text-body">
+                                          {formatReferenceValue(chunk.text)}
+                                        </div>
+                                      </div>
+                                      <div className="message-reference-grid">
+                                        <div className="message-reference-grid-item message-reference-grid-item-kb">
+                                          <span className="message-reference-meta-key">知识库</span>
+                                          <div className="message-reference-value">
+                                            {Array.isArray(chunk.knowledge_base_id) &&
+                                            chunk.knowledge_base_id.length > 0 ? (
+                                              <Space size={[6, 6]} wrap>
+                                                {chunk.knowledge_base_id.map((knowledgeBaseId) => (
+                                                  <Button
+                                                    key={String(knowledgeBaseId)}
+                                                    size="small"
+                                                    type="link"
+                                                    style={{ paddingInline: 0, height: 'auto' }}
+                                                    onClick={() =>
+                                                      handleOpenKnowledgeBase(knowledgeBaseId)
+                                                    }
+                                                  >
+                                                    {activeAssistantKnowledgeBaseMap[
+                                                      String(knowledgeBaseId)
+                                                    ] || `知识库 ${knowledgeBaseId}`}
+                                                  </Button>
+                                                ))}
+                                              </Space>
+                                            ) : (
+                                              '-'
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="message-reference-grid-item message-reference-grid-item-path">
+                                          <span className="message-reference-meta-key">
+                                            文件地址
+                                          </span>
+                                          <div className="message-reference-value">
+                                            {formatReferenceValue(chunk.file_path)}
+                                          </div>
+                                        </div>
+                                        <div className="message-reference-grid-item message-reference-grid-item-location">
+                                          <span className="message-reference-meta-key">
+                                            所属文件位置
+                                          </span>
+                                          <div className="message-reference-value">
+                                            {`第${formatReferenceValue(chunk.page)}页 第${formatReferenceValue(
+                                              chunk.chunk_index,
+                                            )}分块`}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
                                   ))}
                                 </div>
                               </div>
                             )}
-                            {msg.sources?.map((source: string) => (
-                              <span key={source} className="sidebar-mini-tag">
-                                {source}
-                              </span>
-                            ))}
-                            <Tooltip title="复制">
-                              <Button
-                                size="small"
-                                type="text"
-                                icon={<CopyOutlined />}
-                                onClick={() => void handleCopy(msg.content)}
-                              />
-                            </Tooltip>
+                            {msg.sources && msg.sources.length > 0 && (
+                              <div className="message-source-summary">
+                                <span className="message-source-summary-label">文档来源：</span>
+                                <div className="message-source-summary-list">
+                                  {msg.sources.map((source: string) => (
+                                    <span key={source} className="sidebar-mini-tag">
+                                      {source}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                         <div
@@ -1699,7 +1822,7 @@ export default function RagSystemPage() {
                     <span>问答模型配置</span>
                   </div>
                   <div style={{ marginTop: 4, fontSize: 12, color: '#597ef7' }}>
-                    可手动填写，也可从模型管理中选择并自动回填名称和地址。
+                    可手动填写，也可从模型管理中选择并自动回填模型编码和地址。
                   </div>
                 </div>
                 <Button type="primary" ghost onClick={() => void openModelSelector('llm')}>
@@ -1711,8 +1834,8 @@ export default function RagSystemPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   <Form.Item
                     name="chatModelName"
-                    label="问答模型名称"
-                    rules={[{ required: true, message: '请输入问答模型名称' }]}
+                    label="问答模型编码"
+                    rules={[{ required: true, message: '请输入问答模型编码' }]}
                   >
                     <Input placeholder="qwen2.5-72b-instruct" />
                   </Form.Item>
@@ -1763,7 +1886,7 @@ export default function RagSystemPage() {
                     <span>向量模型配置</span>
                   </div>
                   <div style={{ marginTop: 4, fontSize: 12, color: '#597ef7' }}>
-                    可手动填写，也可从向量管理中选择并自动回填名称和地址。
+                    可手动填写，也可从向量管理中选择并自动回填模型编码和地址。
                   </div>
                 </div>
                 <Button type="primary" ghost onClick={() => void openModelSelector('embed')}>
@@ -1775,8 +1898,8 @@ export default function RagSystemPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   <Form.Item
                     name="embeddingModelName"
-                    label="向量模型名称"
-                    rules={[{ required: true, message: '请输入向量模型名称' }]}
+                    label="向量模型编码"
+                    rules={[{ required: true, message: '请输入向量模型编码' }]}
                   >
                     <Input placeholder="bge-large-zh" />
                   </Form.Item>

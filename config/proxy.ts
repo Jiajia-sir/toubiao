@@ -14,13 +14,15 @@ export default {
   dev: {
     // localhost:8000/admin-api/** -> http://localhost:8080/admin-api/**
     '/admin-api/': {
-      target: 'http://192.168.31.244:42026',
+      // target: 'http://192.168.31.244:42026',
+      target: 'http://192.168.31.152:42026',
       changeOrigin: true,
     },
-    '/profile/avatar/': {
-      target: 'http://192.168.31.244:42026',
-      changeOrigin: true,
-    },
+    // 不知道这啥，没用到
+    // '/profile/avatar/': {
+    //   target: 'http://192.168.31.244:42026',
+    //   changeOrigin: true,
+    // },
     //算法-问答
     '/api/': {
       target: 'http://192.168.31.55:7860',

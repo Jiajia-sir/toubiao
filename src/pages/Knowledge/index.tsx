@@ -10,6 +10,7 @@ import {
   Modal,
   Form,
   message,
+  Pagination,
   Popconfirm,
   Tag,
   Row,
@@ -199,7 +200,10 @@ export default function KnowledgePage() {
                   placeholder="搜索知识库..."
                   allowClear
                   value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
+                  onChange={(e) => {
+                    setPageNo(1);
+                    setSearchText(e.target.value);
+                  }}
                   style={{ width: 220 }}
                   prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
                 />
@@ -386,6 +390,23 @@ export default function KnowledgePage() {
                 </Col>
               ))}
             </Row>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                marginTop: 24,
+              }}
+            >
+              <Pagination
+                current={pageNo}
+                pageSize={pageSize}
+                total={Number(knowledgePageData?.total || 0)}
+                showSizeChanger={false}
+                showTotal={(total) => `共 ${total} 条`}
+                onChange={(page) => setPageNo(page)}
+              />
+            </div>
 
             {knowledgeList.length === 0 && (
               <div
