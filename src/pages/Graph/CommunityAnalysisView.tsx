@@ -74,6 +74,7 @@ type BridgeNodeOverlay = {
   x: number;
   y: number;
   radius: number;
+  color: string;
   active: boolean;
 };
 
@@ -83,6 +84,7 @@ type CrossEdgeOverlay = {
   y1: number;
   x2: number;
   y2: number;
+  color: string;
   active: boolean;
 };
 
@@ -153,23 +155,45 @@ function rebalanceCommunityLayout(nodes: CommunityNodeRecord[]) {
 
   const communities = Array.from(grouped.entries())
     .map(([communityId, members]) => {
-      const centerX = members.reduce((sum, item) => sum + item.x, 0) / members.length;
-      const centerY = members.reduce((sum, item) => sum + item.y, 0) / members.length;
-      const spread = members.reduce((sum, item) => sum + Math.hypot(item.x - centerX, item.y - centerY), 0) / members.length || 1;
+      const validMembers = members.filter(
+        (item) => Number.isFinite(item.x) && Number.isFinite(item.y),
+      );
+      const safeMembers = validMembers.length > 0 ? validMembers : members;
+      const centerX =
+        safeMembers.reduce((sum, item) => sum + Number(item.x), 0) /
+        safeMembers.length;
+      const centerY =
+        safeMembers.reduce((sum, item) => sum + Number(item.y), 0) /
+        safeMembers.length;
+      const spread =
+        safeMembers.reduce(
+          (sum, item) =>
+            sum + Math.hypot(Number(item.x) - centerX, Number(item.y) - centerY),
+          0,
+        ) /
+        safeMembers.length;
+      const safeSpread = Number.isFinite(spread) && spread > 0.0001 ? spread : 1;
       return {
         communityId,
         members,
-        centerX,
-        centerY,
-        spread,
+        centerX: Number.isFinite(centerX) ? centerX : 0,
+        centerY: Number.isFinite(centerY) ? centerY : 0,
+        spread: safeSpread,
       };
     })
     .sort((left, right) => right.members.length - left.members.length);
 
+  // Target spread per community (used to normalize the internal spread of each community).
+  // After normalization, every community will have an average node distance from its center
+  // of `targetSpread` (in our custom graph units). This keeps the overall layout compact
+  // regardless of the raw coordinate scale returned by the API.
+  const TARGET_SPREAD = 2.4;
+
   const targetCenters = new Map<string, { x: number; y: number; scale: number }>();
   const primary = communities[0];
   if (primary) {
-    targetCenters.set(primary.communityId, { x: 0, y: 0, scale: 1.15 });
+    const primaryScale = TARGET_SPREAD / primary.spread;
+    targetCenters.set(primary.communityId, { x: 0, y: 0, scale: primaryScale });
   }
 
   const secondary = communities.slice(1);
@@ -177,10 +201,11 @@ function rebalanceCommunityLayout(nodes: CommunityNodeRecord[]) {
   secondary.forEach((community, index) => {
     const angle = (-Math.PI / 2) + (index / Math.max(secondary.length, 1)) * Math.PI * 2;
     const orbit = ringRadius + Math.min(index, 3) * 0.9;
+    const normalizedScale = TARGET_SPREAD / community.spread;
     targetCenters.set(community.communityId, {
       x: Math.cos(angle) * orbit,
       y: Math.sin(angle) * orbit,
-      scale: community.spread < 1.5 ? 1.55 : 1.25,
+      scale: normalizedScale,
     });
   });
 
@@ -217,12 +242,14 @@ function buildCommunityGraph(networkData?: CommunityNetworkData | null) {
     .map((node) => {
       const id = String(node.id ?? "").trim();
       if (!id) return null;
+      const rawX = Number(node.x);
+      const rawY = Number(node.y);
       return {
         id,
         label: String(node.name ?? id).trim(),
         communityId: String(node.community_id ?? "default").trim() || "default",
-        x: Number(node.x ?? 0),
-        y: Number(node.y ?? 0),
+        x: Number.isFinite(rawX) ? rawX : Math.random() * 2 - 1,
+        y: Number.isFinite(rawY) ? rawY : Math.random() * 2 - 1,
         degree: degreeMap.get(id) || 0,
         isBridge: Boolean(node.is_bridge),
       };
@@ -386,27 +413,86 @@ function fitSigmaToGraph(sigma: Sigma, graph: Graph) {
   graph.forEachNode((node) => {
     const x = Number(graph.getNodeAttribute(node, "x"));
     const y = Number(graph.getNodeAttribute(node, "y"));
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
+    const size = Number(graph.getNodeAttribute(node, "size"));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const safeSize = Number.isFinite(size) ? size : 0;
+    minX = Math.min(minX, x - safeSize);
+    maxX = Math.max(maxX, x + safeSize);
+    minY = Math.min(minY, y - safeSize);
+    maxY = Math.max(maxY, y + safeSize);
   });
 
-  const width = Math.max(maxX - minX, 1);
-  const height = Math.max(maxY - minY, 1);
-  const dims = (sigma as any).getDimensions?.() || {
-    width: sigma.getContainer().clientWidth || 1,
-    height: sigma.getContainer().clientHeight || 1,
-  };
-  const graphRatio = Math.max(
-    width / Math.max(dims.width - 260, 1),
-    height / Math.max(dims.height - 220, 1),
-  );
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+    return;
+  }
+
+  const dimensions =
+    (sigma as any).getDimensions?.() || {
+      width: sigma.getContainer().clientWidth || 1,
+      height: sigma.getContainer().clientHeight || 1,
+    };
+  const viewportWidth = Math.max(1, Number(dimensions.width || 1));
+  const viewportHeight = Math.max(1, Number(dimensions.height || 1));
+  const padding = Math.max(56, Math.round(Math.min(viewportWidth, viewportHeight) * 0.1));
+
+  sigma.setSetting("autoRescale", true);
+  sigma.setSetting("stagePadding", padding);
+  sigma.setCustomBBox({
+    x: [minX, maxX],
+    y: [minY, maxY],
+  });
+  sigma.resize();
+  sigma.refresh();
 
   sigma.getCamera().setState({
-    x: (minX + maxX) / 2,
-    y: (minY + maxY) / 2,
-    ratio: Math.max(graphRatio * 56, 0.72),
+    x: 0.5,
+    y: 0.5,
+    ratio: 1,
+    angle: 0,
+  });
+}
+
+function animateSigmaToBounds(
+  sigma: Sigma,
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  duration = 320,
+) {
+  const dimensions =
+    (sigma as any).getDimensions?.() || {
+      width: sigma.getContainer().clientWidth || 1,
+      height: sigma.getContainer().clientHeight || 1,
+    };
+  const viewportWidth = Math.max(1, Number(dimensions.width || 1));
+  const viewportHeight = Math.max(1, Number(dimensions.height || 1));
+  const padding = Math.max(56, Math.round(Math.min(viewportWidth, viewportHeight) * 0.1));
+
+  sigma.setSetting("autoRescale", true);
+  sigma.setSetting("stagePadding", padding);
+  sigma.setCustomBBox({
+    x: [bounds.minX, bounds.maxX],
+    y: [bounds.minY, bounds.maxY],
+  });
+  sigma.resize();
+  sigma.refresh();
+
+  const camera = sigma.getCamera();
+  if (duration > 0 && typeof (camera as any).animate === "function") {
+    (camera as any).animate(
+      {
+        x: 0.5,
+        y: 0.5,
+        ratio: 1,
+        angle: 0,
+      },
+      { duration },
+    );
+    return;
+  }
+
+  camera.setState({
+    x: 0.5,
+    y: 0.5,
+    ratio: 1,
     angle: 0,
   });
 }
@@ -416,9 +502,6 @@ function focusCommunityInView(
   nodes: CommunityNodeRecord[],
   communityId: string | null,
 ) {
-  sigma.resize();
-  sigma.refresh();
-
   if (!communityId) {
     fitSigmaToGraph(sigma, sigma.getGraph());
     return;
@@ -430,39 +513,32 @@ function focusCommunityInView(
     return;
   }
 
+  const graph = sigma.getGraph();
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
 
   members.forEach((node) => {
-    minX = Math.min(minX, node.x);
-    maxX = Math.max(maxX, node.x);
-    minY = Math.min(minY, node.y);
-    maxY = Math.max(maxY, node.y);
+    const nx = Number(node.x);
+    const ny = Number(node.y);
+    if (!Number.isFinite(nx) || !Number.isFinite(ny)) return;
+    const size = Number(graph.getNodeAttribute(node.id, "size"));
+    const safeSize = Number.isFinite(size) ? size : 0;
+    minX = Math.min(minX, nx - safeSize);
+    maxX = Math.max(maxX, nx + safeSize);
+    minY = Math.min(minY, ny - safeSize);
+    maxY = Math.max(maxY, ny + safeSize);
   });
 
-  const width = Math.max(maxX - minX, 1);
-  const height = Math.max(maxY - minY, 1);
-  const camera = sigma.getCamera();
-  const dims = (sigma as any).getDimensions?.() || {
-    width: sigma.getContainer().clientWidth || 1,
-    height: sigma.getContainer().clientHeight || 1,
-  };
-  const ratio = Math.max(
-    width / Math.max(dims.width - 320, 1),
-    height / Math.max(dims.height - 260, 1),
-  );
-  const nextRatio = clamp(ratio * 52, 0.62, 1.04);
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+    return;
+  }
 
-  camera.animate(
-    {
-      x: (minX + maxX) / 2,
-      y: (minY + maxY) / 2,
-      ratio: nextRatio,
-      angle: 0,
-    },
-    { duration: 320 },
+  animateSigmaToBounds(
+    sigma,
+    { minX, maxX, minY, maxY },
+    320,
   );
 }
 
@@ -492,6 +568,10 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
   const [crossEdgeOverlays, setCrossEdgeOverlays] = useState<CrossEdgeOverlay[]>([]);
   const hoveredNodeIdRef = useRef<string | null>(null);
   const activeCommunityIdRef = useRef<string | null>(null);
+  const onFocusCommunityRef = useRef(onFocusCommunity);
+  onFocusCommunityRef.current = onFocusCommunity;
+  const onClearCommunityRef = useRef(onClearCommunity);
+  onClearCommunityRef.current = onClearCommunity;
 
   const { nodes, edges } = useMemo(() => buildCommunityGraph(networkData), [networkData]);
   const communityMap = useMemo(
@@ -589,9 +669,9 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
       if (!graph.hasNode(edge.source) || !graph.hasNode(edge.target)) return;
       const sourceNode = nodeMap.get(edge.source);
       const targetNode = nodeMap.get(edge.target);
-      const color = sourceNode
-        ? hexToRgba(getCommunityColor(sourceNode.communityId), edge.cross ? 0.34 : 0.52)
-        : "rgba(148, 163, 184, 0.58)";
+      const color = edge.cross
+        ? "rgba(245, 158, 11, 0.12)"
+        : "rgba(203, 213, 225, 0.82)";
       graph.addEdgeWithKey(edge.id, edge.source, edge.target, {
         size: edge.cross ? 1.3 : 1.8,
         color,
@@ -633,14 +713,10 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
         return {
           ...data,
           color: active
-            ? node.isBridge
-              ? "#f59e0b"
-              : color
+            ? color
             : "rgba(148, 163, 184, 0.16)",
           borderColor: active
-            ? node.isBridge
-              ? "#fef3c7"
-              : "#ffffff"
+            ? "#ffffff"
             : "rgba(255,255,255,0.36)",
           borderSize: node.isBridge ? 4.5 : data.borderSize,
           size: active
@@ -673,19 +749,21 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
           : true;
         const active = activeByFocus && activeByHover;
         const baseColor = edge.cross
-          ? "rgba(245, 158, 11, 0.92)"
-          : hexToRgba(getCommunityColor(sourceNode.communityId), 0.46);
+          ? hexToRgba(getCommunityColor(sourceNode.communityId), 0.14)
+          : "rgba(203, 213, 225, 0.96)";
 
         return {
           ...data,
-          color: edge.cross ? "rgba(245, 158, 11, 0)" : active ? baseColor : "rgba(148, 163, 184, 0.08)",
+          color: edge.cross ? "rgba(245, 158, 11, 0)" : active ? baseColor : "rgba(203, 213, 225, 0.22)",
           size: active ? (edge.cross ? 0.01 : 2.1) : 0.8,
           zIndex: active ? 1 : 0,
         };
       },
     });
 
+    sigma.resize();
     fitSigmaToGraph(sigma, graph);
+    sigma.refresh();
 
     sigma.on("enterNode", ({ node }) => {
       setHoveredNodeId(node);
@@ -701,12 +779,12 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
       const currentNode = graph.getNodeAttribute(node, "originalData") as CommunityNodeRecord;
       const targetCommunity = communityMap.get(currentNode.communityId);
       if (targetCommunity) {
-        onFocusCommunity(targetCommunity);
+        onFocusCommunityRef.current(targetCommunity);
       }
     });
 
     sigma.on("clickStage", () => {
-      onClearCommunity();
+      onClearCommunityRef.current();
     });
 
     sigmaRef.current = sigma;
@@ -717,7 +795,7 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
       sigmaRef.current = null;
       graphRef.current = null;
     };
-  }, [communities, communityMap, defaultVisibleNodeIds, edges, nodeMap, nodes, onClearCommunity, onFocusCommunity]);
+  }, [communities, communityMap, defaultVisibleNodeIds, edges, nodeMap, nodes]);
 
   useEffect(() => {
     const sigma = sigmaRef.current;
@@ -743,14 +821,17 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
             return null;
           }
           const point = sigma.graphToViewport(center);
+          if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
           const members = nodes.filter((node) => node.communityId === community.id);
           let maxDistance = 72;
           members.forEach((node) => {
             const nodePoint = sigma.graphToViewport({ x: node.x, y: node.y });
-            maxDistance = Math.max(
-              maxDistance,
-              Math.hypot(nodePoint.x - point.x, nodePoint.y - point.y),
-            );
+            if (Number.isFinite(nodePoint.x) && Number.isFinite(nodePoint.y)) {
+              maxDistance = Math.max(
+                maxDistance,
+                Math.hypot(nodePoint.x - point.x, nodePoint.y - point.y),
+              );
+            }
           });
           return {
             id: community.id,
@@ -769,14 +850,17 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
         .filter((node) => node.isBridge)
         .map((node) => {
           const point = sigma.graphToViewport({ x: node.x, y: node.y });
+          if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
           return {
             id: node.id,
             x: point.x,
             y: point.y,
             radius: clamp(10 + node.degree * 0.8, 12, 24),
+            color: getCommunityColor(node.communityId),
             active: !activeCommunityId || activeCommunityId === node.communityId,
           };
-        });
+        })
+        .filter(Boolean) as BridgeNodeOverlay[];
       setBridgeNodeOverlays(nextBridgeNodes);
 
       const nextCrossEdges = edges
@@ -789,12 +873,17 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
           }
           const sourcePoint = sigma.graphToViewport({ x: sourceNode.x, y: sourceNode.y });
           const targetPoint = sigma.graphToViewport({ x: targetNode.x, y: targetNode.y });
+          if (!Number.isFinite(sourcePoint.x) || !Number.isFinite(sourcePoint.y) ||
+              !Number.isFinite(targetPoint.x) || !Number.isFinite(targetPoint.y)) {
+            return null;
+          }
           return {
             id: edge.id,
             x1: sourcePoint.x,
             y1: sourcePoint.y,
             x2: targetPoint.x,
             y2: targetPoint.y,
+            color: getCommunityColor(sourceNode.communityId),
             active:
               !activeCommunityId ||
               activeCommunityId === sourceNode.communityId ||
@@ -848,7 +937,8 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
       }}
     >
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}>
-        {halos.map((halo) => (
+        {halos.map((halo) =>
+          !Number.isFinite(halo.x) || !Number.isFinite(halo.y) || !Number.isFinite(halo.radius) ? null : (
           <React.Fragment key={halo.id}>
             <div
               style={{
@@ -891,19 +981,31 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
         ))}
       </div>
 
-      <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1 }}>
-        {crossEdgeOverlays.map((edge) => (
-          <line
-            key={edge.id}
-            x1={edge.x1}
-            y1={edge.y1}
-            x2={edge.x2}
-            y2={edge.y2}
-            stroke="rgba(245, 158, 11, 0.9)"
-            strokeWidth={3}
-            strokeDasharray="8 6"
-            opacity={edge.active ? 0.95 : 0.18}
-          />
+      <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 3 }}>
+        {crossEdgeOverlays.map((edge) =>
+          !Number.isFinite(edge.x1) || !Number.isFinite(edge.y1) ||
+          !Number.isFinite(edge.x2) || !Number.isFinite(edge.y2) ? null : (
+          <g key={edge.id} opacity={edge.active ? 0.98 : 0.24}>
+            <line
+              x1={edge.x1}
+              y1={edge.y1}
+              x2={edge.x2}
+              y2={edge.y2}
+              stroke="rgba(255,255,255,0.92)"
+              strokeWidth={3.8}
+              strokeLinecap="round"
+            />
+            <line
+              x1={edge.x1}
+              y1={edge.y1}
+              x2={edge.x2}
+              y2={edge.y2}
+              stroke={hexToRgba(edge.color, 0.6)}
+              strokeWidth={2.2}
+              strokeDasharray="9 7"
+              strokeLinecap="round"
+            />
+          </g>
         ))}
         {communityBridges.map((bridge) => {
           const sourceCenter = communityCenters.get(bridge.sourceCommunityId);
@@ -911,11 +1013,19 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
           if (!sourceCenter || !targetCenter) return null;
           const sourcePoint = sigmaRef.current?.graphToViewport(sourceCenter);
           const targetPoint = sigmaRef.current?.graphToViewport(targetCenter);
-          if (!sourcePoint || !targetPoint) return null;
+          if (
+            !sourcePoint ||
+            !targetPoint ||
+            !Number.isFinite(sourcePoint.x) ||
+            !Number.isFinite(sourcePoint.y) ||
+            !Number.isFinite(targetPoint.x) ||
+            !Number.isFinite(targetPoint.y)
+          ) return null;
           const active =
             !activeCommunityId ||
             activeCommunityId === bridge.sourceCommunityId ||
             activeCommunityId === bridge.targetCommunityId;
+          const bridgeColor = getCommunityColor(bridge.sourceCommunityId);
           const midX = (sourcePoint.x + targetPoint.x) / 2;
           const midY = (sourcePoint.y + targetPoint.y) / 2;
 
@@ -926,9 +1036,19 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
                 y1={sourcePoint.y}
                 x2={targetPoint.x}
                 y2={targetPoint.y}
-                stroke="rgba(245, 158, 11, 0.75)"
-                strokeWidth={Math.min(2.6 + bridge.weight * 0.75, 7)}
-                strokeDasharray="10 6"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth={Math.min(4.2 + bridge.weight * 0.8, 8.4)}
+                strokeLinecap="round"
+              />
+              <line
+                x1={sourcePoint.x}
+                y1={sourcePoint.y}
+                x2={targetPoint.x}
+                y2={targetPoint.y}
+                stroke={hexToRgba(bridgeColor, 0.7)}
+                strokeWidth={Math.min(2.8 + bridge.weight * 0.62, 5.8)}
+                strokeDasharray="10 8"
+                strokeLinecap="round"
               />
               <g transform={`translate(${midX}, ${midY})`}>
                 <rect
@@ -939,7 +1059,7 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
                   rx={12}
                   ry={12}
                   fill="rgba(255,251,235,0.96)"
-                  stroke="rgba(245,158,11,0.55)"
+                  stroke={hexToRgba(bridgeColor, 0.45)}
                 />
                 <text
                   textAnchor="middle"
@@ -952,18 +1072,26 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
             </g>
           );
         })}
-        {bridgeNodeOverlays.map((node) => (
-          <circle
-            key={node.id}
-            cx={node.x}
-            cy={node.y}
-            r={node.radius}
-            fill="none"
-            stroke="rgba(245, 158, 11, 0.95)"
-            strokeWidth={2.4}
-            strokeDasharray="5 4"
-            opacity={node.active ? 1 : 0.2}
-          />
+        {bridgeNodeOverlays.map((node) =>
+          !Number.isFinite(node.x) || !Number.isFinite(node.y) ? null : (
+          <g key={node.id} opacity={node.active ? 1 : 0.22}>
+            <circle
+              cx={node.x}
+              cy={node.y}
+              r={node.radius + 2}
+              fill="rgba(255,255,255,0.82)"
+            />
+            <circle
+              cx={node.x}
+              cy={node.y}
+              r={node.radius + 3}
+              fill="none"
+              stroke={hexToRgba(node.color, 0.95)}
+              strokeWidth={2.2}
+              strokeDasharray="4 5"
+              strokeLinecap="round"
+            />
+          </g>
         ))}
       </svg>
 

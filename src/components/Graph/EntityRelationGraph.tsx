@@ -289,25 +289,6 @@ function fitGraphToViewport(sigma: Sigma | null, graph: Graph | null, duration =
   }
 
   const nodes = graph.nodes();
-  let minX = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-
-  nodes.forEach((nodeId) => {
-    const x = Number(graph.getNodeAttribute(nodeId, "x") ?? 0);
-    const y = Number(graph.getNodeAttribute(nodeId, "y") ?? 0);
-    const size = Number(graph.getNodeAttribute(nodeId, "size") ?? 0);
-    minX = Math.min(minX, x - size);
-    maxX = Math.max(maxX, x + size);
-    minY = Math.min(minY, y - size);
-    maxY = Math.max(maxY, y + size);
-  });
-
-  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
-    return;
-  }
-
   const dimensions =
     (sigma as any).getDimensions?.() || {
       width: sigma.getContainer().clientWidth || 1,
@@ -315,24 +296,32 @@ function fitGraphToViewport(sigma: Sigma | null, graph: Graph | null, duration =
     };
   const viewportWidth = Math.max(1, Number(dimensions.width || 1));
   const viewportHeight = Math.max(1, Number(dimensions.height || 1));
-  const graphWidth = Math.max(120, maxX - minX + 120);
-  const graphHeight = Math.max(120, maxY - minY + 120);
-  const ratio = clamp(Math.max(graphWidth / viewportWidth, graphHeight / viewportHeight), 0.08, 6);
-  const nextState = {
-    x: (minX + maxX) / 2,
-    y: (minY + maxY) / 2,
-    ratio,
-    angle: 0,
-  };
+  const graphWidth = Math.max(1, maxX - minX);
+  const graphHeight = Math.max(1, maxY - minY);
+  const maxNodeSize = nodes.reduce((acc, nodeId) => {
+    const size = Number(graph.getNodeAttribute(nodeId, "size") ?? 0);
+    return Math.max(acc, size);
+  }, 0);
+  const stagePadding = Math.max(
+    56,
+    Math.round(Math.min(viewportWidth, viewportHeight) * 0.1),
+    Math.round(maxNodeSize * 2.4),
+  );
+
+  sigma.setCustomBBox(null as any);
+  sigma.setSetting("autoRescale", true);
+  sigma.setSetting("stagePadding", stagePadding);
+  sigma.resize();
+  sigma.refresh();
 
   const camera = sigma.getCamera();
-  if (duration > 0 && typeof (camera as any).animate === "function") {
-    (camera as any).animate(nextState, { duration });
+  if (duration > 0 && typeof (camera as any).animatedReset === "function") {
+    (camera as any).animatedReset({ duration });
     return;
   }
 
   if (typeof (camera as any).setState === "function") {
-    (camera as any).setState(nextState);
+    (camera as any).setState({ x: 0.5, y: 0.5, ratio: 1, angle: 0 });
   }
 }
 
@@ -410,27 +399,42 @@ function buildCommunityClustersLayout(nodes: EntityGraphNode[]) {
     string,
     { x: number; y: number; angle: number; sectorStart: number; sectorEnd: number; radius: number }
   >();
+  const centerNode = nodes.find((node) => node.type === "center");
 
   const clusterCenters: Record<string, { x: number; y: number }> = {
-    comm_fin: { x: -330, y: -190 },
-    comm_semi: { x: 330, y: -190 },
-    comm_energy: { x: -330, y: 190 },
-    comm_ai: { x: 330, y: 190 },
+    comm_fin: { x: -260, y: -150 },
+    comm_semi: { x: 260, y: -150 },
+    comm_energy: { x: -260, y: 150 },
+    comm_ai: { x: 260, y: 150 },
   };
 
   const groups = new Map<string, EntityGraphNode[]>();
   nodes.forEach((node) => {
-    const cid = String(node.branchId || "comm_fin");
+    if (node.type === "center") {
+      return;
+    }
+    const cid = String(node.branchId || node.parentId || "comm_fin");
     if (!groups.has(cid)) groups.set(cid, []);
     groups.get(cid)!.push(node);
   });
 
   const fallbackCenters = [
-    { x: -330, y: -190 },
-    { x: 330, y: -190 },
-    { x: -330, y: 190 },
-    { x: 330, y: 190 },
+    { x: 0, y: -260 },
+    { x: 260, y: 0 },
+    { x: 0, y: 260 },
+    { x: -260, y: 0 },
   ];
+
+  if (centerNode) {
+    positionMap.set(centerNode.id, {
+      x: 0,
+      y: 0,
+      angle: -Math.PI / 2,
+      sectorStart: -Math.PI,
+      sectorEnd: Math.PI,
+      radius: 0,
+    });
+  }
 
   let groupIdx = 0;
   groups.forEach((groupNodes, cid) => {
@@ -486,7 +490,9 @@ function buildGroupedLayout(
   centerId: string,
   focusNodeId?: string | null,
 ) {
-  const isCommunityGraph = nodes.some((n) => n.branchId && String(n.branchId).startsWith("comm_"));
+  const isCommunityGraph = nodes.some(
+    (n) => String(n.id).startsWith("comm_") || (n.branchId && String(n.branchId).startsWith("comm_")),
+  );
   if (isCommunityGraph) {
     return buildCommunityClustersLayout(nodes);
   }
@@ -699,6 +705,28 @@ const EntityRelationGraph = forwardRef<
   const hoveredNodeRef = useRef<string | null>(null);
   const visibleLabelNodeIdsRef = useRef<Set<string>>(new Set());
   const refreshVisibleLabelsRef = useRef<() => void>(() => undefined);
+  const communityInitialFitRafRef = useRef<number | null>(null);
+
+  const scheduleCommunityFit = () => {
+    if (!isCommunityGraphData) return;
+    if (communityInitialFitRafRef.current !== null) {
+      cancelAnimationFrame(communityInitialFitRafRef.current);
+      communityInitialFitRafRef.current = null;
+    }
+    communityInitialFitRafRef.current = requestAnimationFrame(() => {
+      const sigma = sigmaRef.current;
+      if (!sigma) {
+        communityInitialFitRafRef.current = null;
+        return;
+      }
+      sigma.resize();
+      sigma.refresh();
+      communityInitialFitRafRef.current = requestAnimationFrame(() => {
+        fitGraphToViewport(sigmaRef.current, graphRef.current, 0);
+        communityInitialFitRafRef.current = null;
+      });
+    });
+  };
 
   useImperativeHandle(actionRef || ref, () => ({
     zoomIn: () => {
@@ -724,6 +752,10 @@ const EntityRelationGraph = forwardRef<
     graphRef.current = graph;
 
     return () => {
+      if (communityInitialFitRafRef.current !== null) {
+        cancelAnimationFrame(communityInitialFitRafRef.current);
+        communityInitialFitRafRef.current = null;
+      }
       graph.clear();
       graphRef.current = null;
     };
@@ -908,6 +940,7 @@ const EntityRelationGraph = forwardRef<
     sigmaRef.current?.refresh();
     if (isCommunityGraphData) {
       refreshVisibleLabelsRef.current();
+      scheduleCommunityFit();
     }
   }, [data, nodeScale, linkWidth, showNodes, showLinks, showLabels, selectedNodeId, labelMaxLength]);
 
@@ -1264,7 +1297,7 @@ const EntityRelationGraph = forwardRef<
 
     refreshVisibleLabelsRef.current();
     if (isCommunityGraphData) {
-      fitGraphToViewport(sigma, graph, 0);
+      scheduleCommunityFit();
     }
 
     let draggedNode: string | null = null;
@@ -1346,6 +1379,10 @@ const EntityRelationGraph = forwardRef<
     });
     
     return () => {
+      if (communityInitialFitRafRef.current !== null) {
+        cancelAnimationFrame(communityInitialFitRafRef.current);
+        communityInitialFitRafRef.current = null;
+      }
       sigma.kill();
       sigmaRef.current = null;
     };
