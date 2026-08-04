@@ -1945,11 +1945,13 @@ export default function GraphPage() {
               padding: "6px 8px",
               boxShadow: "0 4px 12px rgba(15, 23, 42, 0.08)",
               border: "1px solid #eef2f7",
-              width: 192,
+              minWidth: 232,
+              width: "auto",
             }}
           >
             <Segmented
               value={graphViewMode}
+              block
               onChange={(val) => {
                 const mode = val as "raw" | "community";
                 setGraphViewMode(mode);

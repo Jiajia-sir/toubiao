@@ -520,6 +520,36 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
     });
     return centerMap;
   }, [communities, nodes]);
+  const defaultVisibleNodeIds = useMemo(() => {
+    const grouped = new Map<string, CommunityNodeRecord[]>();
+    nodes.forEach((node) => {
+      if (!grouped.has(node.communityId)) {
+        grouped.set(node.communityId, []);
+      }
+      grouped.get(node.communityId)!.push(node);
+    });
+
+    const visibleIds = new Set<string>();
+    grouped.forEach((members) => {
+      members
+        .slice()
+        .sort((left, right) => {
+          if (right.degree !== left.degree) {
+            return right.degree - left.degree;
+          }
+          return Number(right.isBridge) - Number(left.isBridge);
+        })
+        .slice(0, 2)
+        .forEach((member) => visibleIds.add(member.id));
+
+      members
+        .filter((member) => member.isBridge)
+        .slice(0, 2)
+        .forEach((member) => visibleIds.add(member.id));
+    });
+
+    return visibleIds;
+  }, [nodes]);
 
   useEffect(() => {
     hoveredNodeIdRef.current = hoveredNodeId;
@@ -598,7 +628,7 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
           ? active
           : hovered
             ? active && (node.degree >= 3 || hovered === nodeId)
-            : false;
+            : defaultVisibleNodeIds.has(nodeId);
 
         return {
           ...data,
@@ -687,7 +717,7 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
       sigmaRef.current = null;
       graphRef.current = null;
     };
-  }, [communities, communityMap, edges, nodeMap, nodes, onClearCommunity, onFocusCommunity]);
+  }, [communities, communityMap, defaultVisibleNodeIds, edges, nodeMap, nodes, onClearCommunity, onFocusCommunity]);
 
   useEffect(() => {
     const sigma = sigmaRef.current;
@@ -727,7 +757,7 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
             name: community.name,
             x: point.x,
             y: point.y,
-            radius: clamp(maxDistance + 28, 72, 150),
+            radius: Math.max(maxDistance + 40, 96),
             color: getCommunityColor(community.id),
             active: !activeCommunityId || activeCommunityId === community.id,
           };
@@ -836,6 +866,27 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
                 transition: "opacity 0.35s ease",
               }}
             />
+            <div
+              style={{
+                position: "absolute",
+                left: halo.x,
+                top: Math.max(halo.y - halo.radius - 20, 10),
+                transform: "translateX(-50%)",
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.88)",
+                border: `1px solid ${hexToRgba(halo.color, 0.28)}`,
+                color: "#334155",
+                fontSize: 12,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+                opacity: halo.active ? 0.96 : 0.42,
+                boxShadow: "0 4px 12px rgba(148, 163, 184, 0.12)",
+              }}
+            >
+              {halo.name}
+            </div>
           </React.Fragment>
         ))}
       </div>
