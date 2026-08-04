@@ -362,6 +362,10 @@
   gap: 0 16px;
 }
 
+.assistant-form-full-row {
+  grid-column: 1 / -1;
+}
+
 .message-tools {
   display: flex;
   align-items: center;
@@ -591,8 +595,8 @@
 }
 
 .welcome-title {
-  font-size: 18px;
-  font-weight: 550;
+  font-size: 24px;
+  font-weight: 500;
   color: #2e2e2e;
   line-height: 1.5;
   letter-spacing: -0.01em;

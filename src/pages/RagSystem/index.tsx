@@ -1,13 +1,15 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
-import { request, useModel } from '@umijs/max';
+import { history, request, useModel } from '@umijs/max';
 import {
+  ApiOutlined,
   ClearOutlined,
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
+  MessageOutlined,
   PlusOutlined,
   SendOutlined,
   SettingOutlined,
@@ -18,16 +20,49 @@ import {
   Form,
   Input,
   Modal,
+  Pagination,
   Select,
   Space,
   Spin,
+  Switch,
+  Table,
+  Tag,
   Tooltip,
   Typography,
   message,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { getAccessToken } from '@/access';
 import { API_PREFIX } from '@/constants';
 import { getKnowledgeBaseList } from '@/services/biz/knowledge-base';
+import {
+  addEmbedModelConfig,
+  getEmbedModelConfigPage,
+  testEmbedModelConfig,
+  type EmbedModelConfigItem,
+} from '@/services/biz/embed-model-config';
+import {
+  addLlmModelConfig,
+  getLlmModelConfigPage,
+  testLlmModelConfig,
+  type LlmModelConfigItem,
+} from '@/services/biz/llm-model-config';
+import {
+  type AssistantItem,
+  type ChatReference,
+  type ChatItem,
+  type ReferenceChunkItem,
+  assertSuccessResponse,
+  getAssistantList,
+  getChatList,
+  getChatMessages,
+  getResponseData,
+  normalizeChatMessage,
+  normalizeAssistant,
+  normalizeChat,
+  pickList,
+  saveChatMessage,
+} from '@/services/biz/rag-system';
 import './SmartQA.css';
 
 const { Text } = Typography;
@@ -39,11 +74,37 @@ type MessageItem = {
   content: string;
   timestamp: string;
   sources?: string[];
+  reference?: ChatReference;
   status?: 'streaming' | 'done' | 'error';
 };
 
-type AssistantItem = {
-  id: number | string;
+type KnowledgeBaseOption = {
+  label: string;
+  value: number | string;
+};
+
+type ModelConfigItem = LlmModelConfigItem | EmbedModelConfigItem;
+
+type ModelPageItem = ModelConfigItem & {
+  key: number;
+};
+
+type ModelSelectorMode = 'llm' | 'embed';
+
+type ModelFormValues = {
+  name: string;
+  providerType: string;
+  apiType: string;
+  baseUrl: string;
+  modelCode: string;
+  apiKey?: string;
+  enabled: boolean;
+  sort?: number;
+  remark?: string;
+};
+
+type AssistantFormValues = {
+  id?: number | string;
   name: string;
   openingStatement?: string;
   prompt?: string;
@@ -54,45 +115,21 @@ type AssistantItem = {
   knowledgeBaseIds: Array<number | string>;
 };
 
-type ChatItem = {
-  id: number | string;
-  assistantId: number | string;
-  title: string;
-  createTime?: string;
-  messages: MessageItem[];
-};
-
-type KnowledgeBaseOption = {
-  label: string;
-  value: number | string;
-};
-
-type AssistantFormValues = {
-  id?: number | string;
-  name: string;
-  openingStatement?: string;
-  prompt?: string;
-  chatModelName: string;
-  chatModelUrl: string;
-  embeddingModelName: string;
-  embeddingModelUrl: string;
-  knowledgeBaseIds: Array<number | string>;
-};
-
 type ChatStreamRequestPayload = {
-  sessionId: number | string;
-  assistantId: number | string;
   question: string;
-  assistantName?: string;
-  knowledgeBaseIds?: Array<number | string>;
-  chatModelName?: string;
-  chatModelUrl?: string;
-  stream?: boolean;
+  knowledge_base_id: Array<number | string>;
+  embed_api_type?: 'auto' | 'ollama' | 'openai';
+  embed_base_url?: string;
+  embed_model?: string;
+  llm_base_url?: string;
+  llm_model?: string;
+  enable_thinking?: 'true' | 'false';
   history?: Array<{
     role: 'user' | 'assistant';
     content: string;
   }>;
-  metadata?: Record<string, unknown>;
+  max_history_turns?: number;
+  max_history_chars?: number;
 };
 
 type ChatStreamChunk = {
@@ -106,27 +143,47 @@ type ChatStreamChunk = {
     text?: string;
     sources?: string[];
     sourceList?: string[];
+    reference?: ChatReference;
     sessionId?: number | string;
     messageId?: string;
   };
 };
 
-const CHAT_STREAM_ENDPOINT = `${API_PREFIX}/biz/qa-chat/stream`;
-
-const recommendQuestions = [
-  {
-    title: '请总结这个助理的主要能力',
-    desc: '快速了解当前助理可以处理哪些类型的问题。',
-  },
-  {
-    title: '帮我整理一份标准问答模板',
-    desc: '适用于客服、运营或业务支持等常见问答场景。',
-  },
-  {
-    title: '请根据当前配置给出回答示例',
-    desc: '直接查看这个助理的输出风格和回复效果。',
-  },
+const QA_STREAM_ENDPOINT = '/api/knowledge/qa';
+const MAX_HISTORY_TURNS = 5;
+const MAX_HISTORY_CHARS = 8000;
+const MODEL_PAGE_SIZE = 10;
+const modelProviderOptions = [
+  { label: 'vLLM', value: 'vllm' },
+  { label: 'Ollama', value: 'ollama' },
+  { label: 'Sub2API', value: 'sub2api' },
+  { label: 'OpenAI', value: 'openai' },
+  { label: 'Claude', value: 'claude' },
 ];
+const modelApiTypeOptions = [
+  { label: 'OpenAI 兼容协议', value: 'openai' },
+  { label: 'Claude 协议', value: 'claude' },
+];
+const embedModelProviderOptions = [
+  { label: 'vLLM', value: 'vllm' },
+  { label: 'Ollama', value: 'ollama' },
+];
+const embedModelApiTypeOptions = [{ label: 'OpenAI 兼容协议', value: 'openai' }];
+
+// const recommendQuestions = [
+//   {
+//     title: '请总结这个助理的主要能力',
+//     desc: '快速了解当前助理可以处理哪些类型的问题。',
+//   },
+//   {
+//     title: '帮我整理一份标准问答模板',
+//     desc: '适用于客服、运营或业务支持等常见问答场景。',
+//   },
+//   {
+//     title: '请根据当前配置给出回答示例',
+//     desc: '直接查看这个助理的输出风格和回复效果。',
+//   },
+// ];
 
 const CHAT_DELETE_MODAL_TEXT = {
   title: '确认删除会话',
@@ -155,7 +212,7 @@ const getNowLabel = () =>
     minute: '2-digit',
   });
 
-const formatDateTime = (value?: string) => {
+const formatDateTime = (value?: string | number) => {
   if (!value) return '刚刚更新';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -167,55 +224,6 @@ const formatDateTime = (value?: string) => {
   });
 };
 
-const toIdArray = (value: unknown): Array<number | string> => {
-  if (Array.isArray(value)) {
-    return value.filter((item) => item !== undefined && item !== null && item !== '');
-  }
-  if (typeof value === 'string') {
-    return value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-  if (value === undefined || value === null || value === '') {
-    return [];
-  }
-  return [value as number | string];
-};
-
-const normalizeAssistant = (item: any): AssistantItem => ({
-  id: item?.id ?? item?.assistantId ?? item?.qaAssistantId,
-  name: String(item?.name ?? item?.assistantName ?? '未命名助理'),
-  openingStatement: item?.openingStatement ?? item?.openingRemark ?? item?.welcomeMessage ?? '',
-  prompt: item?.prompt ?? item?.systemPrompt ?? '',
-  chatModelName: item?.chatModelName ?? item?.modelName ?? item?.chatModel ?? '',
-  chatModelUrl: item?.chatModelUrl ?? item?.modelUrl ?? '',
-  embeddingModelName: item?.embeddingModelName ?? item?.embeddingName ?? '',
-  embeddingModelUrl: item?.embeddingModelUrl ?? item?.embeddingUrl ?? '',
-  knowledgeBaseIds: toIdArray(item?.knowledgeBaseIds ?? item?.knowledgeBaseId),
-});
-
-const normalizeChat = (item: any, fallbackAssistantId: number | string): ChatItem => ({
-  id: item?.id ?? item?.chatId ?? item?.qaChatId,
-  assistantId: item?.assistantId ?? item?.qaAssistantId ?? fallbackAssistantId,
-  title: String(item?.title ?? item?.name ?? item?.chatName ?? '未命名会话'),
-  createTime: item?.updateTime ?? item?.gmtModified ?? item?.modifiedAt ?? item?.createTime ?? '',
-  messages: Array.isArray(item?.messages) ? item.messages : [],
-});
-
-const getResponseData = <T,>(response: any): T | undefined =>
-  (response?.data?.data ?? response?.data ?? response) as T | undefined;
-
-const pickList = (response: any): any[] => {
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.list)) return response.list;
-  if (Array.isArray(response?.rows)) return response.rows;
-  if (Array.isArray(response?.data?.list)) return response.data.list;
-  if (Array.isArray(response?.data?.rows)) return response.data.rows;
-  if (Array.isArray(response?.data)) return response.data;
-  return [];
-};
-
 const getResponseMessage = (response: any, fallback: string) =>
   response?.msg || response?.message || response?.data?.msg || fallback;
 
@@ -225,42 +233,43 @@ const isSuccessResponse = (response: any) => {
   return true;
 };
 
-const assertSuccessResponse = <T,>(response: T, fallback: string) => {
-  if (!isSuccessResponse(response)) {
-    throw new Error(getResponseMessage(response, fallback));
-  }
-  return response;
+const qaConsoleStyles = {
+  connect: 'background:#1d4ed8;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+  event: 'background:#0f766e;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+  chunk: 'background:#7c3aed;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+  done: 'background:#15803d;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
+  error: 'background:#b91c1c;color:#fff;padding:2px 8px;border-radius:999px;font-weight:600;',
 };
 
-const requestFirstList = async (
-  configs: Array<{ url: string; method?: 'GET' | 'POST'; params?: any; data?: any }>,
-) => {
-  let lastError: Error | null = null;
+const getReferenceChunkFileName = (chunk: ReferenceChunkItem) =>
+  String(chunk.file_name ?? chunk.file_path ?? chunk.docId ?? '未命名文档');
 
-  for (const config of configs) {
-    try {
-      const result = assertSuccessResponse(
-        await request(config.url, {
-          method: config.method ?? 'GET',
-          params: config.params,
-          data: config.data,
-        }),
-        '列表加载失败',
-      );
-      const list = pickList(result);
-      if (Array.isArray(list)) return list;
-    } catch (error: any) {
-      lastError = error instanceof Error ? error : new Error('列表加载失败');
-    }
-  }
+const getReferenceSourceNames = (reference?: ChatReference) => {
+  if (!reference || Number(reference.total ?? 0) <= 0) return [];
+  const chunks = Array.isArray(reference.chunks) ? reference.chunks : [];
+  return Array.from(new Set(chunks.map(getReferenceChunkFileName).filter(Boolean)));
+};
 
-  if (lastError) throw lastError;
-  return [];
+const getReferenceChunks = (reference?: ChatReference) => {
+  if (!reference || Number(reference.total ?? 0) <= 0) return [];
+  return Array.isArray(reference.chunks) ? reference.chunks : [];
+};
+
+const getUniqueReferenceChunks = (reference?: ChatReference) => {
+  const chunks = getReferenceChunks(reference);
+  const seen = new Set<string>();
+  return chunks.filter((chunk, index) => {
+    const key = String(chunk.docId ?? chunk.file_name ?? chunk.file_path ?? index);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 };
 
 export default function RagSystemPage() {
   const { initialState } = useModel('@@initialState');
   const [assistantForm] = Form.useForm<AssistantFormValues>();
+  const [modelForm] = Form.useForm<ModelFormValues>();
   const [assistants, setAssistants] = useState<AssistantItem[]>([]);
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseOption[]>([]);
@@ -272,6 +281,15 @@ export default function RagSystemPage() {
   const [savingAssistant, setSavingAssistant] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
+  const [modelSelectorMode, setModelSelectorMode] = useState<ModelSelectorMode>('llm');
+  const [modelListLoading, setModelListLoading] = useState(false);
+  const [modelList, setModelList] = useState<ModelPageItem[]>([]);
+  const [modelPageNo, setModelPageNo] = useState(1);
+  const [modelTotal, setModelTotal] = useState(0);
+  const [modelCreateOpen, setModelCreateOpen] = useState(false);
+  const [modelCreating, setModelCreating] = useState(false);
+  const [modelTesting, setModelTesting] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [newChatTitle, setNewChatTitle] = useState('');
   const [activeAssistantId, setActiveAssistantId] = useState<number | string>('');
@@ -280,6 +298,7 @@ export default function RagSystemPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const loadedChatMessagesRef = useRef<Record<string, boolean>>({});
   const chatRequestRef = useRef<{
     assistantId: number | string;
     promise: Promise<void>;
@@ -294,6 +313,84 @@ export default function RagSystemPage() {
     () => chats.find((item) => item.id === activeChatId),
     [chats, activeChatId],
   );
+
+  const modelTableColumns: ColumnsType<ModelPageItem> = [
+    {
+      title: '模型名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 220,
+    },
+    {
+      title: '提供方',
+      dataIndex: 'providerType',
+      key: 'providerType',
+      width: 120,
+      render: (value: string) => <Tag color="blue">{value || '-'}</Tag>,
+    },
+    {
+      title: '协议',
+      dataIndex: 'apiType',
+      key: 'apiType',
+      width: 120,
+      render: (value: string) => <Tag color="purple">{value || '-'}</Tag>,
+    },
+    {
+      title: '模型编码',
+      dataIndex: 'modelCode',
+      key: 'modelCode',
+      width: 220,
+      render: (value: string) => value || '-',
+    },
+    {
+      title: '模型地址',
+      dataIndex: 'baseUrl',
+      key: 'baseUrl',
+      ellipsis: true,
+      render: (value: string) => value || '-',
+    },
+    {
+      title: '状态',
+      dataIndex: 'enabled',
+      key: 'enabled',
+      width: 100,
+      render: (value: number) => (
+        <Tag color={Number(value) === 1 ? 'success' : 'default'}>
+          {Number(value) === 1 ? '启用' : '停用'}
+        </Tag>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 100,
+      render: (_value, record) => (
+        <Button
+          type="link"
+          disabled={Number(record.enabled) !== 1}
+          onClick={() => handleSelectModel(record)}
+        >
+          选择
+        </Button>
+      ),
+    },
+  ];
+
+  const updateChatMessages = (
+    chatId: number | string,
+    updater: (messages: MessageItem[]) => MessageItem[],
+  ) => {
+    setChats((prev) =>
+      prev.map((item) =>
+        item.id === chatId
+          ? {
+              ...item,
+              messages: updater((item.messages as MessageItem[]) || []),
+            }
+          : item,
+      ),
+    );
+  };
 
   const welcomeText = useMemo(() => {
     if (activeChat) {
@@ -330,17 +427,179 @@ export default function RagSystemPage() {
     };
   }, []);
 
+  const loadModelList = async (mode: ModelSelectorMode, pageNo = 1) => {
+    setModelListLoading(true);
+    try {
+      const response: any =
+        mode === 'llm'
+          ? await getLlmModelConfigPage({
+              pageNo,
+              pageSize: MODEL_PAGE_SIZE,
+            })
+          : await getEmbedModelConfigPage({
+              pageNo,
+              pageSize: MODEL_PAGE_SIZE,
+            });
+      const list = response?.data?.list || response?.list || response?.rows || [];
+      const total = Number(response?.data?.total || response?.total || 0);
+      setModelList(
+        Array.isArray(list)
+          ? list.map((item: ModelConfigItem) => ({
+              ...item,
+              key: item.id,
+            }))
+          : [],
+      );
+      setModelTotal(total);
+      setModelPageNo(pageNo);
+    } catch (error) {
+      console.error(error);
+      message.error(mode === 'llm' ? '加载问答模型列表失败' : '加载向量模型列表失败');
+    } finally {
+      setModelListLoading(false);
+    }
+  };
+
+  const openModelSelector = async (mode: ModelSelectorMode) => {
+    setModelSelectorMode(mode);
+    setModelSelectorOpen(true);
+    await loadModelList(mode, 1);
+  };
+
+  const openCreateModelModal = () => {
+    modelForm.setFieldsValue({
+      name: '',
+      providerType: 'vllm',
+      apiType: 'openai',
+      baseUrl: '',
+      modelCode: '',
+      apiKey: '',
+      enabled: true,
+      sort: 0,
+      remark: '',
+    });
+    setModelCreateOpen(true);
+  };
+
+  const handleModelProviderChange = (value: string) => {
+    if (value === 'claude') {
+      modelForm.setFieldValue('apiType', 'claude');
+      return;
+    }
+    if (modelForm.getFieldValue('apiType') === 'claude') {
+      modelForm.setFieldValue('apiType', 'openai');
+    }
+  };
+
+  const buildModelPayload = async () => {
+    const values = await modelForm.validateFields();
+    return {
+      name: values.name.trim(),
+      providerType: values.providerType,
+      apiType: values.apiType,
+      baseUrl: values.baseUrl.trim(),
+      modelCode: values.modelCode.trim(),
+      apiKey: values.apiKey?.trim() || '',
+      enabled: values.enabled ? 1 : 0,
+      sort: Number(values.sort || 0),
+      remark: values.remark?.trim() || '',
+    };
+  };
+
+  const handleCreateModel = async () => {
+    setModelCreating(true);
+    try {
+      const payload = await buildModelPayload();
+      const response: any =
+        modelSelectorMode === 'llm'
+          ? await addLlmModelConfig(payload)
+          : await addEmbedModelConfig(payload);
+      if (response?.code === 200) {
+        message.success(modelSelectorMode === 'llm' ? '模型新增成功' : '向量模型新增成功');
+        setModelCreateOpen(false);
+        await loadModelList(modelSelectorMode, 1);
+      } else {
+        message.error(
+          getResponseMessage(
+            response,
+            modelSelectorMode === 'llm' ? '模型新增失败' : '向量模型新增失败',
+          ),
+        );
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setModelCreating(false);
+    }
+  };
+
+  const handleTestModel = async () => {
+    setModelTesting(true);
+    try {
+      const payload = await buildModelPayload();
+      const response: any =
+        modelSelectorMode === 'llm'
+          ? await testLlmModelConfig({
+              providerType: payload.providerType,
+              apiType: payload.apiType,
+              baseUrl: payload.baseUrl,
+              modelCode: payload.modelCode,
+              apiKey: payload.apiKey,
+            })
+          : await testEmbedModelConfig({
+              providerType: payload.providerType,
+              apiType: payload.apiType,
+              baseUrl: payload.baseUrl,
+              modelCode: payload.modelCode,
+              apiKey: payload.apiKey,
+            });
+      if (response?.code === 200) {
+        Modal.info({
+          title: response?.data?.success
+            ? modelSelectorMode === 'llm'
+              ? '模型测试成功'
+              : '向量模型测试成功'
+            : modelSelectorMode === 'llm'
+              ? '模型测试结果'
+              : '向量模型测试结果',
+          content: response?.data?.message || '-',
+        });
+      } else {
+        message.error(
+          getResponseMessage(
+            response,
+            modelSelectorMode === 'llm' ? '模型测试失败' : '向量模型测试失败',
+          ),
+        );
+      }
+    } catch (error) {
+      console.error(error);
+      message.error(modelSelectorMode === 'llm' ? '模型测试失败' : '向量模型测试失败');
+    } finally {
+      setModelTesting(false);
+    }
+  };
+
+  const handleSelectModel = (model: ModelConfigItem) => {
+    if (modelSelectorMode === 'llm') {
+      assistantForm.setFieldsValue({
+        chatModelName: model.name,
+        chatModelUrl: model.baseUrl,
+      });
+    } else {
+      assistantForm.setFieldsValue({
+        embeddingModelName: model.name,
+        embeddingModelUrl: model.baseUrl,
+      });
+    }
+    setModelSelectorOpen(false);
+  };
+
   const loadAssistants = async () => {
     setAssistantLoading(true);
     try {
-      const list = await requestFirstList([
-        { url: `${API_PREFIX}/biz/qa-assistant/list`, method: 'GET' },
-        {
-          url: `${API_PREFIX}/biz/qa-assistant/page`,
-          method: 'GET',
-          params: { pageNo: 1, pageSize: 999 },
-        },
-      ]);
+      const response = await getAssistantList();
+      const list = pickList(assertSuccessResponse(response, '加载助理列表失败'));
 
       const normalized = list
         .map(normalizeAssistant)
@@ -375,22 +634,18 @@ export default function RagSystemPage() {
       return;
     }
 
-    const requestPromise = (async () => {
+    let requestPromise: Promise<void> | null = null;
+    requestPromise = (async () => {
       setChatLoading(true);
       try {
-        const list = await requestFirstList([
-          {
-            url: `${API_PREFIX}/biz/qa-chat/page`,
-            method: 'GET',
-            params: { pageNo: 1, pageSize: 999, assistantId },
-          },
-        ]);
+        const list = await getChatList(assistantId);
 
         const normalized = list
-          .map((item) => normalizeChat(item, assistantId))
+          .map((item) => normalizeChat(item))
           .filter((item) => item.id !== undefined && item.id !== null && item.id !== '');
 
         setChats(normalized);
+        loadedChatMessagesRef.current = {};
         setActiveChatId((prev) => {
           if (
             options?.preferredChatId !== undefined &&
@@ -415,7 +670,7 @@ export default function RagSystemPage() {
         setChats([]);
         setActiveChatId('');
       } finally {
-        if (chatRequestRef.current?.promise === requestPromise) {
+        if (requestPromise && chatRequestRef.current?.promise === requestPromise) {
           chatRequestRef.current = null;
         }
         setChatLoading(false);
@@ -460,6 +715,63 @@ export default function RagSystemPage() {
     void loadChats(activeAssistantId);
   }, [activeAssistantId]);
 
+  useEffect(() => {
+    const loadCurrentChatMessages = async () => {
+      if (!activeChatId) return;
+      const chatKey = String(activeChatId);
+      if (loadedChatMessagesRef.current[chatKey]) return;
+
+      setMessagesLoading(true);
+      try {
+        const list = await getChatMessages(activeChatId);
+        const normalized = list.map(normalizeChatMessage);
+        const historyMessages: MessageItem[] = normalized.flatMap((item, index) => {
+          const baseTimestamp = String(formatDateTime(item.createTime));
+          const questionMessage: MessageItem[] = item.question
+            ? [
+                {
+                  id: `history-q-${item.id ?? index}`,
+                  role: 'user',
+                  content: item.question,
+                  timestamp: baseTimestamp,
+                },
+              ]
+            : [];
+          const answerMessage: MessageItem[] = item.answer
+            ? [
+                {
+                  id: `history-a-${item.id ?? index}`,
+                  role: 'assistant',
+                  content: item.answer,
+                  timestamp: baseTimestamp,
+                  reference: item.reference,
+                  sources: getReferenceSourceNames(item.reference),
+                  status: 'done',
+                },
+              ]
+            : [];
+          return [...questionMessage, ...answerMessage];
+        });
+
+        updateChatMessages(activeChatId, () => historyMessages);
+        loadedChatMessagesRef.current[chatKey] = true;
+      } catch (error: any) {
+        message.error(error?.message || '加载聊天记录失败');
+      } finally {
+        setMessagesLoading(false);
+      }
+    };
+
+    void loadCurrentChatMessages();
+  }, [activeChatId]);
+
+  useEffect(() => {
+    if (!assistantModalOpen || !editingAssistant) return;
+    assistantForm.setFieldsValue({
+      ...editingAssistant,
+    });
+  }, [assistantForm, assistantModalOpen, editingAssistant]);
+
   const openCreateAssistant = () => {
     setEditingAssistant(null);
     assistantForm.resetFields();
@@ -471,12 +783,12 @@ export default function RagSystemPage() {
 
   const openEditAssistant = (assistant: AssistantItem) => {
     setEditingAssistant(assistant);
-    assistantForm.setFieldsValue(assistant);
     setAssistantModalOpen(true);
   };
 
   const handleSaveAssistant = async () => {
     const values = await assistantForm.validateFields();
+
     const payload = {
       id: editingAssistant?.id,
       name: values.name,
@@ -488,7 +800,6 @@ export default function RagSystemPage() {
       embeddingModelUrl: values.embeddingModelUrl,
       knowledgeBaseIds: values.knowledgeBaseIds,
     };
-
     setSavingAssistant(true);
     try {
       if (editingAssistant) {
@@ -550,9 +861,11 @@ export default function RagSystemPage() {
         }),
         '创建会话失败',
       );
-      const createdChat = getResponseData<{ id?: number | string; chatId?: number | string; qaChatId?: number | string }>(
-        createResponse,
-      );
+      const createdChat = getResponseData<{
+        id?: number | string;
+        chatId?: number | string;
+        qaChatId?: number | string;
+      }>(createResponse);
       const createdChatId = createdChat?.id ?? createdChat?.chatId ?? createdChat?.qaChatId;
       message.success('创建成功');
       setNewChatTitle('');
@@ -608,11 +921,20 @@ export default function RagSystemPage() {
     }
   };
 
+  const handleOpenReferenceDoc = (chunk: ReferenceChunkItem) => {
+    if (!chunk.docId) {
+      message.warning('未获取到文档ID');
+      return;
+    }
+    history.push(`/data/document/${chunk.docId}`);
+  };
+
   const handleClearChat = () => {
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
 
     if (!activeChat) return;
+    loadedChatMessagesRef.current[String(activeChat.id)] = true;
     setChats((prev) =>
       prev.map((item) => (item.id === activeChat.id ? { ...item, messages: [] } : item)),
     );
@@ -623,31 +945,28 @@ export default function RagSystemPage() {
     if (!question.trim() || !activeChat || !activeAssistant) return;
 
     streamAbortRef.current?.abort();
+    const trimmedQuestion = question.trim();
+    const targetChatId = activeChat.id;
+    let latestReference: ChatReference | undefined;
+    let latestAnswerSnapshot = '';
+    let hasSavedCurrentRound = false;
 
     const userMessage: MessageItem = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: question.trim(),
+      content: trimmedQuestion,
       timestamp: getNowLabel(),
     };
 
     const assistantMessageId = `assistant-${Date.now()}`;
-    const assistantPlaceholder: MessageItem = {
-      id: assistantMessageId,
-      role: 'assistant',
-      content: '',
-      timestamp: getNowLabel(),
-      sources: [],
-      status: 'streaming',
-    };
 
     setChats((prev) =>
       prev.map((item) =>
-        item.id === activeChat.id
+        item.id === targetChatId
           ? {
               ...item,
-              title: item.messages.length === 0 ? question.trim().slice(0, 16) : item.title,
-              messages: [...item.messages, userMessage, assistantPlaceholder],
+              title: item.messages.length === 0 ? trimmedQuestion.slice(0, 16) : item.title,
+              messages: [...item.messages, userMessage],
             }
           : item,
       ),
@@ -656,28 +975,56 @@ export default function RagSystemPage() {
     setMessagesLoading(true);
 
     const requestPayload: ChatStreamRequestPayload = {
-      sessionId: activeChat.id,
-      assistantId: activeAssistant.id,
-      question: question.trim(),
-      assistantName: activeAssistant.name,
-      knowledgeBaseIds: activeAssistant.knowledgeBaseIds,
-      chatModelName: activeAssistant.chatModelName,
-      chatModelUrl: activeAssistant.chatModelUrl,
-      stream: true,
-      history: activeChat.messages.map((item) => ({
-        role: item.role,
-        content: item.content,
-      })),
-      metadata: {
-        source: 'rag-system-page',
-        requestedAt: new Date().toISOString(),
-      },
+      question: trimmedQuestion,
+      knowledge_base_id: activeAssistant.knowledgeBaseIds,
+      embed_api_type: 'auto',
+      embed_base_url: activeAssistant.embeddingModelUrl,
+      embed_model: activeAssistant.embeddingModelName,
+      llm_base_url: activeAssistant.chatModelUrl,
+      llm_model: activeAssistant.chatModelName,
+      enable_thinking: 'false',
+      history: activeChat.messages
+        .filter((item) => item.role === 'user' || item.role === 'assistant')
+        .map((item) => ({
+          role: item.role,
+          content: item.content,
+        })),
+      max_history_turns: MAX_HISTORY_TURNS,
+      max_history_chars: MAX_HISTORY_CHARS,
+    };
+
+    const ensureAssistantMessage = (initialPatch?: Partial<MessageItem>) => {
+      setChats((prev) =>
+        prev.map((item) => {
+          if (item.id !== targetChatId) return item;
+          const hasAssistantMessage = item.messages.some(
+            (messageItem) => messageItem.id === assistantMessageId,
+          );
+          if (hasAssistantMessage) return item;
+          return {
+            ...item,
+            messages: [
+              ...item.messages,
+              {
+                id: assistantMessageId,
+                role: 'assistant',
+                content: '',
+                timestamp: getNowLabel(),
+                sources: [],
+                reference: undefined,
+                status: 'streaming',
+                ...initialPatch,
+              },
+            ],
+          };
+        }),
+      );
     };
 
     const updateAssistantMessage = (updater: (messageItem: MessageItem) => MessageItem) => {
       setChats((prev) =>
         prev.map((item) =>
-          item.id === activeChat.id
+          item.id === targetChatId
             ? {
                 ...item,
                 messages: item.messages.map((messageItem) =>
@@ -690,6 +1037,7 @@ export default function RagSystemPage() {
     };
 
     const finishStreamMessage = (patch?: Partial<MessageItem>) => {
+      ensureAssistantMessage(patch);
       updateAssistantMessage((messageItem) => ({
         ...messageItem,
         ...patch,
@@ -700,27 +1048,66 @@ export default function RagSystemPage() {
       streamAbortRef.current = null;
     };
 
+    const persistChatRound = async (answer: string, reference?: ChatReference) => {
+      if (hasSavedCurrentRound) return;
+      hasSavedCurrentRound = true;
+      try {
+        await saveChatMessage({
+          chatId: targetChatId,
+          question: trimmedQuestion,
+          answer,
+          reference,
+        });
+      } catch (error: any) {
+        hasSavedCurrentRound = false;
+        message.warning(error?.message || '聊天记录保存失败');
+      }
+    };
+
     const abortController = new AbortController();
     streamAbortRef.current = abortController;
 
     try {
-      await fetchEventSource(CHAT_STREAM_ENDPOINT, {
+      await fetchEventSource(QA_STREAM_ENDPOINT, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${getAccessToken() || ''}`,
-          'Content-Type': 'application/json;charset=utf-8',
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(requestPayload),
         signal: abortController.signal,
         openWhenHidden: true,
         async onopen(response) {
+          console.groupCollapsed('%cQA STREAM 连接建立', qaConsoleStyles.connect, {
+            url: QA_STREAM_ENDPOINT,
+            status: response.status,
+            ok: response.ok,
+            time: new Date().toLocaleString('zh-CN'),
+            requestPayload,
+          });
+          console.log('response headers:', Object.fromEntries(response.headers.entries()));
+          console.groupEnd();
           if (!response.ok) {
             throw new Error(`对话接口连接失败：${response.status}`);
           }
         },
         onmessage(event) {
+          console.groupCollapsed('%cQA STREAM EVENT', qaConsoleStyles.event, {
+            event: event.event || 'message',
+            id: event.id || '',
+            retry: event.retry ?? '',
+            time: new Date().toLocaleString('zh-CN'),
+          });
+          console.log('raw event.data:', event.data);
+          console.groupEnd();
+
           if (!event.data || event.data === 'connected') return;
           if (event.data === '[DONE]') {
+            console.log('%cQA STREAM DONE', qaConsoleStyles.done, {
+              reason: '[DONE]',
+              time: new Date().toLocaleString('zh-CN'),
+            });
             finishStreamMessage();
             return;
           }
@@ -729,6 +1116,12 @@ export default function RagSystemPage() {
           try {
             chunk = JSON.parse(event.data) as ChatStreamChunk;
           } catch {
+            console.log('%cQA STREAM CHUNK', qaConsoleStyles.chunk, {
+              mode: 'plain-text',
+              text: event.data,
+              time: new Date().toLocaleString('zh-CN'),
+            });
+            ensureAssistantMessage();
             updateAssistantMessage((messageItem) => ({
               ...messageItem,
               content: `${messageItem.content}${event.data}`,
@@ -741,30 +1134,79 @@ export default function RagSystemPage() {
           }
 
           const chunkData = chunk?.data;
-          const delta =
-            chunkData?.delta ?? chunkData?.content ?? chunkData?.answer ?? chunkData?.text ?? '';
+          const streamedAnswer =
+            chunkData?.answer ?? chunkData?.content ?? chunkData?.text ?? chunkData?.delta ?? '';
+          const delta = chunkData?.delta ?? chunkData?.content ?? chunkData?.text ?? '';
+          latestReference = chunkData?.reference ?? latestReference;
+          const sourceNames = getReferenceSourceNames(latestReference);
 
-          if (delta) {
+          if (streamedAnswer) {
+            latestAnswerSnapshot = streamedAnswer;
+          }
+
+          console.log('%cQA STREAM CHUNK', qaConsoleStyles.chunk, {
+            code: chunk?.code ?? 200,
+            done: chunkData?.done ?? false,
+            delta,
+            answer: chunkData?.answer ?? '',
+            reference: chunkData?.reference ?? null,
+            sources: chunkData?.sources ?? chunkData?.sourceList ?? [],
+            raw: chunk,
+            time: new Date().toLocaleString('zh-CN'),
+          });
+
+          if (streamedAnswer) {
+            ensureAssistantMessage();
             updateAssistantMessage((messageItem) => ({
               ...messageItem,
-              content: `${messageItem.content}${delta}`,
-              sources: chunkData?.sources ?? chunkData?.sourceList ?? messageItem.sources,
+              content:
+                chunkData?.answer && chunkData.answer.startsWith(messageItem.content)
+                  ? chunkData.answer
+                  : `${messageItem.content}${delta || streamedAnswer}`,
+              reference: latestReference ?? messageItem.reference,
+              sources:
+                sourceNames.length > 0
+                  ? sourceNames
+                  : chunkData?.sources || chunkData?.sourceList || messageItem.sources,
             }));
           }
 
           if (chunkData?.done) {
+            void persistChatRound(latestAnswerSnapshot, latestReference);
+            console.log('%cQA STREAM DONE', qaConsoleStyles.done, {
+              reason: 'chunk.data.done',
+              sources: chunkData.sources ?? chunkData.sourceList ?? [],
+              time: new Date().toLocaleString('zh-CN'),
+            });
             finishStreamMessage({
-              sources: chunkData.sources ?? chunkData.sourceList,
+              content: latestAnswerSnapshot,
+              reference: latestReference,
+              sources:
+                sourceNames.length > 0 ? sourceNames : (chunkData.sources ?? chunkData.sourceList),
             });
           }
         },
         onclose() {
-          finishStreamMessage();
+          if (latestAnswerSnapshot) {
+            void persistChatRound(latestAnswerSnapshot, latestReference);
+          }
+          console.log('%cQA STREAM CLOSED', qaConsoleStyles.done, {
+            time: new Date().toLocaleString('zh-CN'),
+          });
+          finishStreamMessage({
+            content: latestAnswerSnapshot,
+            reference: latestReference,
+            sources: getReferenceSourceNames(latestReference),
+          });
         },
         onerror(error) {
+          console.error('%cQA STREAM ERROR', qaConsoleStyles.error, {
+            error,
+            time: new Date().toLocaleString('zh-CN'),
+          });
           finishStreamMessage({
             status: 'error',
-            content: '对话接口暂未配置完成，当前为流式调用预留状态。后端联调后这里会展示实时回复。',
+            content: '对话接口调用失败，请稍后重试。',
           });
           throw error;
         },
@@ -780,9 +1222,9 @@ export default function RagSystemPage() {
 
       finishStreamMessage({
         status: 'error',
-        content: '对话接口暂未配置完成，当前为流式调用预留状态。后端联调后这里会展示实时回复。',
+        content: '对话接口调用失败，请稍后重试。',
       });
-      message.warning(error?.message || '对话接口暂未接入，已保留流式调用骨架');
+      message.warning(error?.message || '对话接口暂不可用');
     }
   };
 
@@ -887,7 +1329,7 @@ export default function RagSystemPage() {
         <aside className="chat-sidebar">
           <div className="sidebar-header">
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="sidebar-title">会话（{chats.length}）</div>
+              <div className="sidebar-title">{`会话（${chats.length}）`}</div>
               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                 <Input
                   value={newChatTitle}
@@ -976,10 +1418,17 @@ export default function RagSystemPage() {
               </div>
               {activeAssistant && (
                 <Space size={8} wrap>
-                  <Button className="clear-button" icon={<ClearOutlined />} onClick={handleClearChat}>
+                  <Button
+                    className="clear-button"
+                    icon={<ClearOutlined />}
+                    onClick={handleClearChat}
+                  >
                     清空对话
                   </Button>
-                  <Button icon={<SettingOutlined />} onClick={() => openEditAssistant(activeAssistant)}>
+                  <Button
+                    icon={<SettingOutlined />}
+                    onClick={() => openEditAssistant(activeAssistant)}
+                  >
                     配置
                   </Button>
                 </Space>
@@ -1007,7 +1456,8 @@ export default function RagSystemPage() {
                   </div>
                 </div>
               </div>
-
+              {/* 推荐问题功能先注释 */}
+              {/* 
               {activeChat && (
                 <div className="recommend-section">
                   <div className="recommend-header">
@@ -1029,7 +1479,7 @@ export default function RagSystemPage() {
                     ))}
                   </div>
                 </div>
-              )}
+              )} */}
             </div>
           ) : (
             <div className="messages-area">
@@ -1069,7 +1519,42 @@ export default function RagSystemPage() {
                         />
                         {msg.role === 'assistant' && (
                           <div className="message-tools">
-                            {msg.sources?.map((source) => (
+                            {Number(msg.reference?.total ?? 0) > 0 && (
+                              <div
+                                style={{
+                                  width: '100%',
+                                  marginBottom: 10,
+                                  padding: '10px 12px',
+                                  borderRadius: 12,
+                                  background: '#f8fafc',
+                                  border: '1px solid #e2e8f0',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: '#475569',
+                                    marginBottom: 8,
+                                  }}
+                                >
+                                  引用文档
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                  {getUniqueReferenceChunks(msg.reference).map((chunk, index) => (
+                                    <Button
+                                      key={`${chunk.docId ?? chunk.file_name ?? index}`}
+                                      size="small"
+                                      type="default"
+                                      onClick={() => handleOpenReferenceDoc(chunk)}
+                                    >
+                                      {getReferenceChunkFileName(chunk)}
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {msg.sources?.map((source: string) => (
                               <span key={source} className="sidebar-mini-tag">
                                 {source}
                               </span>
@@ -1161,7 +1646,7 @@ export default function RagSystemPage() {
       <Modal
         title={editingAssistant ? '编辑助理' : '新建助理'}
         open={assistantModalOpen}
-        width={720}
+        width={920}
         onCancel={() => setAssistantModalOpen(false)}
         onOk={() => void handleSaveAssistant()}
         confirmLoading={savingAssistant}
@@ -1173,42 +1658,139 @@ export default function RagSystemPage() {
             <Form.Item
               name="name"
               label="助理名称"
+              className="assistant-form-full-row"
               rules={[{ required: true, message: '请输入助理名称' }]}
             >
               <Input placeholder="例如：法规问答助理" />
             </Form.Item>
 
-            <Form.Item
-              name="chatModelName"
-              label="问答模型名称"
-              rules={[{ required: true, message: '请输入问答模型名称' }]}
+            <div
+              className="assistant-form-full-row"
+              style={{
+                marginBottom: 20,
+                padding: '16px 16px 4px',
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%)',
+                border: '1px solid #d6e8ff',
+              }}
             >
-              <Input placeholder="qwen2.5-72b-instruct" />
-            </Form.Item>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  marginBottom: 8,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: '#1d39c4',
+                    }}
+                  >
+                    <MessageOutlined />
+                    <span>问答模型配置</span>
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: '#597ef7' }}>
+                    可手动填写，也可从模型管理中选择并自动回填名称和地址。
+                  </div>
+                </div>
+                <Button type="primary" ghost onClick={() => void openModelSelector('llm')}>
+                  从模型管理选择
+                </Button>
+              </div>
 
-            <Form.Item
-              name="chatModelUrl"
-              label="问答模型地址"
-              rules={[{ required: true, message: '请输入问答模型地址' }]}
-            >
-              <Input placeholder="http://127.0.0.1:8000/v1" />
-            </Form.Item>
+              <Form.Item style={{ marginBottom: 0 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <Form.Item
+                    name="chatModelName"
+                    label="问答模型名称"
+                    rules={[{ required: true, message: '请输入问答模型名称' }]}
+                  >
+                    <Input placeholder="qwen2.5-72b-instruct" />
+                  </Form.Item>
 
-            <Form.Item
-              name="embeddingModelName"
-              label="向量模型名称"
-              rules={[{ required: true, message: '请输入向量模型名称' }]}
-            >
-              <Input placeholder="bge-large-zh" />
-            </Form.Item>
+                  <Form.Item
+                    name="chatModelUrl"
+                    label="问答模型地址"
+                    rules={[{ required: true, message: '请输入问答模型地址' }]}
+                  >
+                    <Input placeholder="http://127.0.0.1:8000/v1" />
+                  </Form.Item>
+                </div>
+              </Form.Item>
+            </div>
 
-            <Form.Item
-              name="embeddingModelUrl"
-              label="向量模型地址"
-              rules={[{ required: true, message: '请输入向量模型地址' }]}
+            <div
+              className="assistant-form-full-row"
+              style={{
+                marginBottom: 20,
+                padding: '16px 16px 4px',
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%)',
+                border: '1px solid #d6e8ff',
+              }}
             >
-              <Input placeholder="http://127.0.0.1:8001/embed" />
-            </Form.Item>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  marginBottom: 8,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      color: '#1d39c4',
+                    }}
+                  >
+                    <ApiOutlined />
+                    <span>向量模型配置</span>
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: '#597ef7' }}>
+                    可手动填写，也可从向量管理中选择并自动回填名称和地址。
+                  </div>
+                </div>
+                <Button type="primary" ghost onClick={() => void openModelSelector('embed')}>
+                  从向量管理中选择
+                </Button>
+              </div>
+
+              <Form.Item style={{ marginBottom: 0 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <Form.Item
+                    name="embeddingModelName"
+                    label="向量模型名称"
+                    rules={[{ required: true, message: '请输入向量模型名称' }]}
+                  >
+                    <Input placeholder="bge-large-zh" />
+                  </Form.Item>
+
+                  <Form.Item
+                    name="embeddingModelUrl"
+                    label="向量模型地址"
+                    rules={[{ required: true, message: '请输入向量模型地址' }]}
+                  >
+                    <Input placeholder="http://127.0.0.1:8001/embed" />
+                  </Form.Item>
+                </div>
+              </Form.Item>
+            </div>
           </div>
 
           <Form.Item
@@ -1234,6 +1816,152 @@ export default function RagSystemPage() {
         </Form>
       </Modal>
 
+      <Modal
+        title={modelSelectorMode === 'llm' ? '选择问答模型' : '选择向量模型'}
+        open={modelSelectorOpen}
+        width={1200}
+        footer={null}
+        onCancel={() => setModelSelectorOpen(false)}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 16,
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 13, color: '#8c8c8c' }}>
+            {modelSelectorMode === 'llm'
+              ? '可以直接选择已有问答模型，也可以先新增一个模型配置。'
+              : '可以直接选择已有向量模型，也可以先新增一个向量模型配置。'}
+          </div>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModelModal}>
+            {modelSelectorMode === 'llm' ? '新增模型' : '新增向量模型'}
+          </Button>
+        </div>
+        <Table
+          rowKey="id"
+          loading={modelListLoading}
+          dataSource={modelList}
+          columns={modelTableColumns}
+          pagination={false}
+          scroll={{ x: 900 }}
+        />
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            marginTop: 16,
+          }}
+        >
+          <Pagination
+            current={modelPageNo}
+            pageSize={MODEL_PAGE_SIZE}
+            total={modelTotal}
+            showSizeChanger={false}
+            onChange={(pageNo) => void loadModelList(modelSelectorMode, pageNo)}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        title={modelSelectorMode === 'llm' ? '新增模型' : '新增向量模型'}
+        open={modelCreateOpen}
+        width={760}
+        onCancel={() => setModelCreateOpen(false)}
+        footer={[
+          <Button
+            key="test"
+            icon={<ApiOutlined />}
+            loading={modelTesting}
+            onClick={() => void handleTestModel()}
+          >
+            测试连接
+          </Button>,
+          <Button key="cancel" onClick={() => setModelCreateOpen(false)}>
+            取消
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            loading={modelCreating}
+            onClick={() => void handleCreateModel()}
+          >
+            保存
+          </Button>,
+        ]}
+      >
+        <Form form={modelForm} layout="vertical">
+          <div className="assistant-form-grid">
+            <Form.Item
+              name="name"
+              label="模型名称"
+              rules={[{ required: true, message: '请输入模型名称' }]}
+            >
+              <Input placeholder="例如：本地 Qwen 2.5 7B" />
+            </Form.Item>
+            <Form.Item name="enabled" label="是否启用" valuePropName="checked">
+              <Switch checkedChildren="启用" unCheckedChildren="停用" />
+            </Form.Item>
+            <Form.Item
+              name="providerType"
+              label="提供方类型"
+              rules={[{ required: true, message: '请选择提供方类型' }]}
+            >
+              <Select
+                options={
+                  modelSelectorMode === 'llm' ? modelProviderOptions : embedModelProviderOptions
+                }
+                onChange={handleModelProviderChange}
+              />
+            </Form.Item>
+            <Form.Item
+              name="apiType"
+              label="协议类型"
+              rules={[{ required: true, message: '请选择协议类型' }]}
+            >
+              <Select
+                options={
+                  modelSelectorMode === 'llm' ? modelApiTypeOptions : embedModelApiTypeOptions
+                }
+              />
+            </Form.Item>
+            <Form.Item
+              name="baseUrl"
+              label="基础地址"
+              className="assistant-form-full-row"
+              rules={[{ required: true, message: '请输入基础地址' }]}
+            >
+              <Input placeholder="例如：http://127.0.0.1:11434/v1" />
+            </Form.Item>
+            <Form.Item
+              name="modelCode"
+              label="模型编码"
+              rules={[{ required: true, message: '请输入模型编码' }]}
+            >
+              <Input placeholder="例如：qwen2.5:7b 或 gpt-4o-mini" />
+            </Form.Item>
+            <Form.Item name="sort" label="排序号">
+              <Input type="number" placeholder="默认 0" />
+            </Form.Item>
+            <Form.Item name="apiKey" label="API Key" className="assistant-form-full-row">
+              <Input.Password placeholder="本地无密码服务可留空" />
+            </Form.Item>
+            <Form.Item name="remark" label="备注" className="assistant-form-full-row">
+              <Input.TextArea
+                rows={3}
+                placeholder={
+                  modelSelectorMode === 'llm'
+                    ? '说明该模型的使用场景，例如问答、推理等'
+                    : '说明该向量模型的使用场景，例如知识库默认召回向量模型'
+                }
+              />
+            </Form.Item>
+          </div>
+        </Form>
+      </Modal>
     </div>
   );
 }

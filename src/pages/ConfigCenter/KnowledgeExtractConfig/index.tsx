@@ -470,7 +470,9 @@ export default function KnowledgeExtractPage() {
             type="link"
             size="small"
             icon={<EyeOutlined />}
-            onClick={() => history.push(`/config-center/knowledge-extract/config?id=${record.id}&mode=view`)}
+            onClick={() =>
+              history.push(`/config-center/knowledge-extract/config?id=${record.id}&mode=view`)
+            }
           >
             查看
           </Button>
@@ -541,7 +543,7 @@ export default function KnowledgeExtractPage() {
                 抽取规则配置模板管理
               </div>
               <div style={{ fontSize: 14, color: '#8c8c8c', marginTop: 2 }}>
-                统一管理抽取规则配置模板，支持快速复用、编辑和分享，提高知识抽取配置效率
+                统一管理抽取规则配置模板
               </div>
             </div>
             <Space size={24}>
@@ -630,7 +632,10 @@ export default function KnowledgeExtractPage() {
             </Col>
             <Col flex="auto" style={{ textAlign: 'right' }}>
               <Space>
-                <Button icon={<ReloadOutlined />} onClick={() => fetchTemplates(currentPage, pageSize)}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={() => fetchTemplates(currentPage, pageSize)}
+                >
                   刷新
                 </Button>
                 <Button
@@ -714,7 +719,9 @@ export default function KnowledgeExtractPage() {
                           {template.name}
                         </div>
                       </div>
-                      <Tag color="geekblue">排序 {sortDraftMap[template.id] ?? template.sortNo}</Tag>
+                      <Tag color="geekblue">
+                        排序 {sortDraftMap[template.id] ?? template.sortNo}
+                      </Tag>
                     </div>
 
                     <div style={{ marginBottom: 8 }}>
@@ -822,7 +829,11 @@ export default function KnowledgeExtractPage() {
                           type="link"
                           size="small"
                           icon={<EyeOutlined />}
-                          onClick={() => history.push(`/config-center/knowledge-extract/config?id=${template.id}&mode=view`)}
+                          onClick={() =>
+                            history.push(
+                              `/config-center/knowledge-extract/config?id=${template.id}&mode=view`,
+                            )
+                          }
                         >
                           查看
                         </Button>
@@ -831,11 +842,15 @@ export default function KnowledgeExtractPage() {
                           size="small"
                           icon={<EditOutlined />}
                           disabled={template.isBuiltin}
-                          onClick={() => history.push(`/config-center/knowledge-extract/config?id=${template.id}`)}
+                          onClick={() =>
+                            history.push(
+                              `/config-center/knowledge-extract/config?id=${template.id}`,
+                            )
+                          }
                         >
                           编辑
                         </Button>
-                                              <Popconfirm
+                        <Popconfirm
                           title="确认删除?"
                           onConfirm={() => handleDelete(template.id)}
                           okText="确认"
@@ -854,8 +869,16 @@ export default function KnowledgeExtractPage() {
                         </Popconfirm>
                       </Space>
                       <Space size={4}>
-                        <Button size="small" icon={<UpOutlined />} onClick={() => handleMoveSort(template, 'up')} />
-                        <Button size="small" icon={<DownOutlined />} onClick={() => handleMoveSort(template, 'down')} />
+                        <Button
+                          size="small"
+                          icon={<UpOutlined />}
+                          onClick={() => handleMoveSort(template, 'up')}
+                        />
+                        <Button
+                          size="small"
+                          icon={<DownOutlined />}
+                          onClick={() => handleMoveSort(template, 'down')}
+                        />
                       </Space>
                     </div>
                   </Card>
@@ -888,5 +911,3 @@ export default function KnowledgeExtractPage() {
     </div>
   );
 }
-
-

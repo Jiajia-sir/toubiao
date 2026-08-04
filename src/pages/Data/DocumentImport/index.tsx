@@ -169,6 +169,20 @@ const INTELLIGENT_STEPS = ['关键词提取', '实体抽取', '标签分类'];
 
 const INTELLIGENT_STEP_HEIGHT = 20;
 
+const CONFIG_SHORTCUTS = [
+  { key: 'tag', label: '标签管理', path: '/config-center/tag' },
+  { key: 'channel', label: '来源渠道', path: '/data/channel-config' },
+  { key: 'catalog', label: '编目管理', path: '/config-center/catalog' },
+  { key: 'knowledge-extract', label: '知识抽取配置', path: '/config-center/knowledge-extract' },
+];
+
+const CONFIG_SHORTCUT_TOOLTIPS: Record<string, string> = {
+  tag: '跳转到标签管理页面',
+  channel: '跳转到来源渠道配置页面',
+  catalog: '跳转到编目管理页面',
+  'knowledge-extract': '跳转到知识抽取配置页面',
+};
+
 const IntelligentProcessingTag: React.FC = () => {
   const [step, setStep] = useState(0);
 
@@ -548,7 +562,10 @@ export default function DocumentImportPage() {
     setEditingTags(
       (record.fileTagNames || [])
         .map((tagName) => tagOptions.find((option) => option.label === tagName)?.value)
-        .filter((value): value is number | string => value !== undefined && value !== null && value !== ''),
+        .filter(
+          (value): value is number | string =>
+            value !== undefined && value !== null && value !== '',
+        ),
     );
     setEditVisible(true);
   };
@@ -1500,31 +1517,51 @@ export default function DocumentImportPage() {
           boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
         }}
       >
-        <Tabs
-          activeKey={accessMode}
-          onChange={handleAccessModeChange}
-          style={{ marginBottom: 16 }}
-          items={[
-            {
-              key: '1',
-              label: (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <SyncOutlined />
-                  自动读取
-                </span>
-              ),
-            },
-            {
-              key: '2',
-              label: (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <CloudUploadOutlined />
-                  页面上传
-                </span>
-              ),
-            },
-          ]}
-        />
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 16,
+            flexWrap: 'wrap',
+            marginBottom: 16,
+          }}
+        >
+          <Tabs
+            activeKey={accessMode}
+            onChange={handleAccessModeChange}
+            style={{ marginBottom: 0, flex: 1, minWidth: 280 }}
+            items={[
+              {
+                key: '1',
+                label: (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <SyncOutlined />
+                    自动读取
+                  </span>
+                ),
+              },
+              {
+                key: '2',
+                label: (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <CloudUploadOutlined />
+                    页面上传
+                  </span>
+                ),
+              },
+            ]}
+          />
+          <Space size={[8, 8]} wrap>
+            {CONFIG_SHORTCUTS.map((item) => (
+              <Tooltip key={item.key} title={CONFIG_SHORTCUT_TOOLTIPS[item.key] || '页面跳转'}>
+                <Button type="link" onClick={() => history.push(item.path)}>
+                  {item.label}
+                </Button>
+              </Tooltip>
+            ))}
+          </Space>
+        </div>
         <Table
           columns={columns}
           dataSource={data}
@@ -1917,9 +1954,7 @@ export default function DocumentImportPage() {
                 style={{
                   padding: '10px 12px',
                   border:
-                    batchImportOperateType === 'APPEND'
-                      ? '1px solid #91caff'
-                      : '1px solid #f0f0f0',
+                    batchImportOperateType === 'APPEND' ? '1px solid #91caff' : '1px solid #f0f0f0',
                   borderRadius: 8,
                   background: batchImportOperateType === 'APPEND' ? '#f0f7ff' : '#fff',
                 }}
