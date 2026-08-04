@@ -8,7 +8,7 @@ import {
   getKnowledgeExtractConfigDetail,
   updateKnowledgeExtractConfig,
 } from '@/services/biz/knowledge-extract-config';
-import { getTagList, type TagItem } from '@/services/biz/tag';
+import { addTag, getTagList, type TagItem } from '@/services/biz/tag';
 import {
   getEntityTypeAttributeList,
   getEntityTypeList,
@@ -34,6 +34,8 @@ import {
   Tooltip,
   Slider,
   Switch,
+  Modal,
+  Form,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -47,6 +49,7 @@ import {
   TagOutlined,
   ClusterOutlined,
   BranchesOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 
 interface KnowledgeExtractConfig {
@@ -85,6 +88,16 @@ const defaultTagOptions = [
 ];
 
 const defaultModelOptions: ModelOption[] = [];
+const tagColorOptions = [
+  { label: '蓝色', value: '#1890ff' },
+  { label: '绿色', value: '#52c41a' },
+  { label: '黄色', value: '#faad14' },
+  { label: '粉色', value: '#eb2f96' },
+  { label: '青色', value: '#13c2c2' },
+  { label: '紫色', value: '#722ed1' },
+  { label: '橙色', value: '#fa541c' },
+  { label: '红色', value: '#f5222d' },
+];
 
 const modelPrecisionOptions = [
   { label: '精确抽取', value: '精确抽取' },
@@ -144,6 +157,11 @@ interface ModelOption {
   value: number;
   modelName: string;
 }
+
+type TagFormValues = {
+  tag: string;
+  color: string;
+};
 
 const normalizeModelOption = (item: LlmModelConfigItem): ModelOption => {
   const displayName = item.name || item.modelCode;
@@ -222,6 +240,9 @@ export default function KnowledgeExtractConfigPage() {
   const [attributeLoadingMap, setAttributeLoadingMap] = useState<Record<string, boolean>>({});
   const [activeFineEntityTypeId, setActiveFineEntityTypeId] = useState('');
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
+  const [tagModalVisible, setTagModalVisible] = useState(false);
+  const [tagSubmitting, setTagSubmitting] = useState(false);
+  const [tagForm] = Form.useForm<TagFormValues>();
 
   const getSelectedModelName = () => {
     const option = modelOptions.find((item) => item.value === config.modelId);
@@ -311,6 +332,26 @@ export default function KnowledgeExtractConfigPage() {
       return response;
     }
     return [];
+  };
+
+  const fetchTagOptions = async () => {
+    try {
+      const res: any = await getTagList();
+      if (res?.code === 200) {
+        const options = extractList<any>(res).map((item) => ({
+          label: item.tag,
+          value: item.tag,
+        }));
+        setTagOptions(options.length > 0 ? options : defaultTagOptions);
+      } else {
+        message.error(res?.msg || '获取标签列表失败');
+        setTagOptions(defaultTagOptions);
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('获取标签列表失败');
+      setTagOptions(defaultTagOptions);
+    }
   };
 
   const normalizeEntityTypeItem = (item: any): EntityTypeItem => ({
@@ -438,6 +479,35 @@ export default function KnowledgeExtractConfigPage() {
     fetchEntityTypeOptions();
     fetchModelOptions();
   }, []);
+
+  const handleAddTag = async () => {
+    setTagSubmitting(true);
+    try {
+      const values = await tagForm.validateFields();
+      const tagName = values.tag.trim();
+      const res: any = await addTag({
+        tag: tagName,
+        color: values.color,
+      });
+      if (res?.code === 200) {
+        message.success('新增标签成功');
+        setTagModalVisible(false);
+        tagForm.resetFields();
+        await fetchTagOptions();
+      } else {
+        message.error(res?.msg || '新增标签失败');
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setTagSubmitting(false);
+    }
+  };
+
+  const handleCloseTagModal = () => {
+    setTagModalVisible(false);
+    tagForm.resetFields();
+  };
 
   useEffect(() => {
     if (!activeFineEntityTypeId && entityTypeOptions.length > 0) {
@@ -820,7 +890,7 @@ export default function KnowledgeExtractConfigPage() {
                   </Tag>
                 ))}
                 <Select
-                  placeholder="+ 添加标签"
+                  placeholder="选择标签"
                   style={{ width: 120, height: 22 }}
                   value={undefined}
                   onChange={(value) => {
@@ -834,6 +904,22 @@ export default function KnowledgeExtractConfigPage() {
                   options={tagOptions.filter((tag) => !config.tags.includes(tag.value))}
                   allowClear
                 />
+                {!isReadOnly && (
+                  <Button
+                    type="dashed"
+                    size="small"
+                    icon={<PlusOutlined />}
+                    onClick={() => {
+                      tagForm.setFieldsValue({
+                        tag: '',
+                        color: '#1890ff',
+                      });
+                      setTagModalVisible(true);
+                    }}
+                  >
+                    新增标签
+                  </Button>
+                )}
               </Space>
             </div>
           </Card>
@@ -2145,6 +2231,46 @@ export default function KnowledgeExtractConfigPage() {
           </Card>
         </Col>
       </Row>
+
+      <Modal
+        title="新增标签"
+        open={tagModalVisible}
+        onCancel={handleCloseTagModal}
+        onOk={() => void handleAddTag()}
+        confirmLoading={tagSubmitting}
+        okText="确定"
+        cancelText="取消"
+        width={520}
+      >
+        <Form form={tagForm} layout="vertical" initialValues={{ color: '#1890ff' }}>
+          <Form.Item
+            name="tag"
+            label="标签名称"
+            rules={[{ required: true, message: '请输入标签名称' }]}
+          >
+            <Input placeholder="请输入标签名称" maxLength={30} />
+          </Form.Item>
+          <Form.Item name="color" label="标签颜色">
+            <Radio.Group>
+              {tagColorOptions.map((option) => (
+                <Radio.Button key={option.value} value={option.value}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <div
+                      style={{
+                        width: 14,
+                        height: 14,
+                        borderRadius: 2,
+                        background: option.value,
+                      }}
+                    />
+                    {option.label}
+                  </div>
+                </Radio.Button>
+              ))}
+            </Radio.Group>
+          </Form.Item>
+        </Form>
+      </Modal>
     </>
   );
 }
