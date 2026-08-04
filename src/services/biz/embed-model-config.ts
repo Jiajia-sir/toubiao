@@ -19,6 +19,7 @@ export interface EmbedModelConfigSaveParams {
   modelCode: string;
   apiKey?: string;
   dimension?: number;
+  defaulted?: number;
   enabled: number;
   sort?: number;
   remark?: string;
@@ -43,6 +44,7 @@ export interface EmbedModelConfigItem {
   modelCode: string;
   apiKeyMasked?: string;
   dimension?: number;
+  defaulted?: number;
   enabled: number;
   sort?: number;
   remark?: string;

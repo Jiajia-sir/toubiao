@@ -57,6 +57,7 @@ type BaseConfigItem = {
   baseUrl: string;
   modelCode: string;
   apiKeyMasked?: string;
+  defaulted?: number;
   enabled: number;
   sort?: number;
   remark?: string;
@@ -76,6 +77,7 @@ type FormValues = {
   modelCode: string;
   apiKey?: string;
   enabled: boolean;
+  defaulted?: boolean;
   sort?: number;
   remark?: string;
   dimension?: number;
@@ -227,7 +229,12 @@ export default function ModelManagePage() {
         width: 240,
         render: (_value, record) => (
           <div>
-            <div style={{ fontWeight: 600, color: '#262626' }}>{record.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontWeight: 600, color: '#262626' }}>{record.name}</div>
+              {activeTab === 'embed' && Number(record.defaulted) === 1 && (
+                <Tag color="gold">默认</Tag>
+              )}
+            </div>
             <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
               {record.remark || currentTabConfig.emptyRemark}
             </div>
@@ -286,8 +293,8 @@ export default function ModelManagePage() {
       });
     }
 
-    baseColumns.push(
-      {
+    if (activeTab === 'llm') {
+      baseColumns.push({
         title: '状态',
         dataIndex: 'enabled',
         key: 'enabled',
@@ -297,7 +304,10 @@ export default function ModelManagePage() {
             {Number(value) === 1 ? '启用' : '停用'}
           </Tag>
         ),
-      },
+      });
+    }
+
+    baseColumns.push(
       {
         title: '创建时间',
         dataIndex: 'createTime',
@@ -308,7 +318,7 @@ export default function ModelManagePage() {
       {
         title: '操作',
         key: 'action',
-        width: 220,
+        width: activeTab === 'embed' ? 280 : 220,
         render: (_value, record) => (
           <Space size={4}>
             <Button
@@ -320,6 +330,16 @@ export default function ModelManagePage() {
             >
               编辑
             </Button>
+            {activeTab === 'embed' && (
+              <Button
+                type="link"
+                size="small"
+                disabled={Number(record.defaulted) === 1}
+                onClick={() => void handleSetEmbedDefault(record)}
+              >
+                设为默认
+              </Button>
+            )}
             <Popconfirm
               title={`确认删除该${activeTab === 'llm' ? '模型' : '向量模型'}配置吗？`}
               okText="确认"
@@ -401,6 +421,7 @@ export default function ModelManagePage() {
       apiKey: '',
       dimension: undefined,
       enabled: true,
+      defaulted: false,
       sort: 0,
       remark: '',
     });
@@ -418,6 +439,7 @@ export default function ModelManagePage() {
       apiKey: '',
       dimension: record.dimension,
       enabled: Number(record.enabled) === 1,
+      defaulted: Number(record.defaulted) === 1,
       sort: record.sort ?? 0,
       remark: record.remark || '',
     });
@@ -444,7 +466,8 @@ export default function ModelManagePage() {
         activeTab === 'embed' && values.dimension !== undefined
           ? Number(values.dimension)
           : undefined,
-      enabled: values.enabled ? 1 : 0,
+      defaulted: activeTab === 'embed' ? Number(values.defaulted ? 1 : 0) : undefined,
+      enabled: activeTab === 'embed' ? 1 : values.enabled ? 1 : 0,
       sort: Number(values.sort || 0),
       remark: values.remark?.trim() || '',
     };
@@ -498,6 +521,35 @@ export default function ModelManagePage() {
     } catch (error) {
       console.error(error);
       message.error(currentTabConfig.deleteFailMessage);
+    }
+  };
+
+  const handleSetEmbedDefault = async (record: TableItem) => {
+    try {
+      const payload = {
+        id: record.id,
+        name: record.name,
+        providerType: record.providerType,
+        apiType: record.apiType,
+        baseUrl: record.baseUrl,
+        modelCode: record.modelCode,
+        apiKey: '',
+        dimension: record.dimension,
+        defaulted: 1,
+        enabled: record.enabled,
+        sort: Number(record.sort || 0),
+        remark: record.remark || '',
+      };
+      const res: any = await updateEmbedModelConfig(payload);
+      if (res?.code === 200) {
+        message.success('默认向量模型已更新');
+        void fetchList(page);
+      } else {
+        message.error(res?.msg || '设置默认向量模型失败');
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('设置默认向量模型失败');
     }
   };
 
@@ -765,9 +817,15 @@ export default function ModelManagePage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="enabled" label="是否启用" valuePropName="checked">
-                <Switch checkedChildren="启用" unCheckedChildren="停用" />
-              </Form.Item>
+              {activeTab === 'llm' ? (
+                <Form.Item name="enabled" label="是否启用" valuePropName="checked">
+                  <Switch checkedChildren="启用" unCheckedChildren="停用" />
+                </Form.Item>
+              ) : (
+                <Form.Item name="defaulted" label="是否默认" valuePropName="checked">
+                  <Switch checkedChildren="默认" unCheckedChildren="非默认" />
+                </Form.Item>
+              )}
             </Col>
             <Col span={12}>
               <Form.Item
