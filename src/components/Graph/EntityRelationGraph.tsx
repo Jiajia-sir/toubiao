@@ -42,6 +42,13 @@ interface EntityRelationGraphProps {
   actionRef?: React.Ref<EntityRelationGraphRef>;
 }
 
+interface LabelBox {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 const nodeBaseStyleMap: Record<
   EntityGraphNodeType,
   {
@@ -207,6 +214,126 @@ function getValueNodeFullText(node: EntityGraphNode) {
   const key = String(node.relationFromParent || node.desc || "属性").trim();
   const value = String(node.name || "").trim();
   return key ? `${key}: ${value}` : value;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function boxesOverlap(left: LabelBox, right: LabelBox, padding = 6) {
+  return !(
+    left.right + padding < right.left ||
+    right.right + padding < left.left ||
+    left.bottom + padding < right.top ||
+    right.bottom + padding < left.top
+  );
+}
+
+function getLabelPriority(node: EntityGraphNode, nodeId: string, hoveredNodeId?: string | null, selectedNodeId?: string | null) {
+  if (nodeId === selectedNodeId) return 1000;
+  if (nodeId === hoveredNodeId) return 900;
+  if (node.type === "center") return 800;
+  if ((node as any).isBridgeNode || (node as any).isBridge) return 700;
+  if (node.type === "entity") return 500 + Number(node.relationCount || 0);
+  return 300 + Number(node.relationCount || 0);
+}
+
+function shouldAlwaysShowLabel(node: EntityGraphNode, nodeId: string, hoveredNodeId?: string | null, selectedNodeId?: string | null) {
+  return nodeId === selectedNodeId || nodeId === hoveredNodeId || node.type === "center";
+}
+
+function shouldShowLabelAtRatio(node: EntityGraphNode, ratio: number, labelLength: number) {
+  const lengthPenalty = Math.min(0.5, Math.max(0, labelLength - 6) * 0.04);
+
+  if (node.type === "center") {
+    return ratio <= 2.4 - lengthPenalty;
+  }
+  if (node.type === "entity") {
+    return ratio <= 1.3 - lengthPenalty;
+  }
+  return ratio <= 0.82 - lengthPenalty;
+}
+
+function estimateLabelBox(
+  node: EntityGraphNode,
+  displayData: Record<string, any>,
+  label: string,
+  fontSize: number,
+): LabelBox {
+  const x = Number(displayData.x || 0);
+  const y = Number(displayData.y || 0);
+  const nodeSize = Number(displayData.size || 0);
+  const width = label.length * fontSize * 0.62 + 14;
+  const height = fontSize + 10;
+
+  if (node.type === "value") {
+    return {
+      left: x - width / 2,
+      right: x + width / 2,
+      top: y - height / 2,
+      bottom: y + height / 2,
+    };
+  }
+
+  return {
+    left: x + nodeSize + 6,
+    right: x + nodeSize + 6 + width,
+    top: y - height / 2,
+    bottom: y + height / 2,
+  };
+}
+
+function fitGraphToViewport(sigma: Sigma | null, graph: Graph | null, duration = 300) {
+  if (!sigma || !graph || graph.order === 0) {
+    return;
+  }
+
+  const nodes = graph.nodes();
+  let minX = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  nodes.forEach((nodeId) => {
+    const x = Number(graph.getNodeAttribute(nodeId, "x") ?? 0);
+    const y = Number(graph.getNodeAttribute(nodeId, "y") ?? 0);
+    const size = Number(graph.getNodeAttribute(nodeId, "size") ?? 0);
+    minX = Math.min(minX, x - size);
+    maxX = Math.max(maxX, x + size);
+    minY = Math.min(minY, y - size);
+    maxY = Math.max(maxY, y + size);
+  });
+
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+    return;
+  }
+
+  const dimensions =
+    (sigma as any).getDimensions?.() || {
+      width: sigma.getContainer().clientWidth || 1,
+      height: sigma.getContainer().clientHeight || 1,
+    };
+  const viewportWidth = Math.max(1, Number(dimensions.width || 1));
+  const viewportHeight = Math.max(1, Number(dimensions.height || 1));
+  const graphWidth = Math.max(120, maxX - minX + 120);
+  const graphHeight = Math.max(120, maxY - minY + 120);
+  const ratio = clamp(Math.max(graphWidth / viewportWidth, graphHeight / viewportHeight), 0.08, 6);
+  const nextState = {
+    x: (minX + maxX) / 2,
+    y: (minY + maxY) / 2,
+    ratio,
+    angle: 0,
+  };
+
+  const camera = sigma.getCamera();
+  if (duration > 0 && typeof (camera as any).animate === "function") {
+    (camera as any).animate(nextState, { duration });
+    return;
+  }
+
+  if (typeof (camera as any).setState === "function") {
+    (camera as any).setState(nextState);
+  }
 }
 
 
@@ -568,6 +695,10 @@ const EntityRelationGraph = forwardRef<
   const graphRef = useRef<Graph | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const isCommunityGraphData = data.nodes.some((node) => String(node.id).startsWith("comm_"));
+  const selectedNodeIdRef = useRef(selectedNodeId);
+  const hoveredNodeRef = useRef<string | null>(null);
+  const visibleLabelNodeIdsRef = useRef<Set<string>>(new Set());
+  const refreshVisibleLabelsRef = useRef<() => void>(() => undefined);
 
   useImperativeHandle(actionRef || ref, () => ({
     zoomIn: () => {
@@ -579,6 +710,10 @@ const EntityRelationGraph = forwardRef<
       if (camera) camera.animatedUnzoom({ duration: 300 });
     },
     resetZoom: () => {
+      if (isCommunityGraphData) {
+        fitGraphToViewport(sigmaRef.current, graphRef.current, 300);
+        return;
+      }
       const camera = sigmaRef.current?.getCamera();
       if (camera) camera.animatedReset({ duration: 300 });
     },
@@ -771,6 +906,9 @@ const EntityRelationGraph = forwardRef<
     });
 
     sigmaRef.current?.refresh();
+    if (isCommunityGraphData) {
+      refreshVisibleLabelsRef.current();
+    }
   }, [data, nodeScale, linkWidth, showNodes, showLinks, showLabels, selectedNodeId, labelMaxLength]);
 
   const onNodeClickRef = useRef(onNodeClick);
@@ -782,12 +920,13 @@ const EntityRelationGraph = forwardRef<
     onNodeDoubleClickRef.current = onNodeDoubleClick;
   }, [onNodeDoubleClick]);
 
-  const selectedNodeIdRef = useRef(selectedNodeId);
-  const hoveredNodeRef = useRef<string | null>(null);
   useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId;
+    if (isCommunityGraphData) {
+      refreshVisibleLabelsRef.current();
+    }
     sigmaRef.current?.refresh();
-  }, [selectedNodeId]);
+  }, [selectedNodeId, isCommunityGraphData]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -930,10 +1069,17 @@ const EntityRelationGraph = forwardRef<
         const res: Record<string, any> = { ...data };
         const hovered = hoveredNodeRef.current;
         const sel = selectedNodeIdRef.current;
+        const visibleLabelNodeIds = visibleLabelNodeIdsRef.current;
         const isSelectedCommunityNode = Boolean(isCommunityGraphData && sel && node === sel && sel.startsWith("comm_"));
 
         const isNodeHoverHighlighted = (n: string, h: string): boolean =>
           n === h || graph.areNeighbors(n, h);
+
+        const shouldRenderLabel =
+          !isCommunityGraphData || visibleLabelNodeIds.has(node) || node === hovered || node === sel;
+        if (!shouldRenderLabel) {
+          res.label = "";
+        }
 
         if (hovered && isCommunityGraphData) {
           if (!isNodeHoverHighlighted(node, hovered)) {
@@ -1023,18 +1169,122 @@ const EntityRelationGraph = forwardRef<
     });
     sigmaRef.current = sigma;
 
+    refreshVisibleLabelsRef.current = () => {
+      const currentSigma = sigmaRef.current;
+      const currentGraph = graphRef.current;
+      if (!currentSigma || !currentGraph || !showNodes || showLabels === false || !isCommunityGraphData) {
+        visibleLabelNodeIdsRef.current = new Set();
+        return;
+      }
+
+      const hoveredNodeId = hoveredNodeRef.current;
+      const currentSelectedNodeId = selectedNodeIdRef.current;
+      const cameraState = currentSigma.getCamera().getState();
+      const ratio = Number(cameraState.ratio || 1);
+      const occupiedBoxes: LabelBox[] = [];
+      const visibleNodeIds = new Set<string>();
+      const defaultLimit =
+        ratio <= 0.55 ? 80 : ratio <= 0.9 ? 54 : ratio <= 1.2 ? 32 : ratio <= 1.6 ? 18 : 10;
+      const labelLimit = Math.max(6, maxVisibleLabels || defaultLimit);
+
+      const candidates = currentGraph
+        .nodes()
+        .map((nodeId) => {
+          const originalData = currentGraph.getNodeAttribute(nodeId, "originalData") as EntityGraphNode | undefined;
+          const nodeData = currentGraph.getNodeAttributes(nodeId) as Record<string, any>;
+          const displayData =
+            ((currentSigma as any).getNodeDisplayData?.(nodeId) as Record<string, any> | undefined) ||
+            nodeData;
+
+          if (!originalData || !displayData || nodeData.hidden) {
+            return null;
+          }
+
+          const maxLength =
+            labelMaxLength || (originalData.type === "center" ? 6 : originalData.type === "entity" ? 5 : 4);
+          const label = String(nodeData.label || resolveNodeLabel(originalData, maxLength) || "").trim();
+          if (!label) {
+            return null;
+          }
+
+          const fontSize =
+            originalData.type === "value"
+              ? Math.max(10, Math.min(18, Math.round(Number(nodeData.customLabelSize || displayData.size || 14) * 0.72)))
+              : 12;
+
+          return {
+            nodeId,
+            originalData,
+            label,
+            fontSize,
+            displayData,
+            alwaysShow: shouldAlwaysShowLabel(originalData, nodeId, hoveredNodeId, currentSelectedNodeId),
+            priority: getLabelPriority(originalData, nodeId, hoveredNodeId, currentSelectedNodeId),
+          };
+        })
+        .filter(Boolean) as Array<{
+        nodeId: string;
+        originalData: EntityGraphNode;
+        label: string;
+        fontSize: number;
+        displayData: Record<string, any>;
+        alwaysShow: boolean;
+        priority: number;
+      }>;
+
+      candidates.sort((left, right) => right.priority - left.priority);
+
+      for (const candidate of candidates) {
+        if (!candidate.alwaysShow) {
+          if (visibleNodeIds.size >= labelLimit) {
+            continue;
+          }
+          if (!shouldShowLabelAtRatio(candidate.originalData, ratio, candidate.label.length)) {
+            continue;
+          }
+        }
+
+        const box = estimateLabelBox(
+          candidate.originalData,
+          candidate.displayData,
+          candidate.label,
+          candidate.fontSize,
+        );
+        const overlaps = occupiedBoxes.some((existingBox) => boxesOverlap(existingBox, box));
+        if (overlaps && !candidate.alwaysShow) {
+          continue;
+        }
+
+        visibleNodeIds.add(candidate.nodeId);
+        occupiedBoxes.push(box);
+      }
+
+      visibleLabelNodeIdsRef.current = visibleNodeIds;
+    };
+
+    refreshVisibleLabelsRef.current();
+    if (isCommunityGraphData) {
+      fitGraphToViewport(sigma, graph, 0);
+    }
+
     let draggedNode: string | null = null;
     let movedDuringDrag = false;
 
     sigma.on("enterNode", (e) => {
       if (movedDuringDrag) return;
       hoveredNodeRef.current = e.node;
+      if (isCommunityGraphData) {
+        refreshVisibleLabelsRef.current();
+      }
       sigma.refresh();
     });
 
     sigma.on("leaveNode", () => {
       if (movedDuringDrag) return;
       hoveredNodeRef.current = null;
+      if (isCommunityGraphData) {
+        refreshVisibleLabelsRef.current();
+      }
       sigma.refresh();
     });
 
@@ -1067,6 +1317,9 @@ const EntityRelationGraph = forwardRef<
       const pos = sigma.viewportToGraph(e);
       graph.setNodeAttribute(draggedNode, "x", pos.x);
       graph.setNodeAttribute(draggedNode, "y", pos.y);
+      if (isCommunityGraphData) {
+        refreshVisibleLabelsRef.current();
+      }
       e.preventSigmaDefault();
       if (e.original) {
         e.original.preventDefault();
@@ -1086,12 +1339,17 @@ const EntityRelationGraph = forwardRef<
     };
     
     sigma.getMouseCaptor().on("mouseup", handleUp);
+    sigma.getCamera().on("updated", () => {
+      if (isCommunityGraphData) {
+        refreshVisibleLabelsRef.current();
+      }
+    });
     
     return () => {
       sigma.kill();
       sigmaRef.current = null;
     };
-  }, [size.height, size.width]);
+  }, [size.height, size.width, showLinks, showLabels, showNodes, labelMaxLength, maxVisibleLabels, isCommunityGraphData]);
 
   return (
     <div

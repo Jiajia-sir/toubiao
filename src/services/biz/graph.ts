@@ -1,5 +1,6 @@
 import { request } from "@umijs/max";
-import { API_PREFIX } from "@/constants";
+import { API_PREFIX, COMMUNITY_API_PREFIX } from "@/constants";
+import type { CommunityNetworkResult } from "@/data/communityNetwork";
 
 export interface DocumentKnowledgeGraphNode {
   id: number;
@@ -235,4 +236,20 @@ export async function deleteGraphNode(data: DeleteGraphNodeReqVO) {
     method: "POST",
     data,
   });
+}
+
+export interface DiscoverCommunityNetworkReqVO {
+  entity_id: string | number;
+  entity_tag: string;
+  relation_edge: string;
+}
+
+export async function discoverCommunityNetwork(data: DiscoverCommunityNetworkReqVO) {
+  return request<CommunityNetworkResult>(
+    `${COMMUNITY_API_PREFIX}/api/v1/community/discover`,
+    {
+      method: "POST",
+      data,
+    },
+  );
 }
