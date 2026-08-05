@@ -1395,28 +1395,6 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
           <span style={{ width: 18, borderTop: "2px dashed #94a3b8", display: "inline-block" }} />
           <span>跨社区边</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              minWidth: 26,
-              height: 18,
-              padding: "0 6px",
-              borderRadius: 9,
-              border: "1px solid rgba(148,163,184,0.5)",
-              background: "rgba(255,255,255,0.92)",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#334155",
-              fontSize: 11,
-              fontWeight: 700,
-              fontFamily: "Consolas, monospace",
-            }}
-          >
-            3
-          </span>
-          <span>社区间关系强度</span>
-        </div>
         <span style={{ marginLeft: "auto" }}>默认展示全部社区，点击社区后显示该社区全部节点名称</span>
       </div>
     </div>
