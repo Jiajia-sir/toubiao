@@ -5,45 +5,53 @@
 const COMMUNITY_API_PROXY_TARGET =
   process.env.COMMUNITY_API_PROXY_TARGET ||
   process.env.REACT_APP_COMMUNITY_API_PROXY_TARGET ||
-  "http://192.168.31.55:50011";
+  'http://192.168.31.55:50011';
 
 const communityApiProxy: Record<string, any> = COMMUNITY_API_PROXY_TARGET
   ? {
-      "/community-api/": {
+      '/community-api/': {
         target: COMMUNITY_API_PROXY_TARGET,
         changeOrigin: true,
-        pathRewrite: { "^/community-api": "" },
+        pathRewrite: { '^/community-api': '' },
       },
     }
   : {};
 
 export default {
   dev: {
-    "/admin-api/": {
-      target: "http://192.168.31.244:42026",
+    // localhost:8000/admin-api/** -> http://localhost:8080/admin-api/**
+    '/admin-api/': {
+      // target: 'http://192.168.31.244:42026',
+      target: 'http://192.168.31.152:42026',
       changeOrigin: true,
     },
-    "/profile/avatar/": {
-      target: "http://192.168.31.244:42026",
+    // 不知道这啥，没用到
+    // '/profile/avatar/': {
+    //   target: 'http://192.168.31.244:42026',
+    //   changeOrigin: true,
+    // },
+    //算法-问答
+    '/api/': {
+      target: 'http://192.168.31.55:7860',
       changeOrigin: true,
     },
     ...communityApiProxy,
   },
 
   test: {
-    "/api/": {
-      target: "https://proapi.azurewebsites.net",
+    '/api/': {
+      target: 'https://proapi.azurewebsites.net',
       changeOrigin: true,
-      pathRewrite: { "^": "" },
+      pathRewrite: { '^': '' },
     },
     ...communityApiProxy,
   },
 
   pre: {
-    "/api/": {
-      target: "your pre url",
+    '/api/': {
+      target: 'your pre url',
       changeOrigin: true,
-      pathRewrite: { "^": "" },
+      pathRewrite: { '^': '' },
     },
     ...communityApiProxy,
   },

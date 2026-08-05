@@ -23,6 +23,20 @@ export interface EmbedModelConfigSaveParams {
   enabled: number;
   sort?: number;
   remark?: string;
+  vectorStrategy?: {
+    type: 'sentence' | 'summary' | 'custom';
+    sentences_per_chunk?: number;
+    sentence_overlap?: number;
+    separators?: string[];
+    source_chars_per_summary?: number;
+    summary_max_tokens?: number;
+    llm?: {
+      base_url: string;
+      model: string;
+    };
+    chunk_size?: number;
+    chunk_overlap?: number;
+  };
 }
 
 export interface EmbedModelConfigTestParams {
@@ -49,6 +63,7 @@ export interface EmbedModelConfigItem {
   sort?: number;
   remark?: string;
   createTime?: string;
+  vectorStrategy?: EmbedModelConfigSaveParams['vectorStrategy'];
 }
 
 export interface EmbedModelConfigTestResult {

@@ -13,11 +13,13 @@ import {
   Popconfirm,
   Row,
   Select,
+  Slider,
   Space,
   Switch,
   Table,
   Tabs,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -25,6 +27,7 @@ import {
   ApiOutlined,
   DeleteOutlined,
   EditOutlined,
+  QuestionCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
@@ -67,6 +70,20 @@ type BaseConfigItem = {
 type TableItem = BaseConfigItem & {
   key: number;
   dimension?: number;
+  vectorStrategy?: {
+    type: 'sentence' | 'summary' | 'custom';
+    sentences_per_chunk?: number;
+    sentence_overlap?: number;
+    separators?: string[];
+    source_chars_per_summary?: number;
+    summary_max_tokens?: number;
+    llm?: {
+      base_url: string;
+      model: string;
+    };
+    chunk_size?: number;
+    chunk_overlap?: number;
+  };
 };
 
 type FormValues = {
@@ -81,6 +98,17 @@ type FormValues = {
   sort?: number;
   remark?: string;
   dimension?: number;
+  vectorStrategyType?: 'sentence' | 'summary' | 'custom';
+  sentencesPerChunk?: number;
+  sentenceOverlap?: number;
+  sentenceSeparators?: string[];
+  sourceCharsPerSummary?: number;
+  summaryMaxTokens?: number;
+  summaryLlmBaseUrl?: string;
+  summaryLlmModel?: string;
+  chunkSize?: number;
+  chunkOverlap?: number;
+  customSeparators?: string[];
 };
 
 const pageSize = 10;
@@ -206,8 +234,16 @@ export default function ModelManagePage() {
   const [searchApiType, setSearchApiType] = useState<string | undefined>(undefined);
   const [searchEnabled, setSearchEnabled] = useState<EnabledFilter>('all');
   const [form] = Form.useForm<FormValues>();
+  const vectorStrategyType = Form.useWatch('vectorStrategyType', form);
+  const sentencesPerChunkValue = Form.useWatch('sentencesPerChunk', form);
+  const sentenceOverlapValue = Form.useWatch('sentenceOverlap', form);
+  const sourceCharsPerSummaryValue = Form.useWatch('sourceCharsPerSummary', form);
+  const summaryMaxTokensValue = Form.useWatch('summaryMaxTokens', form);
+  const chunkSizeValue = Form.useWatch('chunkSize', form);
+  const chunkOverlapValue = Form.useWatch('chunkOverlap', form);
 
   const currentTabConfig = tabConfig[activeTab];
+  const formColSpan = activeTab === 'llm' ? 12 : 8;
   const currentProviderOptions = activeTab === 'llm' ? llmProviderOptions : providerOptions;
   const currentApiTypeOptions = activeTab === 'llm' ? llmApiTypeOptions : apiTypeOptions;
   const tabItems = [
@@ -400,6 +436,36 @@ export default function ModelManagePage() {
     void fetchList(1, undefined, activeTab);
   }, [activeTab]);
 
+  useEffect(() => {
+    if (activeTab !== 'embed') {
+      return;
+    }
+    const chunkValue = Number(sentencesPerChunkValue ?? 3);
+    const overlapValue = sentenceOverlapValue;
+    if (overlapValue === undefined || overlapValue === null || overlapValue === '') {
+      return;
+    }
+    const maxOverlap = Math.max(chunkValue - 1, 0);
+    if (Number(overlapValue) > maxOverlap) {
+      form.setFieldValue('sentenceOverlap', maxOverlap);
+    }
+  }, [activeTab, form, sentenceOverlapValue, sentencesPerChunkValue]);
+
+  useEffect(() => {
+    if (activeTab !== 'embed') {
+      return;
+    }
+    const sizeValue = Number(chunkSizeValue ?? 1000);
+    const overlapValue = chunkOverlapValue;
+    if (overlapValue === undefined || overlapValue === null || overlapValue === '') {
+      return;
+    }
+    const maxOverlap = Math.max(Math.min(sizeValue - 1, 5000), 0);
+    if (Number(overlapValue) > maxOverlap) {
+      form.setFieldValue('chunkOverlap', maxOverlap);
+    }
+  }, [activeTab, chunkOverlapValue, chunkSizeValue, form]);
+
   const handleProviderChange = (value: string) => {
     if (value === 'claude') {
       form.setFieldValue('apiType', 'claude');
@@ -419,11 +485,21 @@ export default function ModelManagePage() {
       baseUrl: '',
       modelCode: '',
       apiKey: '',
-      dimension: undefined,
       enabled: true,
       defaulted: false,
       sort: 0,
       remark: '',
+      vectorStrategyType: 'sentence',
+      sentencesPerChunk: 3,
+      sentenceOverlap: 1,
+      sentenceSeparators: ['。', '！', '？', '；', '\\n'],
+      sourceCharsPerSummary: 5000,
+      summaryMaxTokens: 500,
+      summaryLlmBaseUrl: '',
+      summaryLlmModel: '',
+      chunkSize: 1000,
+      chunkOverlap: 200,
+      customSeparators: ['\\n\\n', '\\n', '。'],
     });
     setModalVisible(true);
   };
@@ -437,11 +513,25 @@ export default function ModelManagePage() {
       baseUrl: record.baseUrl,
       modelCode: record.modelCode,
       apiKey: '',
-      dimension: record.dimension,
       enabled: Number(record.enabled) === 1,
       defaulted: Number(record.defaulted) === 1,
       sort: record.sort ?? 0,
       remark: record.remark || '',
+      vectorStrategyType: record.vectorStrategy?.type || 'sentence',
+      sentencesPerChunk: record.vectorStrategy?.sentences_per_chunk,
+      sentenceOverlap: record.vectorStrategy?.sentence_overlap,
+      sentenceSeparators: record.vectorStrategy?.separators?.map((item) =>
+        item.replace(/\n/g, '\\n'),
+      ),
+      sourceCharsPerSummary: record.vectorStrategy?.source_chars_per_summary,
+      summaryMaxTokens: record.vectorStrategy?.summary_max_tokens,
+      summaryLlmBaseUrl: record.vectorStrategy?.llm?.base_url || '',
+      summaryLlmModel: record.vectorStrategy?.llm?.model || '',
+      chunkSize: record.vectorStrategy?.chunk_size,
+      chunkOverlap: record.vectorStrategy?.chunk_overlap,
+      customSeparators: record.vectorStrategy?.separators?.map((item) =>
+        item.replace(/\n/g, '\\n'),
+      ),
     });
     setModalVisible(true);
   };
@@ -454,6 +544,74 @@ export default function ModelManagePage() {
 
   const buildSubmitPayload = async () => {
     const values = await form.validateFields();
+    const parseSeparators = (value?: string[]) =>
+      value
+        ?.map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => item.replace(/\\n/g, '\n'));
+
+    const buildVectorStrategy = () => {
+      if (activeTab !== 'embed' || !values.vectorStrategyType) {
+        return undefined;
+      }
+      if (values.vectorStrategyType === 'sentence') {
+        return {
+          type: 'sentence' as const,
+          sentences_per_chunk:
+            values.sentencesPerChunk !== undefined &&
+            values.sentencesPerChunk !== null &&
+            values.sentencesPerChunk !== ''
+              ? Number(values.sentencesPerChunk)
+              : undefined,
+          sentence_overlap:
+            values.sentenceOverlap !== undefined &&
+            values.sentenceOverlap !== null &&
+            values.sentenceOverlap !== ''
+              ? Number(values.sentenceOverlap)
+              : undefined,
+          separators: parseSeparators(values.sentenceSeparators),
+        };
+      }
+      if (values.vectorStrategyType === 'summary') {
+        return {
+          type: 'summary' as const,
+          source_chars_per_summary:
+            values.sourceCharsPerSummary !== undefined &&
+            values.sourceCharsPerSummary !== null &&
+            values.sourceCharsPerSummary !== ''
+              ? Number(values.sourceCharsPerSummary)
+              : undefined,
+          summary_max_tokens:
+            values.summaryMaxTokens !== undefined &&
+            values.summaryMaxTokens !== null &&
+            values.summaryMaxTokens !== ''
+              ? Number(values.summaryMaxTokens)
+              : undefined,
+          llm:
+            values.summaryLlmBaseUrl?.trim() && values.summaryLlmModel?.trim()
+              ? {
+                  base_url: values.summaryLlmBaseUrl.trim(),
+                  model: values.summaryLlmModel.trim(),
+                }
+              : undefined,
+        };
+      }
+      return {
+        type: 'custom' as const,
+        chunk_size:
+          values.chunkSize !== undefined && values.chunkSize !== null && values.chunkSize !== ''
+            ? Number(values.chunkSize)
+            : undefined,
+        chunk_overlap:
+          values.chunkOverlap !== undefined &&
+          values.chunkOverlap !== null &&
+          values.chunkOverlap !== ''
+            ? Number(values.chunkOverlap)
+            : undefined,
+        separators: parseSeparators(values.customSeparators),
+      };
+    };
+
     return {
       id: editingItem?.id,
       name: values.name.trim(),
@@ -462,14 +620,12 @@ export default function ModelManagePage() {
       baseUrl: values.baseUrl.trim(),
       modelCode: values.modelCode.trim(),
       apiKey: values.apiKey?.trim() || '',
-      dimension:
-        activeTab === 'embed' && values.dimension !== undefined
-          ? Number(values.dimension)
-          : undefined,
+      dimension: activeTab === 'embed' ? editingItem?.dimension : undefined,
       defaulted: activeTab === 'embed' ? Number(values.defaulted ? 1 : 0) : undefined,
       enabled: activeTab === 'embed' ? 1 : values.enabled ? 1 : 0,
       sort: Number(values.sort || 0),
       remark: values.remark?.trim() || '',
+      vectorStrategy: buildVectorStrategy(),
     };
   };
 
@@ -778,7 +934,7 @@ export default function ModelManagePage() {
         title={`${editingItem ? '编辑' : '新增'}${currentTabConfig.modalTitle}`}
         open={modalVisible}
         onCancel={closeModal}
-        width={760}
+        width={1080}
         footer={[
           <Button
             key="test"
@@ -801,9 +957,9 @@ export default function ModelManagePage() {
           </Button>,
         ]}
       >
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" className="model-manage-form">
           <Row gutter={[16, 0]}>
-            <Col span={12}>
+            <Col span={formColSpan}>
               <Form.Item
                 name="name"
                 label="模型名称"
@@ -816,18 +972,14 @@ export default function ModelManagePage() {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              {activeTab === 'llm' ? (
+            {activeTab === 'llm' && (
+              <Col span={formColSpan}>
                 <Form.Item name="enabled" label="是否启用" valuePropName="checked">
                   <Switch checkedChildren="启用" unCheckedChildren="停用" />
                 </Form.Item>
-              ) : (
-                <Form.Item name="defaulted" label="是否默认" valuePropName="checked">
-                  <Switch checkedChildren="默认" unCheckedChildren="非默认" />
-                </Form.Item>
-              )}
-            </Col>
-            <Col span={12}>
+              </Col>
+            )}
+            <Col span={formColSpan}>
               <Form.Item
                 name="providerType"
                 label="提供方类型"
@@ -836,7 +988,7 @@ export default function ModelManagePage() {
                 <Select options={currentProviderOptions} onChange={handleProviderChange} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={formColSpan}>
               <Form.Item
                 name="apiType"
                 label="协议类型"
@@ -845,7 +997,7 @@ export default function ModelManagePage() {
                 <Select options={currentApiTypeOptions} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={formColSpan}>
               <Form.Item
                 name="baseUrl"
                 label="基础地址"
@@ -854,7 +1006,7 @@ export default function ModelManagePage() {
                 <Input placeholder="例如：https://api.openai.com/v1" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={formColSpan}>
               <Form.Item
                 name="modelCode"
                 label="模型编码"
@@ -870,30 +1022,543 @@ export default function ModelManagePage() {
               </Form.Item>
             </Col>
             {activeTab === 'embed' && (
-              <Col span={12}>
-                <Form.Item name="dimension" label="向量维度">
-                  <Input type="number" placeholder="为空时以模型实际返回为准" />
+              <>
+                <Col span={8}>
+                  <Row gutter={8}>
+                    <Col span={12}>
+                      <Form.Item name="defaulted" label="是否默认" valuePropName="checked">
+                        <Switch checkedChildren="默认" unCheckedChildren="非默认" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item name="sort" label="排序号">
+                        <Input type="number" placeholder="默认 0" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </Col>
+                <Col span={24}>
+                  <div
+                    style={{
+                      marginBottom: 20,
+                      padding: '16px 16px 4px',
+                      borderRadius: 12,
+                      background: 'linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%)',
+                      border: '1px solid #d6e8ff',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 16,
+                        marginBottom: 8,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: '#1d39c4',
+                          }}
+                        >
+                          <span>分句向量方式</span>
+                          <Tooltip title="定义文本怎么切块做向量化">
+                            <QuestionCircleOutlined
+                              style={{ color: '#597ef7', cursor: 'pointer', fontSize: 14 }}
+                            />
+                          </Tooltip>
+                        </div>
+                      </div>
+                    </div>
+
+                    <Form.Item style={{ marginBottom: 0 }}>
+                      <Row gutter={[16, 0]}>
+                        <Col span={24}>
+                          <Form.Item
+                            name="vectorStrategyType"
+                            label="向量类型"
+                            style={{ marginBottom: 8 }}
+                            rules={[{ required: true, message: '请选择向量类型' }]}
+                          >
+                            <Tabs
+                              className="vector-strategy-tabs"
+                              activeKey={vectorStrategyType}
+                              onChange={(key) =>
+                                form.setFieldValue(
+                                  'vectorStrategyType',
+                                  key as FormValues['vectorStrategyType'],
+                                )
+                              }
+                              items={[
+                                { key: 'sentence', label: '按句切分' },
+                                { key: 'summary', label: '摘要切分' },
+                                { key: 'custom', label: '自定义粒度' },
+                              ]}
+                            />
+                          </Form.Item>
+                        </Col>
+
+                        {vectorStrategyType === 'sentence' && (
+                          <>
+                            <Col span={8}>
+                              <Form.Item
+                                name="sentencesPerChunk"
+                                label={
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minWidth: 0,
+                                      flex: 1,
+                                      boxSizing: 'border-box',
+                                      paddingRight: 4,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 8,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        minWidth: 0,
+                                      }}
+                                    >
+                                      <span>每块句子数</span>
+                                      <Tooltip title="每个文本块包含多少句话。默认值 3。">
+                                        <QuestionCircleOutlined
+                                          style={{
+                                            color: '#19213aff',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                          }}
+                                        />
+                                      </Tooltip>
+                                    </div>
+                                    <Tag color="blue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                                      当前值 {form.getFieldValue('sentencesPerChunk') ?? 3}
+                                    </Tag>
+                                  </div>
+                                }
+                                rules={[{ required: true, message: '请设置每块句子数' }]}
+                              >
+                                <Slider min={1} max={100} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item
+                                name="sentenceOverlap"
+                                label={
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minWidth: 0,
+                                      flex: 1,
+                                      boxSizing: 'border-box',
+                                      paddingRight: 4,
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 8,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        minWidth: 0,
+                                      }}
+                                    >
+                                      <span>允许重叠数</span>
+                                      <Tooltip title="相邻文本块重复多少句话，下一块会保留上一块末尾约多少个字符。默认值 1。必须小于每块句子数。">
+                                        <QuestionCircleOutlined
+                                          style={{
+                                            color: '#19213aff',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                          }}
+                                        />
+                                      </Tooltip>
+                                    </div>
+                                    <Tag color="blue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                                      当前值 {sentenceOverlapValue ?? 1}
+                                    </Tag>
+                                  </div>
+                                }
+                                rules={[
+                                  { required: true, message: '请设置允许重叠数' },
+                                  {
+                                    validator: async (_rule, value) => {
+                                      if (value === undefined || value === null || value === '') {
+                                        return;
+                                      }
+                                      const chunkValue = Number(sentencesPerChunkValue ?? 3);
+                                      if (Number(value) >= chunkValue) {
+                                        throw new Error('允许重叠数必须小于每块句子数');
+                                      }
+                                    },
+                                  },
+                                ]}
+                              >
+                                <Slider
+                                  min={0}
+                                  max={Math.max(Number(sentencesPerChunkValue ?? 3) - 1, 0)}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item
+                                name="sentenceSeparators"
+                                label={
+                                  <Space size={4}>
+                                    <span>切分符</span>
+                                    <Tooltip
+                                      title={
+                                        '分隔符有优先顺序，建议把大结构分隔符放前面，例如先 "\\n\\n"，再 "\\n"，最后句号'
+                                      }
+                                    >
+                                      <QuestionCircleOutlined
+                                        style={{
+                                          color: '#19213aff',
+                                          cursor: 'pointer',
+                                          fontSize: 14,
+                                        }}
+                                      />
+                                    </Tooltip>
+                                  </Space>
+                                }
+                                rules={[{ required: true, message: '请设置切分符' }]}
+                              >
+                                <Select
+                                  mode="tags"
+                                  tokenSeparators={[',']}
+                                  placeholder="输入值回车，默认值 。，！，？，；，\n"
+                                  options={[]}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </>
+                        )}
+
+                        {vectorStrategyType === 'summary' && (
+                          <>
+                            <Col span={12}>
+                              <Form.Item
+                                name="sourceCharsPerSummary"
+                                label={
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minWidth: 0,
+                                      flex: 1,
+                                      boxSizing: 'border-box',
+                                      paddingRight: 4,
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 8,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        minWidth: 0,
+                                      }}
+                                    >
+                                      <span>文本字数</span>
+                                      <Tooltip title="每多少个原文字符生成一份摘要。默认值 5000。">
+                                        <QuestionCircleOutlined
+                                          style={{
+                                            color: '#19213aff',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                          }}
+                                        />
+                                      </Tooltip>
+                                    </div>
+                                    <Tag color="blue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                                      当前值 {sourceCharsPerSummaryValue ?? 5000}
+                                    </Tag>
+                                  </div>
+                                }
+                                rules={[{ required: true, message: '请设置文本字数' }]}
+                              >
+                                <Slider min={100} max={20000} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={12}>
+                              <Form.Item
+                                name="summaryMaxTokens"
+                                label={
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minWidth: 0,
+                                      flex: 1,
+                                      boxSizing: 'border-box',
+                                      paddingRight: 4,
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 8,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        minWidth: 0,
+                                      }}
+                                    >
+                                      <span>摘要字数</span>
+                                      <Tooltip title="一份摘要最多生成多少token。默认值 500。">
+                                        <QuestionCircleOutlined
+                                          style={{
+                                            color: '#19213aff',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                          }}
+                                        />
+                                      </Tooltip>
+                                    </div>
+                                    <Tag color="blue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                                      当前值 {summaryMaxTokensValue ?? 500}
+                                    </Tag>
+                                  </div>
+                                }
+                                rules={[{ required: true, message: '请设置摘要字数' }]}
+                              >
+                                <Slider min={32} max={16384} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={12}>
+                              <Form.Item
+                                name="summaryLlmBaseUrl"
+                                label={
+                                  <Space size={4}>
+                                    <span>摘要模型地址</span>
+                                    <Tooltip title="当前会在地址自动添加 /chat/completions">
+                                      <QuestionCircleOutlined
+                                        style={{
+                                          color: '#19213aff',
+                                          cursor: 'pointer',
+                                          fontSize: 14,
+                                        }}
+                                      />
+                                    </Tooltip>
+                                  </Space>
+                                }
+                                rules={[{ required: true, message: '请输入摘要模型地址' }]}
+                              >
+                                <Input placeholder="默认值 使用系统默认模型地址" />
+                              </Form.Item>
+                            </Col>
+                            <Col span={12}>
+                              <Form.Item
+                                name="summaryLlmModel"
+                                label="摘要模型名称"
+                                rules={[{ required: true, message: '请输入摘要模型名称' }]}
+                              >
+                                <Input placeholder="默认值 使用系统默认模型名称" />
+                              </Form.Item>
+                            </Col>
+                          </>
+                        )}
+
+                        {vectorStrategyType === 'custom' && (
+                          <>
+                            <Col span={8}>
+                              <Form.Item
+                                name="chunkSize"
+                                label={
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minWidth: 0,
+                                      flex: 1,
+                                      boxSizing: 'border-box',
+                                      paddingRight: 4,
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 8,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        minWidth: 0,
+                                      }}
+                                    >
+                                      <span>切分粒度</span>
+                                      <Tooltip title="每块最大字符数，默认值 1000。">
+                                        <QuestionCircleOutlined
+                                          style={{
+                                            color: '#19213aff',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                          }}
+                                        />
+                                      </Tooltip>
+                                    </div>
+                                    <Tag color="blue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                                      当前值 {chunkSizeValue ?? 1000}
+                                    </Tag>
+                                  </div>
+                                }
+                              >
+                                <Slider min={50} max={10000} />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item
+                                name="chunkOverlap"
+                                label={
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      width: '100%',
+                                      minWidth: 0,
+                                      flex: 1,
+                                      boxSizing: 'border-box',
+                                      paddingRight: 4,
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      gap: 8,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 4,
+                                        minWidth: 0,
+                                      }}
+                                    >
+                                      <span>可重叠大小</span>
+                                      <Tooltip title="相邻块重复字符数，默认值 200。必须小于切分粒度。">
+                                        <QuestionCircleOutlined
+                                          style={{
+                                            color: '#19213aff',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                          }}
+                                        />
+                                      </Tooltip>
+                                    </div>
+                                    <Tag color="blue" style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                                      当前值 {chunkOverlapValue ?? 200}
+                                    </Tag>
+                                  </div>
+                                }
+                                rules={[
+                                  {
+                                    validator: async (_rule, value) => {
+                                      if (value === undefined || value === null || value === '') {
+                                        return;
+                                      }
+                                      const sizeValue = Number(chunkSizeValue ?? 1000);
+                                      if (Number(value) >= sizeValue) {
+                                        throw new Error('可重叠大小必须小于切分粒度');
+                                      }
+                                    },
+                                  },
+                                ]}
+                              >
+                                <Slider
+                                  min={0}
+                                  max={Math.max(Math.min(Number(chunkSizeValue ?? 1000) - 1, 5000), 0)}
+                                />
+                              </Form.Item>
+                            </Col>
+                            <Col span={8}>
+                              <Form.Item
+                                name="customSeparators"
+                                label={
+                                  <Space size={4}>
+                                    <span>分隔符</span>
+                                    <Tooltip
+                                      title={
+                                        '分隔符有优先顺序，建议把大结构分隔符放前面，例如先 "\\n\\n"，再 "\\n"，最后句号'
+                                      }
+                                    >
+                                      <QuestionCircleOutlined
+                                        style={{
+                                          color: '#19213aff',
+                                          cursor: 'pointer',
+                                          fontSize: 14,
+                                        }}
+                                      />
+                                    </Tooltip>
+                                  </Space>
+                                }
+                              >
+                                <Select
+                                  mode="tags"
+                                  tokenSeparators={[',']}
+                                  placeholder="输入后按逗号生成标签"
+                                  options={[]}
+                                />
+                              </Form.Item>
+                            </Col>
+                          </>
+                        )}
+                      </Row>
+                    </Form.Item>
+                  </div>
+                </Col>
+              </>
+            )}
+            {activeTab !== 'embed' && (
+              <Col span={formColSpan}>
+                <Form.Item name="sort" label="排序号">
+                  <Input type="number" placeholder="默认 0" />
                 </Form.Item>
               </Col>
             )}
-            <Col span={activeTab === 'embed' ? 12 : 12}>
-              <Form.Item name="sort" label="排序号">
-                <Input type="number" placeholder="默认 0" />
-              </Form.Item>
-            </Col>
-            <Col span={24}>
-              <Form.Item name="apiKey" label="API Key">
-                <Input.Password
-                  placeholder={
-                    editingItem ? '留空表示保持原有 API Key 不变' : '本地无密码服务可留空'
-                  }
-                />
-              </Form.Item>
-            </Col>
+            {activeTab === 'embed' && (
+              <>
+                <Col span={24}>
+                  <Form.Item name="apiKey" label="API Key">
+                    <Input.Password
+                      placeholder={
+                        editingItem ? '留空表示保持原有 API Key 不变' : '本地无密码服务可留空'
+                      }
+                    />
+                  </Form.Item>
+                </Col>
+              </>
+            )}
+            {activeTab !== 'embed' && (
+              <Col span={24}>
+                <Form.Item name="apiKey" label="API Key">
+                  <Input.Password
+                    placeholder={
+                      editingItem ? '留空表示保持原有 API Key 不变' : '本地无密码服务可留空'
+                    }
+                  />
+                </Form.Item>
+              </Col>
+            )}
             <Col span={24}>
               <Form.Item name="remark" label="备注">
                 <Input.TextArea
-                  rows={3}
+                  rows={2}
                   placeholder={
                     activeTab === 'llm'
                       ? '说明该模型的使用场景，例如问答、推理等'
@@ -973,6 +1638,61 @@ export default function ModelManagePage() {
         .model-manage-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
           color: #1677ff;
           font-weight: 600;
+        }
+
+        .vector-strategy-tabs .ant-tabs-nav {
+          margin-bottom: 8px;
+        }
+
+        .vector-strategy-tabs .ant-tabs-nav::before {
+          display: none;
+        }
+
+        .vector-strategy-tabs .ant-tabs-nav-wrap,
+        .vector-strategy-tabs .ant-tabs-nav-list {
+          width: 100%;
+        }
+
+        .vector-strategy-tabs .ant-tabs-tab {
+          flex: 1 1 33.33%;
+          justify-content: center;
+          margin: 0;
+          padding: 8px 0;
+          border: 1px solid #d6e8ff;
+          border-radius: 10px;
+          background: #f7fbff;
+          transition: all 0.2s ease;
+        }
+
+        .vector-strategy-tabs .ant-tabs-tab-btn {
+          width: 100%;
+          text-align: center;
+          color: #5b6472;
+          font-weight: 500;
+        }
+
+        .vector-strategy-tabs .ant-tabs-tab:hover {
+          border-color: #91caff;
+          background: #edf5ff;
+        }
+
+        .vector-strategy-tabs .ant-tabs-tab.ant-tabs-tab-active {
+          background: #e6f4ff;
+          border-color: #91caff;
+          box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.08);
+        }
+
+        .vector-strategy-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+          color: #1677ff;
+          font-weight: 600;
+        }
+
+        .vector-strategy-tabs .ant-tabs-ink-bar {
+          display: none;
+        }
+
+        .model-manage-form .ant-switch {
+          min-width: 150px;
         }
       `,
         }}

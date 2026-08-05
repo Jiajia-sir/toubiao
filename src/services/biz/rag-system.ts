@@ -13,6 +13,7 @@ export interface AssistantItem {
   embeddingModelName?: string;
   embeddingModelUrl?: string;
   knowledgeBaseIds: BizId[];
+  knowledgeBaseNames?: string[];
 }
 
 export interface ChatItem {
@@ -106,17 +107,42 @@ const toIdArray = (value: unknown): BizId[] => {
   return [value as BizId];
 };
 
-export const normalizeAssistant = (item: any): AssistantItem => ({
-  id: item.id,
-  name: String(item.name ?? ''),
-  openingStatement: item.openingStatement ?? '',
-  prompt: item.prompt ?? '',
-  chatModelName: item.chatModelName ?? '',
-  chatModelUrl: item.chatModelUrl ?? '',
-  embeddingModelName: item.embeddingModelName ?? '',
-  embeddingModelUrl: item.embeddingModelUrl ?? '',
-  knowledgeBaseIds: toIdArray(item.knowledgeBaseIds),
-});
+const toKnowledgeBasePairs = (value: unknown): Array<{ id: BizId; name: string }> => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const id = (item as any).id;
+      if (id === undefined || id === null || id === '') return null;
+      return {
+        id,
+        name: String((item as any).name ?? id),
+      };
+    })
+    .filter(Boolean) as Array<{ id: BizId; name: string }>;
+};
+
+export const normalizeAssistant = (item: any): AssistantItem => {
+  const knowledgeBasePairs = toKnowledgeBasePairs(item.knowledgeBaseDOS);
+  return {
+    id: item.id,
+    name: String(item.name ?? ''),
+    openingStatement: item.openingStatement ?? '',
+    prompt: item.prompt ?? '',
+    chatModelName: item.chatModelName ?? '',
+    chatModelUrl: item.chatModelUrl ?? '',
+    embeddingModelName: item.embeddingModelName ?? '',
+    embeddingModelUrl: item.embeddingModelUrl ?? '',
+    knowledgeBaseIds:
+      knowledgeBasePairs.length > 0
+        ? knowledgeBasePairs.map((knowledgeBase) => knowledgeBase.id)
+        : toIdArray(item.knowledgeBaseIds),
+    knowledgeBaseNames:
+      knowledgeBasePairs.length > 0
+        ? knowledgeBasePairs.map((knowledgeBase) => knowledgeBase.name)
+        : undefined,
+  };
+};
 
 export const normalizeChat = (item: any): ChatItem => ({
   id: item.id,

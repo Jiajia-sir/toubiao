@@ -40,7 +40,6 @@ import {
 import { statusConfig } from '@/config/status';
 import {
   entityTypeMeta,
-  getDocumentParseDetail,
   type DocumentParseDetail,
   type EntityType,
   type KnowledgeGraphData,
@@ -115,6 +114,20 @@ const ensureArray = <T,>(value: T | T[] | null | undefined): T[] => {
 
 const extractDetailData = (response: any) =>
   response?.data?.data ?? response?.data ?? response ?? {};
+
+const getResponseMessage = (response: any, fallback: string) =>
+  response?.msg || response?.message || response?.data?.msg || response?.data?.message || fallback;
+
+const isSuccessResponse = (response: any) => {
+  if (!response || typeof response !== 'object') return true;
+  if (typeof response.code === 'number') {
+    return response.code === 200 || response.code === 0;
+  }
+  if (typeof response.success === 'boolean') {
+    return response.success;
+  }
+  return true;
+};
 
 const extractPageList = <T,>(response: any): T[] => {
   if (Array.isArray(response?.data?.list)) {
@@ -636,6 +649,33 @@ const buildEntityGraphData = (
   };
 };
 
+const createEmptyDocumentDetail = (id: string): DocumentParseDetail => ({
+  id,
+  title: '未命名文档',
+  type: '-',
+  size: '-',
+  status: 'pending',
+  uploader: '-',
+  uploadedAt: '-',
+  knowledgeBase: '未关联知识库',
+  keywords: [],
+  tags: [],
+  parseSteps: [],
+  entities: {
+    person: [],
+    organization: [],
+    time: [],
+    term: [],
+    product: [],
+    project: [],
+  },
+  content: [],
+  graph: {
+    nodes: [],
+    links: [],
+  },
+});
+
 const buildDocumentDetail = (
   baseDocument: DocumentParseDetail,
   detail: any,
@@ -694,6 +734,8 @@ export default function DataDetailPage() {
   const [previewMode, setPreviewMode] = useState<'parsed' | 'original'>('parsed');
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [detailData, setDetailData] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string>('');
   const [previewPageNo, setPreviewPageNo] = useState(1);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -705,7 +747,10 @@ export default function DataDetailPage() {
   const previewLoadingRef = useRef(false);
   const previewScrollLockRef = useRef(false);
 
-  const baseDocument = getDocumentParseDetail(params.id || '');
+  const baseDocument = useMemo(
+    () => createEmptyDocumentDetail(String(params.id || '')),
+    [params.id],
+  );
   const sourceTitle = searchParams.get('title');
   const sourceType = searchParams.get('type');
   const fromEntity = searchParams.get('fromEntity');
@@ -717,6 +762,8 @@ export default function DataDetailPage() {
 
     const fetchDetail = async () => {
       try {
+        setDetailLoading(true);
+        setDetailError('');
         const response = await viewDocument({
           id: params.id || 0,
           esId: sourceEsId || '',
@@ -727,11 +774,34 @@ export default function DataDetailPage() {
           return;
         }
 
-        setDetailData(extractDetailData(response));
+        if (!isSuccessResponse(response)) {
+          setDetailData(null);
+          const errorMessage = getResponseMessage(response, '获取文档详情失败');
+          setDetailError(errorMessage);
+          message.error(errorMessage);
+          return;
+        }
+
+        const nextDetailData = extractDetailData(response);
+        if (!nextDetailData || typeof nextDetailData !== 'object' || !Object.keys(nextDetailData).length) {
+          setDetailData(null);
+          setDetailError('当前文档不存在');
+          return;
+        }
+
+        setDetailData(nextDetailData);
       } catch (error) {
         console.error(error);
         if (active) {
-          message.error('获取文档详情失败');
+          setDetailData(null);
+          const errorMessage =
+            error instanceof Error && error.message ? error.message : '获取文档详情失败';
+          setDetailError(errorMessage);
+          message.error(errorMessage);
+        }
+      } finally {
+        if (active) {
+          setDetailLoading(false);
         }
       }
     };
@@ -1034,21 +1104,22 @@ export default function DataDetailPage() {
           />
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: 16,
-            marginBottom: 16,
-            flexWrap: 'wrap',
-            padding: 16,
-            borderRadius: 18,
-            background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
-            border: '1px solid #e6edf7',
-            boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
-          }}
-        >
+        {!detailLoading && detailData && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              gap: 16,
+              marginBottom: 16,
+              flexWrap: 'wrap',
+              padding: 16,
+              borderRadius: 18,
+              background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
+              border: '1px solid #e6edf7',
+              boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
+            }}
+          >
           <div
             style={{
               display: 'flex',
@@ -1192,8 +1263,51 @@ export default function DataDetailPage() {
               保存到知识库
             </Button>
           </Space>
-        </div>
+          </div>
+        )}
 
+        {detailLoading ? (
+          <div
+            style={{
+              minHeight: 420,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#fff',
+              borderRadius: 18,
+              border: '1px solid #e6edf7',
+              boxShadow: '0 8px 28px rgba(15, 23, 42, 0.05)',
+              marginBottom: 12,
+            }}
+          >
+            <Spin size="large" tip="文档详情加载中..." />
+          </div>
+        ) : !detailData ? (
+          <div
+            style={{
+              minHeight: 420,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#fff',
+              borderRadius: 18,
+              border: '1px solid #e6edf7',
+              boxShadow: '0 8px 28px rgba(15, 23, 42, 0.05)',
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ textAlign: 'center' }}>
+              <Empty description={detailError || '当前文档不存在'} />
+              <Button
+                icon={<ArrowLeftOutlined />}
+                onClick={() => history.go(-1)}
+                style={{ marginTop: 12 }}
+              >
+                返回上一页
+              </Button>
+            </div>
+          </div>
+        ) : (
         <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 12 }}>
           <Col xs={24} xl={10} style={{ display: 'flex' }}>
             <Card
@@ -1332,7 +1446,9 @@ export default function DataDetailPage() {
             </Card>
           </Col>
         </Row>
+        )}
 
+        {detailData && (
         <Row gutter={[12, 12]} align="stretch">
           <Col xs={24} xl={16} style={{ display: 'flex' }}>
             <Card
@@ -1793,6 +1909,7 @@ export default function DataDetailPage() {
             </div>
           </Col>
         </Row>
+        )}
 
         <Modal
           title="文档知识图谱"
