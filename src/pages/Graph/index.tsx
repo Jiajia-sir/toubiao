@@ -2149,6 +2149,7 @@ export default function GraphPage() {
             communityError={communityError}
             entityCount={communityNetworkData?.entity_count}
             relationCount={communityNetworkData?.relation_count}
+            networkData={communityNetworkData}
           />
         ) : (
           <aside

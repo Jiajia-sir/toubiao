@@ -1711,7 +1711,38 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
     if (!activeCommunityKey) {
       return [];
     }
-    const fromRawMembers = activeCommunityMembers
+    const rawCommunity = rawCommunityMap.get(activeCommunityKey);
+    const preferredCommunityMembers = dedupeStrings([
+      ...(rawCommunity?.nodeIds || []),
+      ...(activeCommunity?.nodeIds || []).map((item) => String(item).trim()),
+    ])
+      .map((nodeId) => {
+        const rawNode = rawNodeMap.get(nodeId) || null;
+        const graphNode = nodeMap.get(nodeId) || null;
+        const label = String(
+          rawNode?.label ||
+            graphNode?.label ||
+            rawNodeNameMap.get(nodeId) ||
+            nodeId,
+        ).trim();
+        return {
+          id: String(rawNode?.id || graphNode?.id || nodeId).trim(),
+          label,
+          degree:
+            rawNodeDegreeMap.get(nodeId) ||
+            rawNodeDegreeByNameMap.get(label) ||
+            graphNode?.degree ||
+            0,
+          isBridge: Boolean(
+            rawNode?.isBridge ||
+              graphNode?.isBridge ||
+              rawBridgeNodeIdSet.has(nodeId),
+          ),
+        };
+      })
+      .filter((member) => member.id && member.label);
+
+    const fromRawMembers = (preferredCommunityMembers.length > 0 ? preferredCommunityMembers : activeCommunityMembers)
       .slice()
       .sort((left, right) => {
         const leftPriority = Number(left.isBridge) * 100 + left.degree;
@@ -1748,14 +1779,11 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
         degree: node.degree,
         isBridge: node.isBridge,
       }));
-  }, [activeCommunityKey, activeCommunityMembers, activeInsight, nodes]);
+  }, [activeCommunity, activeCommunityKey, activeCommunityMembers, activeInsight, nodeMap, nodes, rawBridgeNodeIdSet, rawCommunityMap, rawNodeDegreeByNameMap, rawNodeDegreeMap, rawNodeMap, rawNodeNameMap]);
   const activeOutbound = useMemo(() => {
     if (!activeCommunityKey) {
       return [];
     }
-
-    const activeCommunityMemberIdSet = new Set(activeCommunityMembers.map((item) => String(item.id).trim()).filter(Boolean));
-    const activeCommunityMemberNameSet = new Set(activeCommunityMembers.map((item) => String(item.label).trim()).filter(Boolean));
 
     const outboundMap = new Map<string, { to: string; weight: number; relations: string[] }>();
     rawNetworkEdges.forEach((edge) => {
@@ -1787,28 +1815,26 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
           communityNodeIdToCommunityMap.get(targetId) ??
           "",
       ).trim();
-
-      const sourceInActiveCommunity =
-        sourceCommunityId === activeCommunityKey ||
-        activeCommunityMemberIdSet.has(sourceId) ||
-        activeCommunityMemberNameSet.has(String(sourceNode?.label || sourceName).trim());
-      const targetInActiveCommunity =
-        targetCommunityId === activeCommunityKey ||
-        activeCommunityMemberIdSet.has(targetId) ||
-        activeCommunityMemberNameSet.has(String(targetNode?.label || targetName).trim());
-
-      if (sourceInActiveCommunity === targetInActiveCommunity) {
+      const isCrossCommunity =
+        Boolean(edge.is_cross_community) ||
+        (sourceCommunityId && targetCommunityId && sourceCommunityId !== targetCommunityId);
+      if (!isCrossCommunity) {
+        return;
+      }
+      const sourceInActiveCommunity = sourceCommunityId === activeCommunityKey;
+      const targetInActiveCommunity = targetCommunityId === activeCommunityKey;
+      if (!sourceInActiveCommunity && !targetInActiveCommunity) {
         return;
       }
 
       const to = sourceInActiveCommunity
-        ? String(targetCommunityId || communityNodeIdToCommunityMap.get(targetId) || targetNode?.communityId || "").trim()
-        : String(sourceCommunityId || communityNodeIdToCommunityMap.get(sourceId) || sourceNode?.communityId || "").trim();
+        ? String(targetCommunityId || targetNode?.communityId || "").trim()
+        : String(sourceCommunityId || sourceNode?.communityId || "").trim();
       if (!to) {
         return;
       }
       const current = outboundMap.get(to) || { to, weight: 0, relations: [] };
-      current.weight += 1;
+      current.weight += Number(edge.weight ?? 1) || 1;
       const relation = String(edge.relation ?? "").trim();
       if (relation) {
         current.relations.push(relation);
@@ -1849,7 +1875,7 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
         return [];
       })
       .sort((left, right) => right.weight - left.weight);
-  }, [activeCommunityKey, activeCommunityMembers, activeInsight, communityBridges, communityNodeIdToCommunityMap, rawNetworkEdges, rawNodeByNameMap, rawNodeCommunityMap, rawNodeMap]);
+  }, [activeCommunityKey, activeInsight, communityBridges, communityNodeIdToCommunityMap, rawNetworkEdges, rawNodeByNameMap, rawNodeCommunityMap, rawNodeMap]);
 
   return (
     <aside
