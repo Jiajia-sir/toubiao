@@ -69,25 +69,6 @@ type HaloItem = {
   active: boolean;
 };
 
-type BridgeNodeOverlay = {
-  id: string;
-  x: number;
-  y: number;
-  radius: number;
-  color: string;
-  active: boolean;
-};
-
-type CrossEdgeOverlay = {
-  id: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  color: string;
-  active: boolean;
-};
-
 type CommunityInsight = {
   keywords: string[];
   coreMembers: Array<{ id: string; label: string; degree: number; isBridge: boolean }>;
@@ -140,6 +121,22 @@ function splitTopicKeywords(topic?: string, fallbackName?: string) {
   ).slice(0, 5);
 }
 
+type LabelBox = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
+function boxesOverlap(left: LabelBox, right: LabelBox, padding = 8) {
+  return !(
+    left.right + padding < right.left ||
+    right.right + padding < left.left ||
+    left.bottom + padding < right.top ||
+    right.bottom + padding < left.top
+  );
+}
+
 function rebalanceCommunityLayout(nodes: CommunityNodeRecord[]) {
   if (nodes.length === 0) {
     return nodes;
@@ -183,47 +180,64 @@ function rebalanceCommunityLayout(nodes: CommunityNodeRecord[]) {
     })
     .sort((left, right) => right.members.length - left.members.length);
 
-  // Target spread per community (used to normalize the internal spread of each community).
-  // After normalization, every community will have an average node distance from its center
-  // of `targetSpread` (in our custom graph units). This keeps the overall layout compact
-  // regardless of the raw coordinate scale returned by the API.
-  const TARGET_SPREAD = 2.4;
+  const centerSlots =
+    communities.length <= 4
+      ? [
+          { x: -26, y: -16 },
+          { x: 26, y: -16 },
+          { x: -26, y: 16 },
+          { x: 26, y: 16 },
+        ]
+      : null;
+  const communityCenters = new Map<string, { x: number; y: number }>();
 
-  const targetCenters = new Map<string, { x: number; y: number; scale: number }>();
-  const primary = communities[0];
-  if (primary) {
-    const primaryScale = TARGET_SPREAD / primary.spread;
-    targetCenters.set(primary.communityId, { x: 0, y: 0, scale: primaryScale });
+  if (centerSlots) {
+    communities.forEach((community, index) => {
+      communityCenters.set(community.communityId, centerSlots[index] || { x: 0, y: 0 });
+    });
+  } else {
+    const columns = Math.ceil(Math.sqrt(communities.length));
+    const rows = Math.ceil(communities.length / columns);
+    const gapX = 18;
+    const gapY = 15;
+    const offsetX = (columns - 1) / 2;
+    const offsetY = (rows - 1) / 2;
+    communities.forEach((community, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      communityCenters.set(community.communityId, {
+        x: (col - offsetX) * gapX,
+        y: (row - offsetY) * gapY,
+      });
+    });
   }
 
-  const secondary = communities.slice(1);
-  const ringRadius = Math.max(7, 5 + secondary.length * 0.6);
-  secondary.forEach((community, index) => {
-    const angle = (-Math.PI / 2) + (index / Math.max(secondary.length, 1)) * Math.PI * 2;
-    const orbit = ringRadius + Math.min(index, 3) * 0.9;
-    const normalizedScale = TARGET_SPREAD / community.spread;
-    targetCenters.set(community.communityId, {
-      x: Math.cos(angle) * orbit,
-      y: Math.sin(angle) * orbit,
-      scale: normalizedScale,
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const nextNodes: CommunityNodeRecord[] = [];
+  communities.forEach((community) => {
+    const members = community.members
+      .slice()
+      .sort((left, right) => {
+        const leftPriority = Number(left.isBridge) * 100 + left.degree;
+        const rightPriority = Number(right.isBridge) * 100 + right.degree;
+        return rightPriority - leftPriority;
+      });
+    const center = communityCenters.get(community.communityId) || { x: 0, y: 0 };
+
+    members.forEach((member, index) => {
+      const isCore = index === 0;
+      const radius = isCore ? 0 : 4.4 + Math.sqrt(index) * (member.isBridge ? 2.8 : 2.35);
+      const angle = index * golden;
+      nextNodes.push({
+        ...member,
+        x: center.x + Math.cos(angle) * radius,
+        y: center.y + Math.sin(angle) * radius,
+        degree: isCore ? Math.max(member.degree, 9) : member.degree,
+      });
     });
   });
 
-  return nodes.map((node) => {
-    const community = communities.find((item) => item.communityId === node.communityId);
-    const target = targetCenters.get(node.communityId);
-    if (!community || !target) {
-      return node;
-    }
-
-    const relativeX = node.x - community.centerX;
-    const relativeY = node.y - community.centerY;
-    return {
-      ...node,
-      x: target.x + relativeX * target.scale,
-      y: target.y + relativeY * target.scale,
-    };
-  });
+  return nextNodes;
 }
 
 function buildCommunityGraph(networkData?: CommunityNetworkData | null) {
@@ -520,8 +534,8 @@ function focusCommunityInView(
   let maxY = -Infinity;
 
   members.forEach((node) => {
-    const nx = Number(node.x);
-    const ny = Number(node.y);
+    const nx = Number(graph.getNodeAttribute(node.id, "x"));
+    const ny = Number(graph.getNodeAttribute(node.id, "y"));
     if (!Number.isFinite(nx) || !Number.isFinite(ny)) return;
     const size = Number(graph.getNodeAttribute(node.id, "size"));
     const safeSize = Number.isFinite(size) ? size : 0;
@@ -560,12 +574,11 @@ function Meter({ label, value, color }: { label: string; value: number; color: s
 export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
   const { communities, activeCommunityId, onFocusCommunity, onClearCommunity, networkData } = props;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sigmaRef = useRef<Sigma | null>(null);
   const graphRef = useRef<Graph | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [halos, setHalos] = useState<HaloItem[]>([]);
-  const [bridgeNodeOverlays, setBridgeNodeOverlays] = useState<BridgeNodeOverlay[]>([]);
-  const [crossEdgeOverlays, setCrossEdgeOverlays] = useState<CrossEdgeOverlay[]>([]);
   const hoveredNodeIdRef = useRef<string | null>(null);
   const activeCommunityIdRef = useRef<string | null>(null);
   const onFocusCommunityRef = useRef(onFocusCommunity);
@@ -582,10 +595,33 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
     () => new Map(nodes.map((node) => [node.id, node])),
     [nodes],
   );
-  const communityBridges = useMemo(
-    () => buildCommunityBridges(edges, nodeMap),
-    [edges, nodeMap],
-  );
+  const adjacencyMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    nodes.forEach((node) => {
+      map.set(node.id, new Set());
+    });
+    edges.forEach((edge) => {
+      if (!map.has(edge.source)) {
+        map.set(edge.source, new Set());
+      }
+      if (!map.has(edge.target)) {
+        map.set(edge.target, new Set());
+      }
+      map.get(edge.source)!.add(edge.target);
+      map.get(edge.target)!.add(edge.source);
+    });
+    return map;
+  }, [edges, nodes]);
+  const communityNodeIdsMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    nodes.forEach((node) => {
+      if (!map.has(node.communityId)) {
+        map.set(node.communityId, []);
+      }
+      map.get(node.communityId)!.push(node.id);
+    });
+    return map;
+  }, [nodes]);
   const communityCenters = useMemo(() => {
     const centerMap = new Map<string, { x: number; y: number }>();
     communities.forEach((community) => {
@@ -619,12 +655,12 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
           }
           return Number(right.isBridge) - Number(left.isBridge);
         })
-        .slice(0, 2)
+        .slice(0, 3)
         .forEach((member) => visibleIds.add(member.id));
 
       members
         .filter((member) => member.isBridge)
-        .slice(0, 2)
+        .slice(0, 3)
         .forEach((member) => visibleIds.add(member.id));
     });
 
@@ -649,20 +685,17 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
     sigmaRef.current = null;
 
     const graph = new Graph({ multi: true });
-    const adjacency = new Map<string, Set<string>>();
-
     nodes.forEach((node) => {
       graph.addNode(node.id, {
         x: node.x,
         y: node.y,
-        size: clamp(4 + node.degree * 0.9 + (node.isBridge ? 2.5 : 0), 7, 22),
+        size: clamp(5.5 + node.degree * 1.05 + (node.isBridge ? 3.2 : 0), 9, 26),
         label: node.label,
         color: getCommunityColor(node.communityId),
         borderColor: "#ffffff",
-        borderSize: node.isBridge ? 3 : 1.5,
+        borderSize: node.isBridge ? 3.4 : 1.7,
         originalData: node,
       });
-      adjacency.set(node.id, new Set());
     });
 
     edges.forEach((edge) => {
@@ -670,17 +703,15 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
       const sourceNode = nodeMap.get(edge.source);
       const targetNode = nodeMap.get(edge.target);
       const color = edge.cross
-        ? "rgba(245, 158, 11, 0.12)"
+        ? "rgba(148, 163, 184, 0.16)"
         : "rgba(203, 213, 225, 0.82)";
       graph.addEdgeWithKey(edge.id, edge.source, edge.target, {
-        size: edge.cross ? 1.3 : 1.8,
+        size: edge.cross ? 1.1 : 1.8,
         color,
         type: "line",
         label: edge.relation,
         originalData: edge,
       });
-      adjacency.get(edge.source)?.add(edge.target);
-      adjacency.get(edge.target)?.add(edge.source);
     });
 
     const sigma = new Sigma(graph, container, {
@@ -700,15 +731,15 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
         const focused = activeCommunityIdRef.current;
         const hovered = hoveredNodeIdRef.current;
         const color = getCommunityColor(node.communityId);
-        const neighbors = hovered ? adjacency.get(hovered) || new Set<string>() : new Set<string>();
+        const neighbors = hovered ? adjacencyMap.get(hovered) || new Set<string>() : new Set<string>();
         const activeByHover = focused ? true : hovered ? hovered === nodeId || neighbors.has(nodeId) : true;
         const activeByFocus = focused ? node.communityId === focused : true;
         const active = activeByHover && activeByFocus;
         const showLabel = focused
           ? active
           : hovered
-            ? active && (node.degree >= 3 || hovered === nodeId)
-            : defaultVisibleNodeIds.has(nodeId);
+            ? active && (node.degree >= 5 || hovered === nodeId || node.isBridge)
+            : node.degree >= 6 || node.isBridge || defaultVisibleNodeIds.has(nodeId);
 
         return {
           ...data,
@@ -718,12 +749,12 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
           borderColor: active
             ? "#ffffff"
             : "rgba(255,255,255,0.36)",
-          borderSize: node.isBridge ? 4.5 : data.borderSize,
+          borderSize: node.isBridge ? 3.8 : data.borderSize,
           size: active
             ? node.isBridge
               ? Number(data.size) * 1.18
-              : data.size
-            : Math.max(Number(data.size) * 0.9, 5),
+              : Number(data.size) * 1.08
+            : Math.max(Number(data.size) * 0.82, 4.5),
           label: showLabel ? node.label : "",
           zIndex: active ? (hovered === nodeId ? 3 : 2) : 0,
         };
@@ -737,7 +768,7 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
         const focused = activeCommunityIdRef.current;
         const hovered = hoveredNodeIdRef.current;
         const highlightedNodes = hovered
-          ? new Set([hovered, ...Array.from(adjacency.get(hovered) || [])])
+          ? new Set([hovered, ...Array.from(adjacencyMap.get(hovered) || [])])
           : null;
         const activeByFocus = focused
           ? sourceNode.communityId === focused && targetNode.communityId === focused
@@ -749,13 +780,13 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
           : true;
         const active = activeByFocus && activeByHover;
         const baseColor = edge.cross
-          ? hexToRgba(getCommunityColor(sourceNode.communityId), 0.14)
+          ? "rgba(148, 163, 184, 0.18)"
           : "rgba(203, 213, 225, 0.96)";
 
         return {
           ...data,
-          color: edge.cross ? "rgba(245, 158, 11, 0)" : active ? baseColor : "rgba(203, 213, 225, 0.22)",
-          size: active ? (edge.cross ? 0.01 : 2.1) : 0.8,
+          color: edge.cross ? "rgba(148, 163, 184, 0)" : active ? baseColor : "rgba(203, 213, 225, 0.22)",
+          size: active ? (edge.cross ? 0.01 : 1.7) : 0.55,
           zIndex: active ? 1 : 0,
         };
       },
@@ -776,6 +807,9 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
     });
 
     sigma.on("clickNode", ({ node }) => {
+      if (movedDuringDrag) {
+        return;
+      }
       const currentNode = graph.getNodeAttribute(node, "originalData") as CommunityNodeRecord;
       const targetCommunity = communityMap.get(currentNode.communityId);
       if (targetCommunity) {
@@ -787,15 +821,84 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
       onClearCommunityRef.current();
     });
 
+    let draggedCommunityId: string | null = null;
+    let draggedNodeId: string | null = null;
+    let dragWholeCommunity = false;
+    let lastGraphPosition: { x: number; y: number } | null = null;
+    let movedDuringDrag = false;
+
+    sigma.on("downNode", ({ node, event }) => {
+      const currentNode = graph.getNodeAttribute(node, "originalData") as CommunityNodeRecord;
+      if (!currentNode) {
+        return;
+      }
+      draggedNodeId = node;
+      dragWholeCommunity = Boolean(event.original?.shiftKey);
+      draggedCommunityId = dragWholeCommunity ? currentNode.communityId : null;
+      lastGraphPosition = sigma.viewportToGraph(event);
+      movedDuringDrag = false;
+      sigma.getCamera().disable();
+    });
+
+    sigma.getMouseCaptor().on("mousemovebody", (event) => {
+      if ((!draggedCommunityId && !draggedNodeId) || !lastGraphPosition) {
+        return;
+      }
+      const nextPosition = sigma.viewportToGraph(event);
+      const dx = nextPosition.x - lastGraphPosition.x;
+      const dy = nextPosition.y - lastGraphPosition.y;
+      if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) {
+        return;
+      }
+
+      movedDuringDrag = true;
+      if (dragWholeCommunity && draggedCommunityId) {
+        const memberIds = communityNodeIdsMap.get(draggedCommunityId) || [];
+        memberIds.forEach((nodeId) => {
+          const currentX = Number(graph.getNodeAttribute(nodeId, "x"));
+          const currentY = Number(graph.getNodeAttribute(nodeId, "y"));
+          graph.setNodeAttribute(nodeId, "x", currentX + dx);
+          graph.setNodeAttribute(nodeId, "y", currentY + dy);
+        });
+      } else if (draggedNodeId) {
+        const currentX = Number(graph.getNodeAttribute(draggedNodeId, "x"));
+        const currentY = Number(graph.getNodeAttribute(draggedNodeId, "y"));
+        graph.setNodeAttribute(draggedNodeId, "x", currentX + dx);
+        graph.setNodeAttribute(draggedNodeId, "y", currentY + dy);
+      }
+      lastGraphPosition = nextPosition;
+      sigma.refresh();
+      event.preventSigmaDefault();
+      event.original?.preventDefault();
+      event.original?.stopPropagation();
+    });
+
+    const handleMouseUp = () => {
+      if (!draggedCommunityId && !draggedNodeId) {
+        return;
+      }
+      draggedCommunityId = null;
+      draggedNodeId = null;
+      dragWholeCommunity = false;
+      lastGraphPosition = null;
+      sigma.getCamera().enable();
+      window.setTimeout(() => {
+        movedDuringDrag = false;
+      }, 0);
+    };
+
+    sigma.getMouseCaptor().on("mouseup", handleMouseUp);
+
     sigmaRef.current = sigma;
     graphRef.current = graph;
 
     return () => {
+      sigma.getMouseCaptor().removeListener("mouseup", handleMouseUp);
       sigma.kill();
       sigmaRef.current = null;
       graphRef.current = null;
     };
-  }, [communities, communityMap, defaultVisibleNodeIds, edges, nodeMap, nodes]);
+  }, [adjacencyMap, communities, communityMap, communityNodeIdsMap, defaultVisibleNodeIds, edges, nodeMap, nodes]);
 
   useEffect(() => {
     const sigma = sigmaRef.current;
@@ -806,26 +909,304 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
   useEffect(() => {
     const sigma = sigmaRef.current;
     const graph = graphRef.current;
-    if (!sigma || !graph) {
+    const overlayCanvas = overlayCanvasRef.current;
+    if (!sigma || !graph || !overlayCanvas) {
       setHalos([]);
-      setBridgeNodeOverlays([]);
-      setCrossEdgeOverlays([]);
+      const ctx = overlayCanvas?.getContext("2d");
+      if (ctx && overlayCanvas) {
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      }
       return;
     }
+
+    const syncOverlayCanvasSize = () => {
+      const width = sigma.getContainer().clientWidth || 1;
+      const height = sigma.getContainer().clientHeight || 1;
+      const dpr = window.devicePixelRatio || 1;
+      if (overlayCanvas.width !== Math.round(width * dpr) || overlayCanvas.height !== Math.round(height * dpr)) {
+        overlayCanvas.width = Math.round(width * dpr);
+        overlayCanvas.height = Math.round(height * dpr);
+        overlayCanvas.style.width = `${width}px`;
+        overlayCanvas.style.height = `${height}px`;
+      }
+      const ctx = overlayCanvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      return { ctx, width, height };
+    };
+
+    const drawOverlayCanvas = () => {
+      const synced = syncOverlayCanvasSize();
+      if (!synced) {
+        return;
+      }
+      const { ctx, width, height } = synced;
+
+      edges
+        .filter((edge) => edge.cross)
+        .forEach((edge) => {
+          const sourceNode = nodeMap.get(edge.source);
+          const targetNode = nodeMap.get(edge.target);
+          if (!sourceNode || !targetNode) {
+            return;
+          }
+          const active =
+            !activeCommunityId ||
+            activeCommunityId === sourceNode.communityId ||
+            activeCommunityId === targetNode.communityId;
+          const sourcePoint = sigma.graphToViewport({
+            x: Number(graph.getNodeAttribute(edge.source, "x")),
+            y: Number(graph.getNodeAttribute(edge.source, "y")),
+          });
+          const targetPoint = sigma.graphToViewport({
+            x: Number(graph.getNodeAttribute(edge.target, "x")),
+            y: Number(graph.getNodeAttribute(edge.target, "y")),
+          });
+          if (
+            !Number.isFinite(sourcePoint.x) ||
+            !Number.isFinite(sourcePoint.y) ||
+            !Number.isFinite(targetPoint.x) ||
+            !Number.isFinite(targetPoint.y)
+          ) {
+            return;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = active ? 0.92 : 0.18;
+          ctx.strokeStyle = "rgba(255,255,255,0.92)";
+          ctx.lineWidth = 3.8;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(sourcePoint.x, sourcePoint.y);
+          ctx.lineTo(targetPoint.x, targetPoint.y);
+          ctx.stroke();
+
+          ctx.strokeStyle = "rgba(148, 163, 184, 0.92)";
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([7, 7]);
+          ctx.beginPath();
+          ctx.moveTo(sourcePoint.x, sourcePoint.y);
+          ctx.lineTo(targetPoint.x, targetPoint.y);
+          ctx.stroke();
+          ctx.restore();
+        });
+
+      const occupiedBoxes: LabelBox[] = [];
+      const focused = activeCommunityIdRef.current;
+      const hovered = hoveredNodeIdRef.current;
+      const highlightedNodes = hovered
+        ? new Set([hovered, ...Array.from(adjacencyMap.get(hovered) || [])])
+        : null;
+      const labelCandidates = edges
+        .filter((edge) => !edge.cross && String(edge.relation || "").trim())
+        .map((edge) => {
+          const sourceNode = nodeMap.get(edge.source);
+          const targetNode = nodeMap.get(edge.target);
+          if (!sourceNode || !targetNode) {
+            return null;
+          }
+
+          const activeByFocus = focused
+            ? sourceNode.communityId === focused && targetNode.communityId === focused
+            : true;
+          const activeByHover = focused
+            ? true
+            : hovered
+              ? Boolean(highlightedNodes?.has(edge.source) && highlightedNodes?.has(edge.target))
+              : sourceNode.degree >= 7 || targetNode.degree >= 7 || sourceNode.isBridge || targetNode.isBridge;
+          if (!activeByFocus || !activeByHover) {
+            return null;
+          }
+
+          const sourcePoint = sigma.graphToViewport({
+            x: Number(graph.getNodeAttribute(edge.source, "x")),
+            y: Number(graph.getNodeAttribute(edge.source, "y")),
+          });
+          const targetPoint = sigma.graphToViewport({
+            x: Number(graph.getNodeAttribute(edge.target, "x")),
+            y: Number(graph.getNodeAttribute(edge.target, "y")),
+          });
+          if (
+            !Number.isFinite(sourcePoint.x) ||
+            !Number.isFinite(sourcePoint.y) ||
+            !Number.isFinite(targetPoint.x) ||
+            !Number.isFinite(targetPoint.y)
+          ) {
+            return null;
+          }
+
+          const dx = targetPoint.x - sourcePoint.x;
+          const dy = targetPoint.y - sourcePoint.y;
+          const length = Math.hypot(dx, dy);
+          if (length < 52) {
+            return null;
+          }
+
+          return {
+            relation: String(edge.relation || "").trim(),
+            sourceNode,
+            targetNode,
+            sourcePoint,
+            targetPoint,
+            length,
+            priority:
+              (sourceNode.isBridge ? 50 : 0) +
+              (targetNode.isBridge ? 50 : 0) +
+              sourceNode.degree +
+              targetNode.degree,
+          };
+        })
+        .filter(Boolean)
+        .sort((left, right) => (right!.priority - left!.priority)) as Array<{
+        relation: string;
+        sourceNode: CommunityNodeRecord;
+        targetNode: CommunityNodeRecord;
+        sourcePoint: { x: number; y: number };
+        targetPoint: { x: number; y: number };
+        length: number;
+        priority: number;
+      }>;
+
+      const labelLimit = focused ? 22 : hovered ? 14 : 10;
+      let drawnLabels = 0;
+      ctx.font = "600 12.5px Consolas, monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      for (const item of labelCandidates) {
+        if (drawnLabels >= labelLimit) {
+          break;
+        }
+
+        const unitX = (item.targetPoint.x - item.sourcePoint.x) / item.length;
+        const unitY = (item.targetPoint.y - item.sourcePoint.y) / item.length;
+        const normalX = -unitY;
+        const normalY = unitX;
+        const centerX = (item.sourcePoint.x + item.targetPoint.x) / 2 + normalX * 12;
+        const centerY = (item.sourcePoint.y + item.targetPoint.y) / 2 + normalY * 12;
+        const textWidth = ctx.measureText(item.relation).width;
+        const boxWidth = textWidth + 6;
+        const boxHeight = 14;
+        const box: LabelBox = {
+          left: centerX - boxWidth / 2,
+          right: centerX + boxWidth / 2,
+          top: centerY - boxHeight / 2,
+          bottom: centerY + boxHeight / 2,
+        };
+
+        if (box.left < 8 || box.top < 8 || box.right > width - 8 || box.bottom > height - 8) {
+          continue;
+        }
+        if (occupiedBoxes.some((existingBox) => boxesOverlap(existingBox, box))) {
+          continue;
+        }
+
+        occupiedBoxes.push(box);
+        drawnLabels += 1;
+
+        let angle = Math.atan2(
+          item.targetPoint.y - item.sourcePoint.y,
+          item.targetPoint.x - item.sourcePoint.x,
+        );
+        if (angle > Math.PI / 2 || angle < -Math.PI / 2) {
+          angle += Math.PI;
+        }
+
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(angle);
+        ctx.fillStyle = "rgba(51, 65, 85, 0.96)";
+        ctx.fillText(item.relation, 0, 0);
+        ctx.restore();
+      }
+
+      nodes
+        .filter((node) => node.isBridge)
+        .forEach((node) => {
+          const point = sigma.graphToViewport({
+            x: Number(graph.getNodeAttribute(node.id, "x")),
+            y: Number(graph.getNodeAttribute(node.id, "y")),
+          });
+          if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+            return;
+          }
+          const active = !activeCommunityId || activeCommunityId === node.communityId;
+          const displayData = sigma.getNodeDisplayData(node.id);
+          const rawSize = Number(displayData?.size);
+          const scaledSize =
+            Number.isFinite(rawSize) && typeof (sigma as any).scaleSize === "function"
+              ? Number((sigma as any).scaleSize(rawSize))
+              : NaN;
+          const safeRenderedSize = Number.isFinite(scaledSize)
+            ? scaledSize
+            : Number.isFinite(rawSize)
+              ? rawSize
+              : clamp(5.5 + node.degree * 1.05 + 3.2, 9, 26);
+          const radius = safeRenderedSize + 6;
+          const color = getCommunityColor(node.communityId);
+
+          ctx.save();
+          ctx.globalAlpha = active ? 1 : 0.22;
+          ctx.fillStyle = hexToRgba(color, 0.08);
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, radius + 8, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = hexToRgba(color, 1);
+          ctx.lineWidth = 2.8;
+          ctx.setLineDash([6, 5]);
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.fillStyle = "rgba(255,255,255,0.24)";
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, Math.max(radius - 4, 4), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+    };
 
     const updateOverlays = () => {
       const nextHalos: HaloItem[] = communities
         .map((community) => {
-          const center = communityCenters.get(community.id);
-          if (!center) {
+          const members = nodes.filter((node) => node.communityId === community.id);
+          if (!members.length) {
             return null;
           }
+          let sumX = 0;
+          let sumY = 0;
+          let count = 0;
+          members.forEach((node) => {
+            const x = Number(graph.getNodeAttribute(node.id, "x"));
+            const y = Number(graph.getNodeAttribute(node.id, "y"));
+            if (!Number.isFinite(x) || !Number.isFinite(y)) {
+              return;
+            }
+            sumX += x;
+            sumY += y;
+            count += 1;
+          });
+          if (!count) {
+            return null;
+          }
+          const center = {
+            x: sumX / count,
+            y: sumY / count,
+          };
           const point = sigma.graphToViewport(center);
           if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
-          const members = nodes.filter((node) => node.communityId === community.id);
           let maxDistance = 72;
           members.forEach((node) => {
-            const nodePoint = sigma.graphToViewport({ x: node.x, y: node.y });
+            const nodePoint = sigma.graphToViewport({
+              x: Number(graph.getNodeAttribute(node.id, "x")),
+              y: Number(graph.getNodeAttribute(node.id, "y")),
+            });
             if (Number.isFinite(nodePoint.x) && Number.isFinite(nodePoint.y)) {
               maxDistance = Math.max(
                 maxDistance,
@@ -838,73 +1219,29 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
             name: community.name,
             x: point.x,
             y: point.y,
-            radius: Math.max(maxDistance + 40, 96),
+            radius: Math.max(maxDistance + 62, 124),
             color: getCommunityColor(community.id),
             active: !activeCommunityId || activeCommunityId === community.id,
           };
         })
         .filter(Boolean) as HaloItem[];
       setHalos(nextHalos);
-
-      const nextBridgeNodes = nodes
-        .filter((node) => node.isBridge)
-        .map((node) => {
-          const point = sigma.graphToViewport({ x: node.x, y: node.y });
-          if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
-          return {
-            id: node.id,
-            x: point.x,
-            y: point.y,
-            radius: clamp(10 + node.degree * 0.8, 12, 24),
-            color: getCommunityColor(node.communityId),
-            active: !activeCommunityId || activeCommunityId === node.communityId,
-          };
-        })
-        .filter(Boolean) as BridgeNodeOverlay[];
-      setBridgeNodeOverlays(nextBridgeNodes);
-
-      const nextCrossEdges = edges
-        .filter((edge) => edge.cross)
-        .map((edge) => {
-          const sourceNode = nodeMap.get(edge.source);
-          const targetNode = nodeMap.get(edge.target);
-          if (!sourceNode || !targetNode) {
-            return null;
-          }
-          const sourcePoint = sigma.graphToViewport({ x: sourceNode.x, y: sourceNode.y });
-          const targetPoint = sigma.graphToViewport({ x: targetNode.x, y: targetNode.y });
-          if (!Number.isFinite(sourcePoint.x) || !Number.isFinite(sourcePoint.y) ||
-              !Number.isFinite(targetPoint.x) || !Number.isFinite(targetPoint.y)) {
-            return null;
-          }
-          return {
-            id: edge.id,
-            x1: sourcePoint.x,
-            y1: sourcePoint.y,
-            x2: targetPoint.x,
-            y2: targetPoint.y,
-            color: getCommunityColor(sourceNode.communityId),
-            active:
-              !activeCommunityId ||
-              activeCommunityId === sourceNode.communityId ||
-              activeCommunityId === targetNode.communityId,
-          };
-        })
-        .filter(Boolean) as CrossEdgeOverlay[];
-      setCrossEdgeOverlays(nextCrossEdges);
+      drawOverlayCanvas();
     };
 
     updateOverlays();
     const camera = sigma.getCamera();
     const onCameraUpdate = (_state?: CameraState) => updateOverlays();
     camera.on("updated", onCameraUpdate);
+    sigma.on("afterRender", updateOverlays);
     window.addEventListener("resize", updateOverlays);
 
     return () => {
       camera.removeListener("updated", onCameraUpdate);
+      sigma.removeListener("afterRender", updateOverlays);
       window.removeEventListener("resize", updateOverlays);
     };
-  }, [activeCommunityId, communities, communityCenters, edges, nodeMap, nodes]);
+  }, [activeCommunityId, adjacencyMap, communities, communityCenters, edges, nodeMap, nodes]);
 
   if (props.communityLoading) {
     return (
@@ -948,31 +1285,34 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
                 width: halo.radius * 2,
                 height: halo.radius * 2,
                 borderRadius: "50%",
-                background: `radial-gradient(circle, ${hexToRgba(halo.color, 0.12)} 0%, ${hexToRgba(
+                background: `radial-gradient(circle, ${hexToRgba(halo.color, 0.16)} 0%, ${hexToRgba(
                   halo.color,
-                  0.04,
-                )} 55%, ${hexToRgba(halo.color, 0)} 100%)`,
-                opacity: halo.active ? 1 : 0.2,
+                  0.06,
+                )} 58%, ${hexToRgba(halo.color, 0)} 100%)`,
+                opacity: halo.active ? 1 : 0.12,
                 transition: "opacity 0.35s ease",
+                filter: "blur(2px)",
               }}
             />
             <div
               style={{
                 position: "absolute",
                 left: halo.x,
-                top: Math.max(halo.y - halo.radius - 20, 10),
+                top: Math.max(halo.y - halo.radius - 28, 10),
                 transform: "translateX(-50%)",
-                padding: "4px 10px",
+                padding: "5px 12px",
                 borderRadius: 999,
-                background: "rgba(255,255,255,0.88)",
-                border: `1px solid ${hexToRgba(halo.color, 0.28)}`,
-                color: "#334155",
-                fontSize: 12,
+                background: "rgba(255,255,255,0.84)",
+                border: `1px solid ${hexToRgba(halo.color, 0.24)}`,
+                color: "#1e293b",
+                fontSize: 13,
                 fontWeight: 700,
                 lineHeight: 1.2,
                 whiteSpace: "nowrap",
-                opacity: halo.active ? 0.96 : 0.42,
-                boxShadow: "0 4px 12px rgba(148, 163, 184, 0.12)",
+                letterSpacing: "0.02em",
+                opacity: halo.active ? 0.94 : 0.34,
+                boxShadow: "0 10px 22px rgba(148, 163, 184, 0.12)",
+                backdropFilter: "blur(10px)",
               }}
             >
               {halo.name}
@@ -981,119 +1321,17 @@ export function CommunityMiddleCanvas(props: CommunityAnalysisViewProps) {
         ))}
       </div>
 
-      <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 3 }}>
-        {crossEdgeOverlays.map((edge) =>
-          !Number.isFinite(edge.x1) || !Number.isFinite(edge.y1) ||
-          !Number.isFinite(edge.x2) || !Number.isFinite(edge.y2) ? null : (
-          <g key={edge.id} opacity={edge.active ? 0.98 : 0.24}>
-            <line
-              x1={edge.x1}
-              y1={edge.y1}
-              x2={edge.x2}
-              y2={edge.y2}
-              stroke="rgba(255,255,255,0.92)"
-              strokeWidth={3.8}
-              strokeLinecap="round"
-            />
-            <line
-              x1={edge.x1}
-              y1={edge.y1}
-              x2={edge.x2}
-              y2={edge.y2}
-              stroke={hexToRgba(edge.color, 0.6)}
-              strokeWidth={2.2}
-              strokeDasharray="9 7"
-              strokeLinecap="round"
-            />
-          </g>
-        ))}
-        {communityBridges.map((bridge) => {
-          const sourceCenter = communityCenters.get(bridge.sourceCommunityId);
-          const targetCenter = communityCenters.get(bridge.targetCommunityId);
-          if (!sourceCenter || !targetCenter) return null;
-          const sourcePoint = sigmaRef.current?.graphToViewport(sourceCenter);
-          const targetPoint = sigmaRef.current?.graphToViewport(targetCenter);
-          if (
-            !sourcePoint ||
-            !targetPoint ||
-            !Number.isFinite(sourcePoint.x) ||
-            !Number.isFinite(sourcePoint.y) ||
-            !Number.isFinite(targetPoint.x) ||
-            !Number.isFinite(targetPoint.y)
-          ) return null;
-          const active =
-            !activeCommunityId ||
-            activeCommunityId === bridge.sourceCommunityId ||
-            activeCommunityId === bridge.targetCommunityId;
-          const bridgeColor = getCommunityColor(bridge.sourceCommunityId);
-          const midX = (sourcePoint.x + targetPoint.x) / 2;
-          const midY = (sourcePoint.y + targetPoint.y) / 2;
-
-          return (
-            <g key={bridge.id} opacity={active ? 0.92 : 0.18}>
-              <line
-                x1={sourcePoint.x}
-                y1={sourcePoint.y}
-                x2={targetPoint.x}
-                y2={targetPoint.y}
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth={Math.min(4.2 + bridge.weight * 0.8, 8.4)}
-                strokeLinecap="round"
-              />
-              <line
-                x1={sourcePoint.x}
-                y1={sourcePoint.y}
-                x2={targetPoint.x}
-                y2={targetPoint.y}
-                stroke={hexToRgba(bridgeColor, 0.7)}
-                strokeWidth={Math.min(2.8 + bridge.weight * 0.62, 5.8)}
-                strokeDasharray="10 8"
-                strokeLinecap="round"
-              />
-              <g transform={`translate(${midX}, ${midY})`}>
-                <rect
-                  x={-20}
-                  y={-12}
-                  width={40}
-                  height={24}
-                  rx={12}
-                  ry={12}
-                  fill="rgba(255,251,235,0.96)"
-                  stroke={hexToRgba(bridgeColor, 0.45)}
-                />
-                <text
-                  textAnchor="middle"
-                  dominantBaseline="central"
-                  style={{ fill: "#334155", fontSize: 12, fontWeight: 700, fontFamily: "Consolas, monospace" }}
-                >
-                  {bridge.weight}
-                </text>
-              </g>
-            </g>
-          );
-        })}
-        {bridgeNodeOverlays.map((node) =>
-          !Number.isFinite(node.x) || !Number.isFinite(node.y) ? null : (
-          <g key={node.id} opacity={node.active ? 1 : 0.22}>
-            <circle
-              cx={node.x}
-              cy={node.y}
-              r={node.radius + 2}
-              fill="rgba(255,255,255,0.82)"
-            />
-            <circle
-              cx={node.x}
-              cy={node.y}
-              r={node.radius + 3}
-              fill="none"
-              stroke={hexToRgba(node.color, 0.95)}
-              strokeWidth={2.2}
-              strokeDasharray="4 5"
-              strokeLinecap="round"
-            />
-          </g>
-        ))}
-      </svg>
+      <canvas
+        ref={overlayCanvasRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none",
+          zIndex: 3,
+        }}
+      />
 
       <div
         ref={containerRef}
@@ -1212,7 +1450,406 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
     () => buildCommunityInsights(communities, nodes, edges, communityBridges),
     [communities, nodes, edges, communityBridges],
   );
-  const activeInsight = activeCommunity ? insightsMap.get(activeCommunity.id) : null;
+  const activeCommunityKey = String(activeCommunity?.id ?? activeCommunityId ?? "").trim();
+  const activeInsight =
+    (activeCommunityKey ? insightsMap.get(activeCommunityKey) : null) ||
+    (activeCommunity?.id ? insightsMap.get(String(activeCommunity.id)) : null) ||
+    null;
+  const rawNetworkNodes = useMemo(
+    () => Array.isArray(networkData?.nodes) ? networkData.nodes : [],
+    [networkData],
+  );
+  const rawNetworkEdges = useMemo(
+    () => Array.isArray(networkData?.edges) ? networkData.edges : [],
+    [networkData],
+  );
+  const rawNodeNameMap = useMemo(
+    () =>
+      new Map(
+        rawNetworkNodes.map((node) => [
+          String(node.id ?? "").trim(),
+          String(node.name ?? node.id ?? "").trim(),
+        ]),
+      ),
+    [rawNetworkNodes],
+  );
+  const rawNodeMap = useMemo(
+    () =>
+      new Map(
+        rawNetworkNodes.map((node) => {
+          const id = String(node.id ?? "").trim();
+          return [
+            id,
+            {
+              id,
+              label: String(node.name ?? node.id ?? "").trim(),
+              communityId: String(node.community_id ?? "").trim(),
+              isBridge: Boolean(node.is_bridge),
+            },
+          ];
+        }),
+      ),
+    [rawNetworkNodes],
+  );
+  const rawNodeByNameMap = useMemo(
+    () =>
+      new Map(
+        rawNetworkNodes.map((node) => {
+          const name = String(node.name ?? "").trim();
+          return [
+            name,
+            {
+              id: String(node.id ?? "").trim(),
+              label: name,
+              communityId: String(node.community_id ?? "").trim(),
+              isBridge: Boolean(node.is_bridge),
+            },
+          ];
+        }),
+      ),
+    [rawNetworkNodes],
+  );
+  const rawNodeDegreeMap = useMemo(() => {
+    const map = new Map<string, number>();
+    rawNetworkEdges.forEach((edge) => {
+      const sourceId = String(edge.source_id ?? edge.source ?? "").trim();
+      const targetId = String(edge.target_id ?? edge.target ?? "").trim();
+      if (sourceId) {
+        map.set(sourceId, (map.get(sourceId) || 0) + 1);
+      }
+      if (targetId) {
+        map.set(targetId, (map.get(targetId) || 0) + 1);
+      }
+    });
+    return map;
+  }, [rawNetworkEdges]);
+  const rawNodeDegreeByNameMap = useMemo(() => {
+    const map = new Map<string, number>();
+    rawNetworkEdges.forEach((edge) => {
+      const sourceKey = String(edge.source_id ?? edge.source ?? "").trim();
+      const targetKey = String(edge.target_id ?? edge.target ?? "").trim();
+      const sourceNode =
+        rawNodeMap.get(sourceKey) ||
+        rawNodeByNameMap.get(String(edge.source ?? "").trim()) ||
+        null;
+      const targetNode =
+        rawNodeMap.get(targetKey) ||
+        rawNodeByNameMap.get(String(edge.target ?? "").trim()) ||
+        null;
+      if (sourceNode?.label) {
+        map.set(sourceNode.label, (map.get(sourceNode.label) || 0) + 1);
+      }
+      if (targetNode?.label) {
+        map.set(targetNode.label, (map.get(targetNode.label) || 0) + 1);
+      }
+    });
+    return map;
+  }, [rawNetworkEdges, rawNodeByNameMap, rawNodeMap]);
+  const rawNodesByCommunityId = useMemo(() => {
+    const map = new Map<string, CommunityNodeRecord[]>();
+    rawNetworkNodes.forEach((node) => {
+      const id = String(node.id ?? "").trim();
+      const communityId = String(node.community_id ?? "").trim();
+      if (!id || !communityId) {
+        return;
+      }
+      const nextNode: CommunityNodeRecord = {
+        id,
+        label: String(node.name ?? id).trim(),
+        communityId,
+        x: Number(node.x) || 0,
+        y: Number(node.y) || 0,
+        degree: rawNodeDegreeMap.get(id) || 0,
+        isBridge: Boolean(node.is_bridge),
+      };
+      if (!map.has(communityId)) {
+        map.set(communityId, []);
+      }
+      map.get(communityId)!.push(nextNode);
+    });
+    return map;
+  }, [rawNetworkEdges, rawNetworkNodes, rawNodeDegreeMap]);
+  const rawNodeCommunityMap = useMemo(() => {
+    const map = new Map<string, string>();
+    rawNetworkNodes.forEach((node) => {
+      const id = String(node.id ?? "").trim();
+      const communityId = String(node.community_id ?? "").trim();
+      if (id && communityId) {
+        map.set(id, communityId);
+      }
+    });
+    return map;
+  }, [rawNetworkNodes]);
+  const rawCommunityMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        nodeIds: string[];
+        nodeNames: string[];
+      }
+    >();
+    (Array.isArray(networkData?.communities) ? networkData.communities : []).forEach((community) => {
+      const id = String(community.community_id ?? "").trim();
+      if (!id) {
+        return;
+      }
+      map.set(id, {
+        nodeIds: (community.node_ids || []).map((item) => String(item ?? "").trim()).filter(Boolean),
+        nodeNames: (community.nodes || []).map((item) => String(item ?? "").trim()).filter(Boolean),
+      });
+    });
+    return map;
+  }, [networkData]);
+  const communityNodeIdToCommunityMap = useMemo(() => {
+    const map = new Map<string, string>();
+    communities.forEach((community) => {
+      (community.nodeIds || []).forEach((nodeId) => {
+        const key = String(nodeId).trim();
+        if (key) {
+          map.set(key, String(community.id).trim());
+        }
+      });
+    });
+    return map;
+  }, [communities]);
+  const rawBridgeNodeIdSet = useMemo(
+    () =>
+      new Set(
+        rawNetworkNodes
+          .filter((node) => Boolean(node.is_bridge))
+          .map((node) => String(node.id ?? "").trim())
+          .filter(Boolean),
+      ),
+    [rawNetworkNodes],
+  );
+  const activeCommunityMembers = useMemo(() => {
+    if (!activeCommunityKey) {
+      return [];
+    }
+    const rawCommunity = rawCommunityMap.get(activeCommunityKey);
+    const tokens = dedupeStrings([
+      ...(activeCommunity?.nodeIds || []).map((item) => String(item).trim()),
+      ...(rawCommunity?.nodeIds || []),
+      ...(rawCommunity?.nodeNames || []),
+    ]);
+
+    const memberMap = new Map<
+      string,
+      { id: string; label: string; degree: number; isBridge: boolean; communityId: string }
+    >();
+
+    tokens.forEach((token) => {
+      const rawNode = rawNodeMap.get(token) || rawNodeByNameMap.get(token) || null;
+      const graphNode = nodeMap.get(token) || null;
+      const id = String(rawNode?.id || graphNode?.id || token).trim();
+      const label = String(
+        rawNode?.label ||
+          graphNode?.label ||
+          rawNodeNameMap.get(id) ||
+          rawNodeNameMap.get(token) ||
+          token,
+      ).trim();
+      const communityId = String(
+        rawNode?.communityId ||
+          graphNode?.communityId ||
+          rawNodeCommunityMap.get(id) ||
+          rawNodeCommunityMap.get(token) ||
+          activeCommunityKey,
+      ).trim();
+      if (!label || communityId !== activeCommunityKey) {
+        return;
+      }
+      memberMap.set(id || label, {
+        id: id || label,
+        label,
+        degree:
+          rawNodeDegreeMap.get(id) ||
+          rawNodeDegreeMap.get(token) ||
+          rawNodeDegreeByNameMap.get(label) ||
+          graphNode?.degree ||
+          0,
+        isBridge: Boolean(
+          rawNode?.isBridge ||
+            graphNode?.isBridge ||
+            rawBridgeNodeIdSet.has(id) ||
+            rawBridgeNodeIdSet.has(token),
+        ),
+        communityId,
+      });
+    });
+
+    (rawNodesByCommunityId.get(activeCommunityKey) || []).forEach((node) => {
+      memberMap.set(node.id, {
+        id: node.id,
+        label: String(node.label || rawNodeNameMap.get(node.id) || node.id).trim(),
+        degree:
+          rawNodeDegreeMap.get(node.id) ||
+          rawNodeDegreeByNameMap.get(node.label) ||
+          node.degree ||
+          0,
+        isBridge: Boolean(node.isBridge || rawBridgeNodeIdSet.has(node.id)),
+        communityId: activeCommunityKey,
+      });
+    });
+
+    return Array.from(memberMap.values());
+  }, [
+    activeCommunity,
+    activeCommunityKey,
+    nodeMap,
+    rawBridgeNodeIdSet,
+    rawCommunityMap,
+    rawNodeByNameMap,
+    rawNodeCommunityMap,
+    rawNodeDegreeByNameMap,
+    rawNodeDegreeMap,
+    rawNodeMap,
+    rawNodeNameMap,
+    rawNodesByCommunityId,
+  ]);
+  const activeCoreMembers = useMemo(() => {
+    if (!activeCommunityKey) {
+      return [];
+    }
+    const fromRawMembers = activeCommunityMembers
+      .slice()
+      .sort((left, right) => {
+        const leftPriority = Number(left.isBridge) * 100 + left.degree;
+        const rightPriority = Number(right.isBridge) * 100 + right.degree;
+        return rightPriority - leftPriority;
+      })
+      .slice(0, 6)
+      .map((member) => ({
+        id: member.id,
+        label: member.label,
+        degree: member.degree,
+        isBridge: member.isBridge,
+      }));
+    if (fromRawMembers.length > 0) {
+      return fromRawMembers;
+    }
+
+    const fromInsight = activeInsight?.coreMembers || [];
+    if (fromInsight.length > 0) {
+      return fromInsight;
+    }
+
+    return nodes
+      .filter((node) => String(node.communityId).trim() === activeCommunityKey)
+      .sort((left, right) => {
+        const leftPriority = Number(left.isBridge) * 100 + left.degree;
+        const rightPriority = Number(right.isBridge) * 100 + right.degree;
+        return rightPriority - leftPriority;
+      })
+      .slice(0, 6)
+      .map((node) => ({
+        id: node.id,
+        label: node.label,
+        degree: node.degree,
+        isBridge: node.isBridge,
+      }));
+  }, [activeCommunityKey, activeCommunityMembers, activeInsight, nodes]);
+  const activeOutbound = useMemo(() => {
+    if (!activeCommunityKey) {
+      return [];
+    }
+
+    const activeCommunityMemberIdSet = new Set(activeCommunityMembers.map((item) => String(item.id).trim()).filter(Boolean));
+    const activeCommunityMemberNameSet = new Set(activeCommunityMembers.map((item) => String(item.label).trim()).filter(Boolean));
+
+    const outboundMap = new Map<string, { to: string; weight: number; relations: string[] }>();
+    rawNetworkEdges.forEach((edge) => {
+      const sourceId = String(edge.source_id ?? edge.source ?? "").trim();
+      const targetId = String(edge.target_id ?? edge.target ?? "").trim();
+      const sourceName = String(edge.source ?? "").trim();
+      const targetName = String(edge.target ?? "").trim();
+      const sourceNode =
+        rawNodeMap.get(sourceId) ||
+        rawNodeByNameMap.get(sourceId) ||
+        rawNodeByNameMap.get(sourceName) ||
+        null;
+      const targetNode =
+        rawNodeMap.get(targetId) ||
+        rawNodeByNameMap.get(targetId) ||
+        rawNodeByNameMap.get(targetName) ||
+        null;
+      const sourceCommunityId = String(
+        edge.source_community_id ??
+          sourceNode?.communityId ??
+          rawNodeCommunityMap.get(sourceId) ??
+          communityNodeIdToCommunityMap.get(sourceId) ??
+          "",
+      ).trim();
+      const targetCommunityId = String(
+        edge.target_community_id ??
+          targetNode?.communityId ??
+          rawNodeCommunityMap.get(targetId) ??
+          communityNodeIdToCommunityMap.get(targetId) ??
+          "",
+      ).trim();
+
+      const sourceInActiveCommunity =
+        sourceCommunityId === activeCommunityKey ||
+        activeCommunityMemberIdSet.has(sourceId) ||
+        activeCommunityMemberNameSet.has(String(sourceNode?.label || sourceName).trim());
+      const targetInActiveCommunity =
+        targetCommunityId === activeCommunityKey ||
+        activeCommunityMemberIdSet.has(targetId) ||
+        activeCommunityMemberNameSet.has(String(targetNode?.label || targetName).trim());
+
+      if (sourceInActiveCommunity === targetInActiveCommunity) {
+        return;
+      }
+
+      const to = sourceInActiveCommunity
+        ? String(targetCommunityId || communityNodeIdToCommunityMap.get(targetId) || targetNode?.communityId || "").trim()
+        : String(sourceCommunityId || communityNodeIdToCommunityMap.get(sourceId) || sourceNode?.communityId || "").trim();
+      if (!to) {
+        return;
+      }
+      const current = outboundMap.get(to) || { to, weight: 0, relations: [] };
+      current.weight += 1;
+      const relation = String(edge.relation ?? "").trim();
+      if (relation) {
+        current.relations.push(relation);
+      }
+      outboundMap.set(to, current);
+    });
+    const fromRawEdges = Array.from(outboundMap.values())
+      .map((item) => ({
+        ...item,
+        relations: dedupeStrings(item.relations).slice(0, 3),
+      }))
+      .sort((left, right) => right.weight - left.weight);
+    if (fromRawEdges.length > 0) {
+      return fromRawEdges;
+    }
+
+    const fromInsight = activeInsight?.outbound || [];
+    if (fromInsight.length > 0) {
+      return fromInsight;
+    }
+
+    return communityBridges
+      .flatMap((bridge) => {
+        if (String(bridge.sourceCommunityId).trim() === activeCommunityKey) {
+          return [{
+            to: String(bridge.targetCommunityId).trim(),
+            weight: bridge.weight,
+            relations: bridge.relations,
+          }];
+        }
+        if (String(bridge.targetCommunityId).trim() === activeCommunityKey) {
+          return [{
+            to: String(bridge.sourceCommunityId).trim(),
+            weight: bridge.weight,
+            relations: bridge.relations,
+          }];
+        }
+        return [];
+      })
+      .sort((left, right) => right.weight - left.weight);
+  }, [activeCommunityKey, activeCommunityMembers, activeInsight, communityBridges, communityNodeIdToCommunityMap, rawNetworkEdges, rawNodeByNameMap, rawNodeCommunityMap, rawNodeMap]);
 
   return (
     <aside
@@ -1315,7 +1952,7 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
             <div>
               <div style={{ marginBottom: 10, fontSize: 13, fontWeight: 700, color: "#475569" }}>核心成员</div>
               <div style={{ display: "grid", gap: 8 }}>
-                {activeInsight?.coreMembers.map((member) => (
+                {activeCoreMembers.map((member) => (
                   <div key={member.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                       <span style={{ color: "#0f172a", fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1338,16 +1975,17 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
             <div>
               <div style={{ marginBottom: 10, fontSize: 13, fontWeight: 700, color: "#475569" }}>对外联络方向</div>
               <div style={{ display: "grid", gap: 10 }}>
-                {(activeInsight?.outbound || []).map((outbound) => {
-                  const targetCommunity = communities.find((item) => item.id === outbound.to);
-                  const targetColor = getCommunityColor(outbound.to);
-                  const maxWeight = activeInsight?.outbound[0]?.weight || 1;
+                {activeOutbound.map((outbound) => {
+                  const outboundKey = String(outbound.to).trim();
+                  const targetCommunity = communities.find((item) => String(item.id).trim() === outboundKey);
+                  const targetColor = getCommunityColor(outboundKey);
+                  const maxWeight = activeOutbound[0]?.weight || 1;
                   return (
-                    <div key={outbound.to} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center" }}>
+                    <div key={outboundKey} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center" }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", background: targetColor }} />
                       <div style={{ minWidth: 0 }}>
                         <div style={{ color: "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {targetCommunity?.name || outbound.to}
+                          {targetCommunity?.name || outboundKey}
                         </div>
                         <div style={{ marginTop: 2, color: "#94a3b8", fontSize: 11 }}>
                           {outbound.relations.join(" / ") || "跨社区关联"}
