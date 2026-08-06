@@ -54,6 +54,8 @@ export interface ImportObjectScope {
   columns?: string[];
   keyFields?: string[];
   filterExpr?: string;
+  cursorField?: string;
+  cursorConfig?: Record<string, any>;
 }
 
 export interface ImportTaskPayload {
@@ -83,13 +85,18 @@ export interface ImportTaskRecord {
   scheduleType: string;
   cronExpr?: string;
   batchSize: number;
+  maxRowsPerObject?: number;
+  scheduleConfig?: Record<string, any>;
   writeMode: string;
   enabled: number;
   lastSuccessRunId?: number;
   lastRunStatus?: string;
   lastRunTime?: string;
+  lastTriggerTime?: string;
+  nextTriggerTime?: string;
   remark?: string;
   objects?: ImportObjectScope[];
+  cursorConfig?: Record<string, any>;
   createTime?: string;
   updateTime?: string;
 }
@@ -102,6 +109,7 @@ export interface ImportRunRecord {
   sourceType?: string;
   triggerType?: string;
   status: string;
+  triggeredAt?: string;
   startedAt?: string;
   finishedAt?: string;
   readCount?: number;
@@ -112,6 +120,7 @@ export interface ImportRunRecord {
   progressPercent?: number;
   errorCode?: string;
   errorMessage?: string;
+  traceId?: string;
   createTime?: string;
 }
 
@@ -154,6 +163,13 @@ export async function getImportTaskPage(params: Record<string, any>) {
   return request(`${API_PREFIX}/biz/import-task/page`, { method: 'GET', params });
 }
 
+export async function listImportTasksByDataSource(id: number | string) {
+  return request(`${API_PREFIX}/biz/data-source/import-tasks`, {
+    method: 'GET',
+    params: { id },
+  });
+}
+
 export async function enableImportTask(id: number | string, enabled: number) {
   return request(`${API_PREFIX}/biz/import-task/enable`, {
     method: 'POST',
@@ -170,6 +186,17 @@ export async function triggerImportTask(id: number | string, triggerType = 'MANU
 
 export async function getImportRunPage(params: Record<string, any>) {
   return request(`${API_PREFIX}/biz/import-run/page`, { method: 'GET', params });
+}
+
+export async function listImportRunsByDataSource(
+  id: number | string,
+  taskType?: 'MANUAL' | 'CRON',
+  taskId?: number | string,
+) {
+  return request(`${API_PREFIX}/biz/data-source/import-runs`, {
+    method: 'GET',
+    params: { id, taskType, taskId },
+  });
 }
 
 export async function getImportRun(id: number | string) {

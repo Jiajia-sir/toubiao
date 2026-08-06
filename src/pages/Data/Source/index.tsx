@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import { history } from '@umijs/max';
@@ -13,11 +13,13 @@ import {
   message,
   Modal,
   Popconfirm,
+  Progress,
   Row,
   Select,
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   Checkbox,
   Divider,
@@ -27,8 +29,11 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
+  ClockCircleOutlined,
+  CaretRightOutlined,
   DeleteOutlined,
   EditOutlined,
+  FileSearchOutlined,
   LinkOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -51,9 +56,15 @@ import {
 } from '@/services/biz/data-source';
 import {
   createImportTask,
+  extractData as extractImportData,
+  listImportRunsByDataSource,
+  listImportTasksByDataSource,
+  type ImportRunRecord,
+  type ImportTaskRecord,
   triggerImportTask,
   type ImportObjectScope,
 } from '@/services/biz/structured-import';
+import './index.less';
 
 const { Text, Paragraph } = Typography;
 
@@ -224,6 +235,7 @@ export default function DataSourcePage() {
   const [metaLoading, setMetaLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [rowTestingId, setRowTestingId] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -254,6 +266,17 @@ export default function DataSourcePage() {
     category: undefined,
     status: undefined,
   });
+  const [expandedRowKeys, setExpandedRowKeys] = useState<number[]>([]);
+  const [importTasksMap, setImportTasksMap] = useState<Record<number, ImportTaskRecord[]>>({});
+  const [importTasksLoadingMap, setImportTasksLoadingMap] = useState<Record<number, boolean>>({});
+  const [importTaskDetailVisible, setImportTaskDetailVisible] = useState(false);
+  const [selectedImportTask, setSelectedImportTask] = useState<ImportTaskRecord | null>(null);
+  const [importRunVisible, setImportRunVisible] = useState(false);
+  const [importRunLoading, setImportRunLoading] = useState(false);
+  const [selectedRunSource, setSelectedRunSource] = useState<DataSourceRecord | null>(null);
+  const [selectedRunTask, setSelectedRunTask] = useState<ImportTaskRecord | null>(null);
+  const [importRuns, setImportRuns] = useState<ImportRunRecord[]>([]);
+  const [importRunTaskType, setImportRunTaskType] = useState<'MANUAL' | 'CRON' | undefined>();
 
   const currentType = Form.useWatch('type', editForm);
   const currentTypeMeta = useMemo(
@@ -352,6 +375,16 @@ export default function DataSourcePage() {
     await fetchData(1, values);
   };
 
+  const handleSearchValuesChange = async (changedValues: Partial<SearchFormValues>) => {
+    const values = {
+      ...searchForm.getFieldsValue(),
+      ...changedValues,
+    };
+    setSearchValues(values);
+    setPage(1);
+    await fetchData(1, values);
+  };
+
   const handleReset = async () => {
     const values = {
       name: undefined,
@@ -412,7 +445,7 @@ export default function DataSourcePage() {
    * 这样可以保证测试结果和当前库中配置一致，而不是依赖表格上展示的部分字段。
    */
   const handleTableTest = async (record: DataSourceRecord) => {
-    setTesting(true);
+    setRowTestingId(record.id);
     try {
       const res: any = await testDataSourceConnection({
         id: record.id,
@@ -429,17 +462,50 @@ export default function DataSourcePage() {
         status: record.status,
       });
       const result = extractData<any>(res);
+      const latestFilters = searchForm.getFieldsValue();
       if (result?.success) {
         message.success(`连接成功，耗时 ${result?.latencyMs ?? 0} ms`);
-      } else {
-        message.error(result?.message || '连接失败');
+        setSearchValues(latestFilters);
+        await fetchData(page, latestFilters);
+        return;
       }
-      await fetchData(page, searchValues);
+      const failedMessage = result?.message || '连接失败';
+      message.error(failedMessage);
+      setData((prev) =>
+        prev.map((item) =>
+          item.id === record.id
+            ? {
+                ...item,
+                lastTestStatus: 0,
+                lastTestMessage: failedMessage,
+                lastTestTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+              }
+            : item,
+        ),
+      );
     } catch (error) {
       console.error(error);
-      message.error('连接测试失败');
+      const latestFilters = searchForm.getFieldsValue();
+      const failedMessage =
+        (error as any)?.info?.data?.message ||
+        (error as any)?.info?.errorMessage ||
+        (error as any)?.message ||
+        '连接测试失败';
+      message.error(failedMessage);
+      setData((prev) =>
+        prev.map((item) =>
+          item.id === record.id
+            ? {
+                ...item,
+                lastTestStatus: 0,
+                lastTestMessage: failedMessage,
+                lastTestTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+              }
+            : item,
+        ),
+      );
     } finally {
-      setTesting(false);
+      setRowTestingId(null);
     }
   };
 
@@ -456,7 +522,7 @@ export default function DataSourcePage() {
       const result = extractData<any>(res);
       if (result?.success) {
         message.success(`连接成功，耗时 ${result?.latencyMs ?? 0} ms`);
-        // 连接成功后自动拉取数据库/Space 列表，避免手填库名
+        // 连接成功后自动拉取数据库 / Space 列表，避免手填库名
         await loadDatabaseOptions(payload, editRecord?.id);
       } else {
         message.error(result?.message || '连接失败');
@@ -500,7 +566,7 @@ export default function DataSourcePage() {
   };
 
   /**
-   * 打开“配置导入对象”弹窗：探查表/集合/标签，再按对象选择字段。
+   * 打开“配置导入对象”弹窗：探查表 / 集合 / 标签，再按对象选择字段。
    */
   const openImportModal = async (record: DataSourceRecord) => {
     setImportTarget(record);
@@ -577,7 +643,7 @@ export default function DataSourcePage() {
   const handleImportSubmit = async () => {
     if (!importTarget) return;
     if (!selectedObjectKeys.length) {
-      message.warning('请至少选择一个导入对象（表/集合/标签）');
+      message.warning('请至少选择一个导入对象（表 / 集合 / 标签）');
       return;
     }
     const values = await importForm.validateFields();
@@ -600,7 +666,7 @@ export default function DataSourcePage() {
       writeMode: values.writeMode,
       enabled: values.enabled,
       objects,
-      // 当前版本固定全量 + 手动触发，定时/增量入口隐藏
+      // 当前版本固定全量 + 手动触发，定时 / 增量入口隐藏
       cursorConfig: undefined,
       scheduleConfig: undefined,
     };
@@ -624,7 +690,7 @@ export default function DataSourcePage() {
       }
       setImportModalVisible(false);
       setImportTarget(null);
-      // 引导去结果页核对
+      // 寮曞鍘荤粨鏋滈〉鏍稿
       history.push(`/data/import-result?taskId=${taskId}`);
     } catch (error) {
       console.error(error);
@@ -632,6 +698,552 @@ export default function DataSourcePage() {
     } finally {
       setImportSubmitting(false);
     }
+  };
+
+  const loadImportTasks = async (dataSourceId: number) => {
+    if (importTasksLoadingMap[dataSourceId]) return;
+    setImportTasksLoadingMap((prev) => ({ ...prev, [dataSourceId]: true }));
+    try {
+      const res: any = await listImportTasksByDataSource(dataSourceId);
+      const list = (extractImportData<any[]>(res) || []) as ImportTaskRecord[];
+      setImportTasksMap((prev) => ({ ...prev, [dataSourceId]: list }));
+    } catch (error) {
+      console.error(error);
+      message.error('获取导入任务列表失败');
+      setImportTasksMap((prev) => ({ ...prev, [dataSourceId]: [] }));
+    } finally {
+      setImportTasksLoadingMap((prev) => ({ ...prev, [dataSourceId]: false }));
+    }
+  };
+
+  const handleExpand = async (expanded: boolean, record: DataSourceRecord) => {
+    if (!expanded) {
+      setExpandedRowKeys([]);
+      return;
+    }
+    setExpandedRowKeys([record.id]);
+    await loadImportTasks(record.id);
+  };
+
+  const openImportTaskDetail = (record: ImportTaskRecord) => {
+    setSelectedImportTask(record);
+    setImportTaskDetailVisible(true);
+  };
+
+  const closeImportTaskDetail = () => {
+    setImportTaskDetailVisible(false);
+    setSelectedImportTask(null);
+  };
+
+  const fetchImportRuns = async (
+    record: DataSourceRecord,
+    taskType?: 'MANUAL' | 'CRON',
+    taskId?: number,
+  ) => {
+    setImportRunLoading(true);
+    try {
+      const res: any = await listImportRunsByDataSource(record.id, taskType, taskId);
+      const list = (extractImportData<any[]>(res) || []) as ImportRunRecord[];
+      setImportRuns(list);
+    } catch (error) {
+      console.error(error);
+      message.error('获取触发记录失败');
+      setImportRuns([]);
+    } finally {
+      setImportRunLoading(false);
+    }
+  };
+
+  const openImportRuns = async (record: DataSourceRecord) => {
+    setSelectedRunSource(record);
+    setSelectedRunTask(null);
+    setImportRunTaskType(undefined);
+    setImportRunVisible(true);
+    await fetchImportRuns(record, undefined);
+  };
+
+  const openImportRunsByTask = async (dataSource: DataSourceRecord, task: ImportTaskRecord) => {
+    setSelectedRunSource(dataSource);
+    setSelectedRunTask(task);
+    setImportRunTaskType(undefined);
+    setImportRunVisible(true);
+    await fetchImportRuns(dataSource, undefined, task.id);
+  };
+
+  const handleImportRunTaskTypeChange = async (value?: 'MANUAL' | 'CRON') => {
+    setImportRunTaskType(value);
+    if (!selectedRunSource) return;
+    await fetchImportRuns(selectedRunSource, value, selectedRunTask?.id);
+  };
+
+  const closeImportRuns = () => {
+    setImportRunVisible(false);
+    setSelectedRunSource(null);
+    setSelectedRunTask(null);
+    setImportRuns([]);
+    setImportRunTaskType(undefined);
+  };
+
+  const formatTaskValue = (value: any): string => {
+    if (value === undefined || value === null || value === '') {
+      return '-';
+    }
+    if (Array.isArray(value)) {
+      return value.length ? value.join(', ') : '-';
+    }
+    if (typeof value === 'object') {
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch (_error) {
+        return '-';
+      }
+    }
+    return String(value);
+  };
+
+  const formatTaskDateTime = (value?: string | number | null) => {
+    if (value === undefined || value === null || value === '') {
+      return '-';
+    }
+    const parsed = dayjs(value);
+    return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm:ss') : String(value);
+  };
+
+  const getTaskStatusTag = (status?: string) => {
+    if (!status) {
+      return <Tag>-</Tag>;
+    }
+    if (status === 'SUCCESS') {
+      return <Tag color="success">成功</Tag>;
+    }
+    if (status === 'FAIL' || status === 'FAILED') {
+      return <Tag color="error">失败</Tag>;
+    }
+    if (status === 'PARTIAL') {
+      return <Tag color="warning">部分成功</Tag>;
+    }
+    if (status === 'CANCELLED') {
+      return <Tag color="default">已取消</Tag>;
+    }
+    if (status === 'RUNNING') {
+      return <Tag color="processing">运行中</Tag>;
+    }
+    return <Tag>{status}</Tag>;
+  };
+
+  const formatTaskStatus = (status?: string) => {
+    if (!status) return '-';
+    if (status === 'SUCCESS') return '成功';
+    if (status === 'FAIL' || status === 'FAILED') return '失败';
+    if (status === 'PARTIAL') return '部分成功';
+    if (status === 'CANCELLED') return '已取消';
+    if (status === 'RUNNING') return '运行中';
+    return status;
+  };
+
+  const formatTriggerType = (value?: string) => {
+    if (!value) return '-';
+    const map: Record<string, string> = {
+      MANUAL: '手动触发',
+      CRON: '定时触发',
+      ONCE: '单次触发',
+    };
+    return map[value] || value;
+  };
+
+  const getTriggerTypeTag = (value?: string) => {
+    if (!value) return <Tag>-</Tag>;
+    if (value === 'MANUAL') return <Tag color="blue">手动触发</Tag>;
+    if (value === 'CRON') return <Tag color="purple">定时任务</Tag>;
+    if (value === 'ONCE') return <Tag color="cyan">单次触发</Tag>;
+    return <Tag>{formatTriggerType(value)}</Tag>;
+  };
+
+  const formatExtractMode = (value?: string) => {
+    if (!value) return '-';
+    const map: Record<string, string> = {
+      FULL: '全量',
+      INCREMENTAL: '增量',
+    };
+    return map[value] || value;
+  };
+
+  const formatScheduleType = (value?: string) => {
+    if (!value) return '-';
+    const map: Record<string, string> = {
+      MANUAL: '手动触发',
+      CRON: '定时调度',
+      ONCE: '执行一次',
+    };
+    return map[value] || value;
+  };
+
+  const formatWriteMode = (value?: string) => {
+    if (!value) return '-';
+    const map: Record<string, string> = {
+      UPSERT: '覆盖',
+      APPEND: '追加',
+    };
+    return map[value] || value;
+  };
+
+  const getWriteModeTagColor = (value?: string) => {
+    if (value === 'UPSERT') return 'blue';
+    if (value === 'APPEND') return 'gold';
+    return 'default';
+  };
+
+  const renderTaskObjectSummary = (record: ImportTaskRecord) => {
+    const objects = record.objects || [];
+    if (!objects.length) {
+      return <Text type="secondary">-</Text>;
+    }
+    const firstObject = objects[0];
+    const extraCount = objects.length - 1;
+    return (
+      <Space direction="vertical" size={2}>
+        <Text>{firstObject?.objectName || '-'}</Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {firstObject?.objectKind || '-'} / 字段 {firstObject?.columns?.length ?? 0} / 主键{' '}
+          {firstObject?.keyFields?.length ?? 0}
+          {extraCount > 0 ? ` / 另外 ${extraCount} 个对象` : ''}
+        </Text>
+      </Space>
+    );
+  };
+
+  const importRunColumns: ColumnsType<ImportRunRecord> = [
+    {
+      title: '任务',
+      key: 'taskTrigger',
+      width: 240,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Text>{record.taskName || '-'}</Text>
+          {getTriggerTypeTag(record.triggerType)}
+        </Space>
+      ),
+    },
+    {
+      title: '执行状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (value) => getTaskStatusTag(value),
+    },
+    {
+      title: '执行时间',
+      key: 'timeRange',
+      width: 260,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            触发：{formatTaskDateTime(record.triggeredAt)}
+          </Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            开始：{formatTaskDateTime(record.startedAt)}
+          </Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            结束：{formatTaskDateTime(record.finishedAt)}
+          </Text>
+        </Space>
+      ),
+    },
+    {
+      title: '执行统计',
+      key: 'stats',
+      width: 250,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            读 / 写 / 跳过 / 失败：{formatTaskValue(record.readCount)} /{' '}
+            {formatTaskValue(record.writeCount)} / {formatTaskValue(record.skipCount)} / &nbsp;
+            {formatTaskValue(record.failCount)}
+          </Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            总字节： {formatTaskValue(record.byteCount)}
+          </Text>
+        </Space>
+      ),
+    },
+    {
+      title: '进度',
+      dataIndex: 'progressPercent',
+      key: 'progressPercent',
+      width: 180,
+      render: (value?: number) =>
+        value === undefined || value === null ? (
+          <Text>-</Text>
+        ) : (
+          <Progress
+            percent={Math.max(0, Math.min(100, value))}
+            size="small"
+            status={value >= 100 ? 'success' : 'active'}
+            format={(percent) => `${percent ?? 0}%`}
+          />
+        ),
+    },
+    {
+      title: '错误信息',
+      dataIndex: 'errorMessage',
+      key: 'errorMessage',
+      width: 280,
+      render: (_, record) => (
+        <Text
+          type={record.errorMessage ? 'danger' : undefined}
+          ellipsis={{ tooltip: record.errorMessage || '-' }}
+        >
+          {record.errorCode} - {record.errorMessage}
+        </Text>
+      ),
+    },
+  ];
+
+  const detailLabelStyle: React.CSSProperties = {
+    width: 108,
+    flexShrink: 0,
+    color: '#8c8c8c',
+    fontSize: 12,
+    lineHeight: '22px',
+  };
+
+  const detailValueStyle: React.CSSProperties = {
+    flex: 1,
+    color: '#262626',
+    fontSize: 13,
+    lineHeight: '22px',
+    wordBreak: 'break-all',
+  };
+
+  const renderDetailLine = (label: string, value: any, key?: string) => (
+    <div
+      key={key || label}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 12,
+        padding: '6px 0',
+        borderBottom: '1px dashed #f0f0f0',
+      }}
+    >
+      <div style={detailLabelStyle}>{label}</div>
+      <div style={detailValueStyle}>{formatTaskValue(value)}</div>
+    </div>
+  );
+
+  const renderTagDetailLine = (label: string, tagNode: React.ReactNode, key?: string) => (
+    <div
+      key={key || label}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 12,
+        padding: '6px 0',
+        borderBottom: '1px dashed #f0f0f0',
+      }}
+    >
+      <div style={detailLabelStyle}>{label}</div>
+      <div style={detailValueStyle}>{tagNode}</div>
+    </div>
+  );
+
+  const importTaskColumns: ColumnsType<ImportTaskRecord> = [
+    {
+      title: '任务名称',
+      dataIndex: 'name',
+      key: 'name',
+      width: 280,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Text strong>{record.name}</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            ID: {record.id ?? '-'} / 批次: {formatTaskValue(record.batchSize)} / 限流条数:{' '}
+            {formatTaskValue(record.maxRowsPerObject)}
+          </Text>
+        </Space>
+      ),
+    },
+    {
+      title: '执行配置',
+      key: 'config',
+      width: 220,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          <Tag
+            color={getWriteModeTagColor(record.writeMode)}
+            style={{ marginInlineEnd: 0, width: 'fit-content' }}
+          >
+            {formatWriteMode(record.writeMode)}
+          </Tag>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {formatExtractMode(record.extractMode)} / {formatScheduleType(record.scheduleType)}
+            {record.cronExpr ? ` / ${record.cronExpr}` : ''}
+          </Text>
+        </Space>
+      ),
+    },
+    {
+      title: '对象概览',
+      key: 'objectSummary',
+      width: 280,
+      render: (_, record) => renderTaskObjectSummary(record),
+    },
+    {
+      title: '启停',
+      key: 'writeEnabled',
+      width: 100,
+      render: (_, record) => (
+        <>{record.enabled === 1 ? <Tag color="success">启用</Tag> : <Tag>停用</Tag>}</>
+      ),
+    },
+    {
+      title: '最近运行',
+      key: 'lastRun',
+      width: 200,
+      render: (_, record) => (
+        <Space direction="vertical" size={2}>
+          {getTaskStatusTag(record.lastRunStatus)}
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {formatTaskDateTime(record.lastRunTime)}
+          </Text>
+        </Space>
+      ),
+    },
+    {
+      title: '最近触发时间',
+      dataIndex: 'lastTriggerTime',
+      key: 'lastTriggerTime',
+      width: 180,
+      render: (value?: string | number | null) => (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {formatTaskDateTime(value)}
+        </Text>
+      ),
+    },
+    {
+      title: '下次触发时间',
+      dataIndex: 'nextTriggerTime',
+      key: 'nextTriggerTime',
+      width: 180,
+      render: (value?: string | number | null) => (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {formatTaskDateTime(value)}
+        </Text>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 170,
+      fixed: 'right',
+      render: (_, record) => (
+        <Space size={4}>
+          <Button type="link" size="small" onClick={() => openImportTaskDetail(record)}>
+            查看详情
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            icon={<ClockCircleOutlined />}
+            onClick={() => {
+              const parentSource =
+                data.find((item) => item.id === record.dataSourceId) || selectedRunSource;
+              if (!parentSource) {
+                message.warning('未找到所属数据源');
+                return;
+              }
+              openImportRunsByTask(parentSource, record);
+            }}
+          >
+            触发记录
+          </Button>
+        </Space>
+      ),
+    },
+  ];
+
+  const expandedRowRender = (record: DataSourceRecord) => {
+    const taskList = importTasksMap[record.id] || [];
+    const taskLoading = !!importTasksLoadingMap[record.id];
+    return (
+      <div
+        style={{
+          margin: '0 0 12px 52px',
+          paddingLeft: 16,
+          borderLeft: '3px solid #bcd3ff',
+          position: 'relative',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            left: -8,
+            top: 18,
+            width: 13,
+            height: 13,
+            borderRadius: '50%',
+            background: '#dbeafe',
+            border: '2px solid #8fb6f5',
+          }}
+        />
+        <div
+          style={{
+            background: '#f7faff',
+            border: '1px solid #dbe7ff',
+            borderRadius: 10,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 14px',
+              background: '#edf4ff',
+              borderBottom: '1px solid #dbe7ff',
+            }}
+          >
+            <Space size={8}>
+              <Text strong style={{ fontSize: 13, color: '#315b96' }}>
+                导入任务
+              </Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {record.name} 的关联导入任务列表
+              </Text>
+            </Space>
+            <Space size={8}>
+              <Tag
+                style={{
+                  marginInlineEnd: 0,
+                  color: '#315b96',
+                  background: '#f7fbff',
+                  borderColor: '#c7dafc',
+                  borderRadius: 999,
+                }}
+              >
+                {taskList.length} 个
+              </Tag>
+              <Button type="primary" size="small" onClick={() => openImportModal(record)}>
+                新建导入任务
+              </Button>
+            </Space>
+          </div>
+          <div style={{ padding: '12px 14px 14px', background: '#f7faff' }}>
+            <Table<ImportTaskRecord>
+              rowKey="id"
+              size="small"
+              loading={taskLoading}
+              dataSource={taskList}
+              columns={importTaskColumns}
+              pagination={false}
+              locale={{ emptyText: taskLoading ? '导入任务加载中...' : '暂无关联导入任务' }}
+              style={{ background: '#ffffff', borderRadius: 8 }}
+            />
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const columns: ColumnsType<DataSourceRecord> = [
@@ -666,6 +1278,7 @@ export default function DataSourcePage() {
       key: 'connection',
       width: 260,
       render: (_, record) => {
+        const isTesting = rowTestingId === record.id;
         const connectionText = record.connectionUri
           ? record.connectionUri
           : [record.host, record.port, record.databaseName].filter(Boolean).join(' / ');
@@ -673,7 +1286,7 @@ export default function DataSourcePage() {
       },
     },
     {
-      title: '数据库/空间',
+      title: '数据库 / 空间',
       key: 'databaseName',
       width: 160,
       render: (_, record) => {
@@ -694,26 +1307,32 @@ export default function DataSourcePage() {
       key: 'lastTest',
       width: 260,
       render: (_, record) => {
-        const statusTag =
-          record.lastTestStatus === 1 ? (
-            <Tag color="success">成功</Tag>
-          ) : record.lastTestStatus === 0 ? (
-            <Tag color="error">失败</Tag>
-          ) : (
-            <Tag>未测试</Tag>
-          );
+        const isTesting = rowTestingId === record.id;
+        const statusTag = isTesting ? (
+          <Tag color="processing">测试中</Tag>
+        ) : record.lastTestStatus === 1 ? (
+          <Tag color="success">成功</Tag>
+        ) : record.lastTestStatus === 0 ? (
+          <Tag color="error">失败</Tag>
+        ) : (
+          <Tag>未测试</Tag>
+        );
         return (
           <Space direction="vertical" size={2}>
             <Space size={6}>
               {statusTag}
               <Text type="secondary" style={{ fontSize: 12 }}>
-                {record.lastTestTime
-                  ? dayjs(record.lastTestTime).format('YYYY-MM-DD HH:mm:ss')
-                  : '-'}
+                {isTesting
+                  ? '测试连接中...'
+                  : record.lastTestTime
+                    ? dayjs(record.lastTestTime).format('YYYY-MM-DD HH:mm:ss')
+                    : '-'}
               </Text>
             </Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              {record.lastTestMessage || '暂无测试记录'}
+              {isTesting
+                ? '正在测试当前数据源连接，请稍候查看结果'
+                : record.lastTestMessage || '暂无测试记录'}
             </Text>
           </Space>
         );
@@ -722,7 +1341,7 @@ export default function DataSourcePage() {
     {
       title: '操作',
       key: 'action',
-      width: 300,
+      width: 320,
       fixed: 'right',
       render: (_, record) => (
         <Space size={8} wrap>
@@ -730,6 +1349,7 @@ export default function DataSourcePage() {
             type="link"
             size="small"
             icon={<LinkOutlined />}
+            loading={rowTestingId === record.id}
             onClick={() => handleTableTest(record)}
           >
             测试连接
@@ -742,15 +1362,21 @@ export default function DataSourcePage() {
           >
             编辑
           </Button>
-          <Button type="link" size="small" onClick={() => openImportModal(record)}>
-            配置导入
+          <Button
+            type="link"
+            size="small"
+            icon={<FileSearchOutlined />}
+            onClick={() => history.push(`/data/import-result?dataSourceId=${record.id}`)}
+          >
+            导入结果
           </Button>
           <Button
             type="link"
             size="small"
-            onClick={() => history.push(`/data/import-result?dataSourceId=${record.id}`)}
+            icon={<ClockCircleOutlined />}
+            onClick={() => openImportRuns(record)}
           >
-            导入结果
+            触发记录
           </Button>
           <Popconfirm title="确认删除该数据源吗？" onConfirm={() => handleDelete(record.id)}>
             <Button type="link" danger size="small" icon={<DeleteOutlined />}>
@@ -772,7 +1398,7 @@ export default function DataSourcePage() {
         </Space>
       </Card>
 
-      <Card bordered={false} loading={metaLoading}>
+      {/* <Card bordered={false} loading={metaLoading}>
         <div
           style={{
             display: 'flex',
@@ -833,71 +1459,143 @@ export default function DataSourcePage() {
             </Card>
           ))}
         </div>
-      </Card>
+      </Card> */}
 
       <Card bordered={false}>
         <Form form={searchForm} layout="vertical">
-          <Row gutter={[16, 8]}>
-            <Col xs={24} sm={12} md={8} lg={6}>
-              <Form.Item name="name" label="数据源名称">
-                <Input placeholder="请输入数据源名称" allowClear />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12} md={8} lg={6}>
-              <Form.Item name="type" label="数据源类型">
-                <Select
-                  allowClear
-                  placeholder="请选择数据源类型"
-                  options={typeOptions.map((item) => ({ label: item.typeName, value: item.type }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12} md={8} lg={6}>
-              <Form.Item name="category" label="数据库分类">
-                <Select
-                  allowClear
-                  placeholder="请选择数据库分类"
-                  options={[
-                    { label: '关系型数据库', value: 'relational' },
-                    { label: '图数据库', value: 'graph' },
-                    { label: '文档数据库', value: 'document' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12} md={8} lg={6}>
-              <Form.Item name="status" label="启停状态">
-                <Select
-                  allowClear
-                  placeholder="请选择状态"
-                  options={[
-                    { label: '启用', value: 1 },
-                    { label: '停用', value: 0 },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Space size={8}>
-            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-              查询
-            </Button>
-            <Button icon={<ReloadOutlined />} onClick={handleReset}>
-              重置
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-              新增数据源
-            </Button>
-          </Space>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 16,
+              padding: '14px 20px',
+              background: 'linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%)',
+              borderRadius: 8,
+              border: '1px solid #d6e4ff',
+              boxShadow: '0 1px 2px rgba(24,144,255,0.06)',
+              overflowX: 'auto',
+            }}
+          >
+            <Space size={12} align="end" wrap={false}>
+              <div style={{ minWidth: 220, flex: '0 0 220px' }}>
+                <Form.Item name="name" label="数据源名称" style={{ marginBottom: 0 }}>
+                  <Input
+                    placeholder="请输入数据源名称"
+                    prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+                    allowClear
+                    onChange={(e) =>
+                      handleSearchValuesChange({ name: e.target.value || undefined })
+                    }
+                  />
+                </Form.Item>
+              </div>
+              <div style={{ minWidth: 180, flex: '0 0 180px' }}>
+                <Form.Item name="type" label="数据源类型" style={{ marginBottom: 0 }}>
+                  <Select
+                    allowClear
+                    placeholder="请选择数据源类型"
+                    options={typeOptions.map((item) => ({
+                      label: item.typeName,
+                      value: item.type,
+                    }))}
+                    onChange={(value) => handleSearchValuesChange({ type: value })}
+                  />
+                </Form.Item>
+              </div>
+              <div style={{ minWidth: 180, flex: '0 0 180px' }}>
+                <Form.Item name="category" label="数据库分类" style={{ marginBottom: 0 }}>
+                  <Select
+                    allowClear
+                    placeholder="请选择数据库分类"
+                    options={[
+                      { label: '关系型数据库', value: 'relational' },
+                      { label: '图数据库', value: 'graph' },
+                      { label: '文档数据库', value: 'document' },
+                    ]}
+                    onChange={(value) => handleSearchValuesChange({ category: value })}
+                  />
+                </Form.Item>
+              </div>
+              <div style={{ minWidth: 160, flex: '0 0 160px' }}>
+                <Form.Item name="status" label="启停状态" style={{ marginBottom: 0 }}>
+                  <Select
+                    allowClear
+                    placeholder="请选择状态"
+                    options={[
+                      { label: '启用', value: 1 },
+                      { label: '停用', value: 0 },
+                    ]}
+                    onChange={(value) => handleSearchValuesChange({ status: value })}
+                  />
+                </Form.Item>
+              </div>
+              <Button icon={<ReloadOutlined />} onClick={handleReset}>
+                重置
+              </Button>
+            </Space>
+            <Space size={12} wrap={false}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+                新增数据源
+              </Button>
+            </Space>
+          </div>
         </Form>
       </Card>
 
       <Card bordered={false}>
+        <div
+          style={{
+            marginBottom: 12,
+            padding: '10px 12px',
+            background: '#f5f9ff',
+            border: '1px solid #dbe7ff',
+            borderRadius: 10,
+          }}
+        >
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            点击每行前面的展开按钮，可查看或新建该数据源的导入任务。
+          </Text>
+        </div>
         <Table<DataSourceRecord>
           rowKey="id"
-          loading={loading || testing}
+          loading={loading}
           dataSource={data}
           columns={columns}
+          expandable={{
+            expandedRowKeys,
+            onExpand: handleExpand,
+            expandedRowRender,
+            expandIcon: ({ expanded, onExpand, record }) => (
+              <Tooltip
+                title={expanded ? '收起该数据源的导入任务列表' : '展开该数据源的导入任务列表'}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  onClick={(event) => onExpand(record, event)}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    padding: 0,
+                    borderRadius: 999,
+                    border: expanded ? '1px solid #91baff' : '1px solid #d9e7ff',
+                    background: expanded ? '#edf4ff' : '#ffffff',
+                    color: '#3166af',
+                  }}
+                  icon={
+                    <CaretRightOutlined
+                      style={{
+                        fontSize: 12,
+                        transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s ease',
+                      }}
+                    />
+                  }
+                />
+              </Tooltip>
+            ),
+          }}
           pagination={{
             current: page,
             pageSize: PAGE_SIZE,
@@ -1051,7 +1749,7 @@ export default function DataSourcePage() {
                       ? [{ required: true, message: '请选择或输入数据库' }]
                       : undefined
                   }
-                  extra="连接成功后可下拉选择；也可手动输入"
+                  extra="连接成功后可下拉选择，也可手动输入"
                 >
                   <AutoComplete
                     allowClear
@@ -1149,8 +1847,8 @@ export default function DataSourcePage() {
       <Modal
         title={
           importTarget
-            ? `配置导入对象 - ${importTarget.name} / 库: ${importTarget.databaseName || importTarget.properties?.spaceName || '-'}`
-            : '配置导入对象'
+            ? `新建导入任务 - ${importTarget.name} / 库: ${importTarget.databaseName || importTarget.properties?.spaceName || '-'}`
+            : '新建导入任务'
         }
         open={importModalVisible}
         onCancel={() => {
@@ -1161,7 +1859,7 @@ export default function DataSourcePage() {
         confirmLoading={importSubmitting}
         width={980}
         destroyOnClose
-        okText="保存任务"
+        okText="确认"
       >
         <div style={{ marginBottom: 12, color: '#64748b', fontSize: 13 }}>
           数据源：
@@ -1268,7 +1966,7 @@ export default function DataSourcePage() {
               ))}
               {!fieldOptions.length && (
                 <Col span={24}>
-                  <Text type="secondary">请先在上方选择一个对象，系统将自动探查字段</Text>
+                  <Text type="secondary">请先在上方选择一个对象，系统将自动探查字段。</Text>
                 </Col>
               )}
             </Row>
@@ -1290,6 +1988,196 @@ export default function DataSourcePage() {
             </div>
           )}
         </Spin>
+      </Modal>
+
+      <Modal
+        open={importTaskDetailVisible}
+        title={
+          selectedImportTask ? `导入任务详情 - ${selectedImportTask.name || '-'}` : '导入任务详情'
+        }
+        onCancel={closeImportTaskDetail}
+        footer={null}
+        width={920}
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Card bordered={false} size="small">
+            <Space direction="vertical" size={18} style={{ width: '100%' }}>
+              <div>
+                <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
+                  配置
+                </Text>
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: '4px 14px',
+                    background: '#fafcff',
+                    border: '1px solid #edf2ff',
+                    borderRadius: 10,
+                  }}
+                >
+                  {[
+                    ['抽取方式', formatExtractMode(selectedImportTask?.extractMode)],
+                    ['调度方式', formatScheduleType(selectedImportTask?.scheduleType)],
+                    ['写入方式', formatWriteMode(selectedImportTask?.writeMode)],
+                    ['批次大小', selectedImportTask?.batchSize],
+                    ['限流条数', selectedImportTask?.maxRowsPerObject],
+                  ].map(([label, value]) => renderDetailLine(String(label), value))}
+                  {renderTagDetailLine(
+                    '启用状态',
+                    selectedImportTask?.enabled === 1 ? (
+                      <Tag color="success">启用</Tag>
+                    ) : (
+                      <Tag>停用</Tag>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
+                  运行
+                </Text>
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: '4px 14px',
+                    background: '#fafcff',
+                    border: '1px solid #edf2ff',
+                    borderRadius: 10,
+                  }}
+                >
+                  {[
+                    ['最近成功运行 ID', selectedImportTask?.lastSuccessRunId],
+                    ['最近运行时间', formatTaskDateTime(selectedImportTask?.lastRunTime)],
+                    ['最近触发时间', formatTaskDateTime(selectedImportTask?.lastTriggerTime)],
+                    ['下次触发时间', formatTaskDateTime(selectedImportTask?.nextTriggerTime)],
+                    ['创建时间', formatTaskDateTime(selectedImportTask?.createTime)],
+                    ['更新时间', formatTaskDateTime(selectedImportTask?.updateTime)],
+                  ].map(([label, value]) => renderDetailLine(String(label), value))}
+                  {renderTagDetailLine(
+                    '最近运行状态',
+                    getTaskStatusTag(selectedImportTask?.lastRunStatus),
+                  )}
+                </div>
+              </div>
+            </Space>
+          </Card>
+
+          <Card
+            bordered={false}
+            size="small"
+            title="对象范围"
+            style={{ background: '#fafcff', border: '1px solid #edf2ff' }}
+          >
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              {(selectedImportTask?.objects?.length
+                ? selectedImportTask.objects
+                : [
+                    {
+                      objectName: '-',
+                      objectKind: '-',
+                      columns: [],
+                      keyFields: [],
+                      filterExpr: undefined,
+                      cursorField: undefined,
+                      cursorConfig: undefined,
+                    },
+                  ]
+              ).map((item, index) => (
+                <Card
+                  key={`${item.objectName || 'object'}-${index}`}
+                  size="small"
+                  style={{ background: '#fff', borderColor: '#eef2f6', borderRadius: 10 }}
+                >
+                  <div style={{ marginBottom: 12 }}>
+                    <Text strong style={{ fontSize: 14 }}>
+                      {item.objectName || '-'}
+                    </Text>
+                    <Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                      {item.objectKind || '-'}
+                    </Text>
+                  </div>
+                  <div style={{ marginTop: 6, padding: '4px 0' }}>
+                    {[
+                      ['字段列表', item.columns?.length ? item.columns.join(', ') : '-'],
+                      ['主键字段', item.keyFields?.length ? item.keyFields.join(', ') : '-'],
+                      ['过滤表达式', item.filterExpr],
+                      ['游标字段', item.cursorField],
+                    ].map(([label, value]) =>
+                      renderDetailLine(String(label), value, `${String(label)}-${index}`),
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </Space>
+          </Card>
+        </Space>
+      </Modal>
+
+      <Modal
+        open={importRunVisible}
+        title={
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              paddingRight: 32,
+            }}
+          >
+            <Space direction="vertical" size={2}>
+              <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
+                {selectedRunTask
+                  ? `触发记录 - ${selectedRunTask.name}`
+                  : selectedRunSource
+                    ? `触发记录 - ${selectedRunSource.name}`
+                    : '触发记录'}
+              </Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {selectedRunTask
+                  ? `${selectedRunSource?.name || '-'} 下当前导入任务的触发记录`
+                  : '最近导入触发记录'}
+              </Text>
+            </Space>
+            <Select
+              allowClear
+              placeholder="全部触发类型"
+              style={{ width: 180 }}
+              value={importRunTaskType}
+              onChange={handleImportRunTaskTypeChange}
+              options={[
+                { label: '手动触发', value: 'MANUAL' },
+                { label: '定时任务', value: 'CRON' },
+              ]}
+            />
+          </div>
+        }
+        onCancel={closeImportRuns}
+        footer={null}
+        width={1200}
+      >
+        <div
+          style={{
+            background: '#f7faff',
+            border: '1px solid #dbe7ff',
+            borderRadius: 10,
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ padding: '12px 14px 14px', background: '#f7faff' }}>
+            <Table<ImportRunRecord>
+              rowKey="id"
+              size="small"
+              loading={importRunLoading}
+              dataSource={importRuns}
+              columns={importRunColumns}
+              pagination={false}
+              locale={{ emptyText: importRunLoading ? '触发记录加载中...' : '暂无触发记录' }}
+              style={{ background: '#ffffff', borderRadius: 8 }}
+            />
+          </div>
+        </div>
       </Modal>
     </Space>
   );
