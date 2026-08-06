@@ -219,6 +219,199 @@ function formatJsonPreview(value?: string) {
   }
 }
 
+function formatStrategySeparator(value: string) {
+  return value.replace(/\n/g, '\\n');
+}
+
+function renderStrategyBlock(title: string, dotColor: string, value?: string | number | null) {
+  const isEmpty = value === undefined || value === null || value === '';
+
+  return (
+    <div
+      key={title}
+      style={{
+        minWidth: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '2px 0',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12,
+          color: '#8c8c8c',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: dotColor,
+            flexShrink: 0,
+          }}
+        />
+        <span>{title}:</span>
+      </div>
+      <div
+        style={{
+          color: isEmpty ? '#bfbfbf' : '#262626',
+          fontSize: 12,
+          lineHeight: 1.5,
+          wordBreak: 'break-all',
+        }}
+      >
+        {isEmpty ? '未设置' : String(value)}
+      </div>
+    </div>
+  );
+}
+
+function renderSeparatorTags(dotColor: string, separators?: string[] | null) {
+  if (!separators?.length) {
+    return renderStrategyBlock('分隔符', dotColor, null);
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 6,
+        padding: '2px 0',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12,
+          color: '#8c8c8c',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: dotColor,
+            flexShrink: 0,
+          }}
+        />
+        <span>分隔符:</span>
+      </div>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {separators.map((item) => (
+          <Tag
+            key={item}
+            style={{
+              marginInlineEnd: 0,
+              marginBottom: 0,
+              borderRadius: 999,
+              paddingInline: 6,
+              lineHeight: '18px',
+              fontSize: 12,
+            }}
+          >
+            {formatStrategySeparator(item)}
+          </Tag>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function renderVectorStrategy(strategy?: TableItem['vectorStrategy']) {
+  if (!strategy) {
+    return renderUnconfiguredTag();
+  }
+
+  const typeLabelMap = {
+    sentence: '按句切分',
+    summary: '摘要切分',
+    custom: '自定义切分',
+  } as const;
+  const typeColorMap = {
+    sentence: '#1677ff',
+    summary: '#13c2c2',
+    custom: '#faad14',
+  } as const;
+  const dotColor = typeColorMap[strategy.type];
+
+  if (strategy.type === 'sentence') {
+    return (
+      <div style={{ display: 'grid', gap: 4 }}>
+        <Tag
+          color="processing"
+          style={{ width: 'fit-content', marginInlineEnd: 0, marginBottom: 0 }}
+        >
+          {typeLabelMap[strategy.type]}
+        </Tag>
+        <div style={{ display: 'grid', gap: 2 }}>
+          {renderStrategyBlock('每块句子数', dotColor, strategy.sentences_per_chunk)}
+          {renderStrategyBlock('重叠句子数', dotColor, strategy.sentence_overlap)}
+          {renderSeparatorTags(dotColor, strategy.separators)}
+        </div>
+      </div>
+    );
+  }
+
+  if (strategy.type === 'summary') {
+    return (
+      <div style={{ display: 'grid', gap: 4 }}>
+        <Tag color="cyan" style={{ width: 'fit-content', marginInlineEnd: 0, marginBottom: 0 }}>
+          {typeLabelMap[strategy.type]}
+        </Tag>
+        <div style={{ display: 'grid', gap: 2 }}>
+          {renderStrategyBlock('摘要原文字数', dotColor, strategy.source_chars_per_summary)}
+          {renderStrategyBlock('摘要最大 Tokens', dotColor, strategy.summary_max_tokens)}
+          {renderStrategyBlock('摘要模型地址', dotColor, strategy.llm?.base_url)}
+          {renderStrategyBlock('摘要模型名称', dotColor, strategy.llm?.model)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 4 }}>
+      <Tag color="gold" style={{ width: 'fit-content', marginInlineEnd: 0, marginBottom: 0 }}>
+        {typeLabelMap[strategy.type]}
+      </Tag>
+      <div style={{ display: 'grid', gap: 2 }}>
+        {renderStrategyBlock('切分粒度', dotColor, strategy.chunk_size)}
+        {renderStrategyBlock('重叠字符数', dotColor, strategy.chunk_overlap)}
+        {renderSeparatorTags(dotColor, strategy.separators)}
+      </div>
+    </div>
+  );
+}
+
+function renderUnconfiguredTag() {
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '4px 10px',
+        borderRadius: 999,
+        background: '#fafafa',
+        border: '1px solid #f0f0f0',
+        color: '#bfbfbf',
+        fontSize: 12,
+      }}
+    >
+      未配置
+    </div>
+  );
+}
+
 export default function ModelManagePage() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('llm');
   const [list, setList] = useState<TableItem[]>([]);
@@ -262,13 +455,40 @@ export default function ModelManagePage() {
         title: '模型名称',
         dataIndex: 'name',
         key: 'name',
-        width: 240,
+        width: 340,
         render: (_value, record) => (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ fontWeight: 600, color: '#262626' }}>{record.name}</div>
               {activeTab === 'embed' && Number(record.defaulted) === 1 && (
-                <Tag color="gold">默认</Tag>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '2px 10px 2px 8px',
+                    borderRadius: 999,
+                    background: 'linear-gradient(135deg, #e6f4ff 0%, #f7fbff 100%)',
+                    border: '1px solid #bae0ff',
+                    color: '#0958d9',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: 1.2,
+                    boxShadow: '0 1px 2px rgba(22, 119, 255, 0.08)',
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      background: '#1677ff',
+                      boxShadow: '0 0 0 3px rgba(22, 119, 255, 0.12)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span>默认</span>
+                </span>
               )}
             </div>
             <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 2 }}>
@@ -315,19 +535,9 @@ export default function ModelManagePage() {
         dataIndex: 'apiKeyMasked',
         key: 'apiKeyMasked',
         width: 160,
-        render: (value) => value || '未设置',
+        render: (value) => value || renderUnconfiguredTag(),
       },
     ];
-
-    if (activeTab === 'embed') {
-      baseColumns.splice(4, 0, {
-        title: '向量维度',
-        dataIndex: 'dimension',
-        key: 'dimension',
-        width: 120,
-        render: (value) => value ?? '-',
-      });
-    }
 
     if (activeTab === 'llm') {
       baseColumns.push({
@@ -340,6 +550,16 @@ export default function ModelManagePage() {
             {Number(value) === 1 ? '启用' : '停用'}
           </Tag>
         ),
+      });
+    }
+
+    if (activeTab === 'embed') {
+      baseColumns.push({
+        title: '分句向量方式',
+        dataIndex: 'vectorStrategy',
+        key: 'vectorStrategy',
+        width: 320,
+        render: (value) => renderVectorStrategy(value),
       });
     }
 
@@ -900,6 +1120,11 @@ export default function ModelManagePage() {
                 columns={columns}
                 rowKey="id"
                 loading={loading}
+                rowClassName={(record) =>
+                  activeTab === 'embed' && Number(record.defaulted) === 1
+                    ? 'model-manage-default-row'
+                    : ''
+                }
                 pagination={false}
                 scroll={{ x: activeTab === 'embed' ? 1500 : 1400 }}
               />
@@ -1421,6 +1646,7 @@ export default function ModelManagePage() {
                                     </Tag>
                                   </div>
                                 }
+                                rules={[{ required: true, message: '请设置切分粒度' }]}
                               >
                                 <Slider min={50} max={10000} />
                               </Form.Item>
@@ -1467,6 +1693,7 @@ export default function ModelManagePage() {
                                   </div>
                                 }
                                 rules={[
+                                  { required: true, message: '请设置可重叠大小' },
                                   {
                                     validator: async (_rule, value) => {
                                       if (value === undefined || value === null || value === '') {
@@ -1482,7 +1709,10 @@ export default function ModelManagePage() {
                               >
                                 <Slider
                                   min={0}
-                                  max={Math.max(Math.min(Number(chunkSizeValue ?? 1000) - 1, 5000), 0)}
+                                  max={Math.max(
+                                    Math.min(Number(chunkSizeValue ?? 1000) - 1, 5000),
+                                    0,
+                                  )}
                                 />
                               </Form.Item>
                             </Col>
@@ -1507,6 +1737,7 @@ export default function ModelManagePage() {
                                     </Tooltip>
                                   </Space>
                                 }
+                                rules={[{ required: true, message: '请设置分隔符' }]}
                               >
                                 <Select
                                   mode="tags"
@@ -1693,6 +1924,14 @@ export default function ModelManagePage() {
 
         .model-manage-form .ant-switch {
           min-width: 150px;
+        }
+
+        .model-manage-default-row > td {
+          background: #f7fbff !important;
+        }
+
+        .model-manage-default-row:hover > td {
+          background: #edf5ff !important;
         }
       `,
         }}

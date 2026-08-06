@@ -1,13 +1,14 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { history, useLocation } from '@umijs/max';
 import {
   Button,
+  Card,
+  Dropdown,
   Input,
   message,
   Modal,
-  Popconfirm,
   Progress,
   Radio,
   Select,
@@ -23,6 +24,7 @@ import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import {
   CheckCircleFilled,
   CloudUploadOutlined,
+  DownOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -77,6 +79,20 @@ export interface DocumentRecord {
   knowledgeBaseIds: Array<number | string>;
   knowledgeBaseNames: string[];
   keywords: string[];
+  vectorStrategy?: {
+    type: 'sentence' | 'summary' | 'custom';
+    sentences_per_chunk?: number;
+    sentence_overlap?: number;
+    separators?: string[];
+    source_chars_per_summary?: number;
+    summary_max_tokens?: number;
+    llm?: {
+      base_url?: string;
+      model?: string;
+    };
+    chunk_size?: number;
+    chunk_overlap?: number;
+  } | null;
   channelName: string;
   fileTagNames: string[];
   catalogName: string;
@@ -87,6 +103,8 @@ export interface DocumentRecord {
   entities: string[];
   createTime: string;
 }
+
+type VectorStrategyValue = DocumentRecord['vectorStrategy'];
 
 const fileTypeIconMap: Record<string, React.ReactNode> = {
   docx: <FileWordOutlined style={{ fontSize: 24, color: fileTypeConfig.DOCX.color }} />,
@@ -287,6 +305,241 @@ const formatDocumentFileSize = (value: any) => {
   return formatFileSize(size);
 };
 
+const renderUnconfiguredTag = () => (
+  <div
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: '4px 10px',
+      borderRadius: 999,
+      background: '#fafafa',
+      border: '1px solid #f0f0f0',
+      color: '#bfbfbf',
+      fontSize: 12,
+    }}
+  >
+    未配置
+  </div>
+);
+
+const formatStrategySeparator = (value: string) => value.replace(/\n/g, '\\n');
+
+const parseVectorStrategy = (value: any): VectorStrategyValue => {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  if (typeof value === 'object') {
+    return value as VectorStrategyValue;
+  }
+
+  return null;
+};
+
+function renderStrategyBlock(title: string, dotColor: string, value?: string | number | null) {
+  const isEmpty = value === undefined || value === null || value === '';
+
+  return (
+    <div
+      key={title}
+      style={{
+        minWidth: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '2px 0',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12,
+          color: '#8c8c8c',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: dotColor,
+            flexShrink: 0,
+          }}
+        />
+        <span>{title}:</span>
+      </div>
+      <div
+        style={{
+          color: isEmpty ? '#bfbfbf' : '#262626',
+          fontSize: 12,
+          lineHeight: 1.5,
+          wordBreak: 'break-all',
+        }}
+      >
+        {isEmpty ? '未设置' : String(value)}
+      </div>
+    </div>
+  );
+}
+
+function renderSeparatorTags(dotColor: string, separators?: string[] | null) {
+  if (!separators?.length) {
+    return renderStrategyBlock('分隔符', dotColor, null);
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 6,
+        padding: '2px 0',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12,
+          color: '#8c8c8c',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: dotColor,
+            flexShrink: 0,
+          }}
+        />
+        <span>分隔符</span>
+      </div>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {separators.map((item, index) => (
+          <Tag
+            key={`${item}-${index}`}
+            style={{
+              marginInlineEnd: 0,
+              marginBottom: 0,
+              borderRadius: 999,
+              paddingInline: 6,
+              lineHeight: '18px',
+              fontSize: 12,
+            }}
+          >
+            {formatStrategySeparator(item)}
+          </Tag>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function renderVectorStrategyDetail(
+  normalizedStrategy: NonNullable<VectorStrategyValue>,
+  dotColor: string,
+) {
+  if (normalizedStrategy.type === 'sentence') {
+    return (
+      <div style={{ display: 'grid', gap: 2 }}>
+        {renderStrategyBlock('每块句子数', dotColor, normalizedStrategy.sentences_per_chunk)}
+        {renderStrategyBlock('重复句子数', dotColor, normalizedStrategy.sentence_overlap)}
+        {renderSeparatorTags(dotColor, normalizedStrategy.separators)}
+      </div>
+    );
+  }
+
+  if (normalizedStrategy.type === 'summary') {
+    return (
+      <div style={{ display: 'grid', gap: 2 }}>
+        {renderStrategyBlock('摘要原文字数', dotColor, normalizedStrategy.source_chars_per_summary)}
+        {renderStrategyBlock('摘要最大 Tokens', dotColor, normalizedStrategy.summary_max_tokens)}
+        {renderStrategyBlock('摘要模型地址', dotColor, normalizedStrategy.llm?.base_url)}
+        {renderStrategyBlock('摘要模型名称', dotColor, normalizedStrategy.llm?.model)}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 2 }}>
+      {renderStrategyBlock('切分粒度', dotColor, normalizedStrategy.chunk_size)}
+      {renderStrategyBlock('重复字符数', dotColor, normalizedStrategy.chunk_overlap)}
+      {renderSeparatorTags(dotColor, normalizedStrategy.separators)}
+    </div>
+  );
+}
+
+function renderVectorStrategy(strategy?: DocumentRecord['vectorStrategy'] | string | null) {
+  const normalizedStrategy = parseVectorStrategy(strategy);
+
+  if (!normalizedStrategy) {
+    return renderUnconfiguredTag();
+  }
+
+  const typeLabelMap = {
+    sentence: '按句切分',
+    summary: '摘要切分',
+    custom: '自定义切分',
+  } as const;
+  const typeColorMap = {
+    sentence: '#1677ff',
+    summary: '#13c2c2',
+    custom: '#faad14',
+  } as const;
+  const dotColor = typeColorMap[normalizedStrategy.type];
+
+  const tagColorMap = {
+    sentence: 'processing',
+    summary: 'cyan',
+    custom: 'gold',
+  } as const;
+  const detailContent = (
+    <div style={{ maxWidth: 360, display: 'grid', gap: 6 }}>
+      {/* <Tag
+        color={tagColorMap[normalizedStrategy.type]}
+        style={{ width: 'fit-content', marginInlineEnd: 0, marginBottom: 0 }}
+      >
+        {typeLabelMap[normalizedStrategy.type]}
+      </Tag> */}
+      {renderVectorStrategyDetail(normalizedStrategy, dotColor)}
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'grid', gap: 4 }}>
+      <Tag
+        color={tagColorMap[normalizedStrategy.type]}
+        style={{ width: 'fit-content', marginInlineEnd: 0, marginBottom: 0 }}
+      >
+        {typeLabelMap[normalizedStrategy.type]}
+      </Tag>
+      <Tooltip color="#fff" title={detailContent}>
+        <Button
+          type="link"
+          size="small"
+          style={{ padding: 0, height: 'auto', width: 'fit-content' }}
+        >
+          查看详情
+        </Button>
+      </Tooltip>
+    </div>
+  );
+}
+
 const normalizeDocumentRecord = (item: DocumentPageItem, index: number): DocumentRecord => {
   const fileType = String(item.fileType ?? item.type ?? '').toUpperCase();
 
@@ -322,6 +575,7 @@ const normalizeDocumentRecord = (item: DocumentPageItem, index: number): Documen
       }
       return [];
     })(),
+    vectorStrategy: item.vectorStrategy ?? item.embeddingStrategy ?? item.chunkStrategy ?? null,
     channelName: String(item.channelName ?? '-'),
     fileTagNames: extractStringList(item.fileTagNames ?? item.fileTagName),
     catalogName: String(item.catalogName ?? item.catalog ?? '-'),
@@ -1153,27 +1407,81 @@ export default function DocumentImportPage() {
           return '-';
         }
 
+        const MAX_VISIBLE = 2;
+        const visibleNames = record.knowledgeBaseNames.slice(0, MAX_VISIBLE);
+        const hiddenNames = record.knowledgeBaseNames.slice(MAX_VISIBLE);
+
+        const renderKnowledgeBaseLink = (name: string, index: number) => {
+          const id = record.knowledgeBaseIds[index];
+          return id !== undefined && id !== null && id !== '' ? (
+            <Button
+              key={`${id}-${name}-${index}`}
+              type="link"
+              size="small"
+              style={{
+                padding: 0,
+                height: 'auto',
+                whiteSpace: 'normal',
+                textAlign: 'left',
+              }}
+              onClick={() => history.push(`/knowledge/detail/${id}`)}
+            >
+              {name}
+            </Button>
+          ) : (
+            <span key={`${name}-${index}`}>{name}</span>
+          );
+        };
+
+        if (hiddenNames.length > 0) {
+          return (
+            <Tooltip
+              color="#fff"
+              title={
+                <div style={tagTooltipOverlayStyle}>
+                  {record.knowledgeBaseNames.map((name, index) => (
+                    <span key={`${name}-${index}`} style={miniTagStyle}>
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              }
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 4,
+                }}
+              >
+                {visibleNames.map((name, index) => renderKnowledgeBaseLink(name, index))}
+                <span style={{ color: '#bfbfbf' }}>+{hiddenNames.length}</span>
+              </span>
+            </Tooltip>
+          );
+        }
+
         return (
-          <Space size={4} wrap>
-            {record.knowledgeBaseNames.map((name, index) => {
-              const id = record.knowledgeBaseIds[index];
-              return id !== undefined && id !== null && id !== '' ? (
-                <Button
-                  key={`${id}-${name}`}
-                  type="link"
-                  size="small"
-                  style={{ padding: 0, height: 'auto' }}
-                  onClick={() => history.push(`/knowledge/detail/${id}`)}
-                >
-                  {name}
-                </Button>
-              ) : (
-                <span key={`${name}-${index}`}>{name}</span>
-              );
-            })}
-          </Space>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 4,
+            }}
+          >
+            {visibleNames.map((name, index) => renderKnowledgeBaseLink(name, index))}
+          </span>
         );
       },
+    },
+    {
+      title: '分句向量方式',
+      dataIndex: 'vectorStrategy',
+      key: 'vectorStrategy',
+      width: 120,
+      render: (value) => renderVectorStrategy(value),
     },
     {
       title: '渠道来源',
@@ -1348,9 +1656,40 @@ export default function DocumentImportPage() {
     {
       title: '操作',
       key: 'action',
-      width: 220,
+      width: 170,
       render: (_, record) => {
         const completed = isStatusCompleted(record.status);
+        const moreItems = [
+          {
+            key: 'edit',
+            icon: <EditOutlined />,
+            label: '编辑',
+            onClick: () => handleEditOpen(record),
+          },
+          {
+            key: 'download',
+            icon: <DownloadOutlined />,
+            label: '下载',
+            onClick: () => handleDownload(record),
+          },
+          {
+            key: 'delete',
+            icon: <DeleteOutlined />,
+            label: '删除',
+            danger: true,
+            onClick: () => {
+              Modal.confirm({
+                title: '确认删除？',
+                okText: '确认',
+                cancelText: '取消',
+                okButtonProps: { danger: true, loading: deletingId === record.id },
+                onOk: async () => {
+                  await handleDelete(record.id);
+                },
+              });
+            },
+          },
+        ];
         return (
           <Space size="small">
             <Tooltip title={completed ? '查看详情' : '解析完成后可查看详情'}>
@@ -1380,22 +1719,6 @@ export default function DocumentImportPage() {
                 详情
               </Button>
             </Tooltip>
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEditOpen(record)}
-            >
-              编辑
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              icon={<DownloadOutlined />}
-              onClick={() => handleDownload(record)}
-            >
-              下载
-            </Button>
             {String(record.status) === '4' && (
               <Button
                 type="link"
@@ -1407,22 +1730,11 @@ export default function DocumentImportPage() {
                 重试
               </Button>
             )}
-            <Popconfirm
-              title="确认删除？"
-              onConfirm={() => handleDelete(record.id)}
-              okText="确认"
-              cancelText="取消"
-            >
-              <Button
-                type="link"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                loading={deletingId === record.id}
-              >
-                删除
+            <Dropdown menu={{ items: moreItems }} trigger={['click']} placement="bottomRight">
+              <Button type="link" size="small" icon={<DownOutlined />}>
+                更多
               </Button>
-            </Popconfirm>
+            </Dropdown>
           </Space>
         );
       },
@@ -1430,82 +1742,92 @@ export default function DocumentImportPage() {
   ];
 
   return (
-    <>
-      {/* 筛选区 */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 12,
-          padding: '14px 20px',
-          background: 'linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%)',
-          borderRadius: 8,
-          border: '1px solid #d6e4ff',
-          boxShadow: '0 1px 2px rgba(24,144,255,0.06)',
-        }}
-      >
-        <Space size={12}>
-          <Select
-            placeholder="状态筛选"
-            allowClear
-            style={{ width: 120 }}
-            value={statusFilter}
-            onChange={handleStatusFilterChange}
-            options={documentStatusList}
-          />
-          <Select
-            placeholder="类型筛选"
-            allowClear
-            style={{ width: 120 }}
-            value={typeFilter}
-            onChange={handleTypeFilterChange}
-            options={typeOptions}
-          />
-          <Select
-            placeholder="渠道筛选"
-            allowClear
-            style={{ width: 220 }}
-            value={channelFilter}
-            onChange={handleChannelFilterChange}
-            options={channelOptions}
-            showSearch
-            optionFilterProp="label"
-          />
-          <Input
-            placeholder="搜索文档名称"
-            prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
-            style={{ width: 320 }}
-            value={searchText}
-            onChange={(e) => handleSearchTextChange(e.target.value)}
-            allowClear
-          />
-          <Button onClick={handleResetSearch}>重置</Button>
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Card bordered={false}>
+        <Space direction="vertical" size={6}>
+          <Typography.Text strong style={{ fontSize: 18 }}>
+            文档导入
+          </Typography.Text>
         </Space>
-        <Space size={12}>
-          <Button icon={<ReloadOutlined />} onClick={fetchDocuments} loading={loading}>
-            刷新
-          </Button>
-          <Button
-            type="primary"
-            icon={<CloudUploadOutlined />}
-            onClick={() => setUploadVisible(true)}
-          >
-            上传文档
-          </Button>
-          <Button icon={<FolderOutlined />} onClick={handleBatchKnowledgeBaseOpen}>
-            批量入知识库
-          </Button>
-          <Button
-            danger
-            icon={<DeleteOutlined />}
-            onClick={handleBatchDelete}
-            loading={batchDeleting}
-          >
-            批量删除
-          </Button>
-        </Space>
-      </div>
+      </Card>
+      <Card bordered={false}>
+        {/* 筛选区 */}
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 16,
+            padding: '14px 20px',
+            background: 'linear-gradient(135deg, #f0f7ff 0%, #fafcff 100%)',
+            borderRadius: 8,
+            border: '1px solid #d6e4ff',
+            boxShadow: '0 1px 2px rgba(24,144,255,0.06)',
+            overflowX: 'auto',
+          }}
+        >
+          <Space size={12} wrap={false}>
+            <Select
+              placeholder="状态筛选"
+              allowClear
+              style={{ width: 120 }}
+              value={statusFilter}
+              onChange={handleStatusFilterChange}
+              options={documentStatusList}
+            />
+            <Select
+              placeholder="类型筛选"
+              allowClear
+              style={{ width: 120 }}
+              value={typeFilter}
+              onChange={handleTypeFilterChange}
+              options={typeOptions}
+            />
+            <Select
+              placeholder="渠道筛选"
+              allowClear
+              style={{ width: 220 }}
+              value={channelFilter}
+              onChange={handleChannelFilterChange}
+              options={channelOptions}
+              showSearch
+              optionFilterProp="label"
+            />
+            <Input
+              placeholder="搜索文档名称"
+              prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+              style={{ width: 320 }}
+              value={searchText}
+              onChange={(e) => handleSearchTextChange(e.target.value)}
+              allowClear
+            />
+            <Button onClick={handleResetSearch}>重置</Button>
+          </Space>
+          <Space size={12} wrap={false}>
+            <Button icon={<ReloadOutlined />} onClick={fetchDocuments} loading={loading}>
+              刷新
+            </Button>
+            <Button
+              type="primary"
+              icon={<CloudUploadOutlined />}
+              onClick={() => setUploadVisible(true)}
+            >
+              上传文档
+            </Button>
+            <Button icon={<FolderOutlined />} onClick={handleBatchKnowledgeBaseOpen}>
+              批量入知识库
+            </Button>
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={handleBatchDelete}
+              loading={batchDeleting}
+            >
+              批量删除
+            </Button>
+          </Space>
+        </div>
+      </Card>
 
       {/* 表格区 */}
       <div
@@ -1990,7 +2312,7 @@ export default function DocumentImportPage() {
         record={previewRecord}
         onClose={handlePreviewClose}
       />
-    </>
+    </Space>
   );
 }
 
