@@ -21,6 +21,37 @@ export interface DocumentKnowledgeGraphResult {
   links?: DocumentKnowledgeGraphLink[];
 }
 
+export interface ExtractLlmEntityItem {
+  name?: string;
+  type?: string;
+  attributes?: Record<string, any>;
+  entity_id?: string;
+  description?: string;
+}
+
+export interface ExtractLlmRelationItem {
+  source?: string;
+  relation?: string;
+  target?: string;
+  head_entity_id?: string;
+  tail_entity_id?: string;
+  relationCode?: string;
+  evidence?: string;
+}
+
+export interface ExtractLlmResolutionItem {
+  mention?: string;
+  canonical_entity?: string;
+  entity_id?: string;
+}
+
+export interface ExtractEntityLlmResult {
+  entities?: ExtractLlmEntityItem[];
+  relations?: ExtractLlmRelationItem[];
+  relationships?: ExtractLlmRelationItem[];
+  resolutions?: ExtractLlmResolutionItem[];
+}
+
 export interface SearchGraphNode {
   id: string;
   name: string;
@@ -244,9 +275,40 @@ export interface DiscoverCommunityNetworkReqVO {
   relation_edge: string;
 }
 
+export interface BuildPromptReqVO {
+  coarseEntityTypeIds: Array<string | number>;
+  fineAttributeIdsByType: Record<string, Array<string | number>>;
+  granularity: string;
+}
+
+export interface ExtractEntityLlmReqVO {
+  input_text: string;
+  model_params: Record<string, any>;
+}
+
 export async function discoverCommunityNetwork(data: DiscoverCommunityNetworkReqVO) {
   return request<CommunityNetworkResult>(
     `${COMMUNITY_API_PREFIX}/api/v1/community/discover`,
+    {
+      method: "POST",
+      data,
+    },
+  );
+}
+
+export async function buildKnowledgeExtractPrompt(data: BuildPromptReqVO) {
+  return request<string | { data?: string; msg?: string; code?: number }>(
+    `${COMMUNITY_API_PREFIX}/api/v1/prompt/build`,
+    {
+      method: "POST",
+      data,
+    },
+  );
+}
+
+export async function extractEntityLlm(data: ExtractEntityLlmReqVO) {
+  return request<{ success?: boolean; data?: ExtractEntityLlmResult; error?: any }>(
+    `${COMMUNITY_API_PREFIX}/api/v1/entity-llm/extract`,
     {
       method: "POST",
       data,

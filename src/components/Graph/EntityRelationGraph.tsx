@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ReactNode } from "react";
 import Graph from "graphology";
 import { Sigma } from "sigma";
 import { NodeBorderProgram } from "@sigma/node-border";
@@ -39,6 +40,7 @@ interface EntityRelationGraphProps {
   maxVisibleLabels?: number;
   onNodeClick?: (node: EntityGraphNode) => void;
   onNodeDoubleClick?: (node: EntityGraphNode) => void;
+  renderHoverCard?: (node: EntityGraphNode) => ReactNode;
   actionRef?: React.Ref<EntityRelationGraphRef>;
 }
 
@@ -692,6 +694,7 @@ const EntityRelationGraph = forwardRef<
     maxVisibleLabels,
     onNodeClick,
     onNodeDoubleClick,
+    renderHoverCard,
     actionRef,
   },
   ref,
@@ -703,6 +706,7 @@ const EntityRelationGraph = forwardRef<
   const isCommunityGraphData = data.nodes.some((node) => String(node.id).startsWith("comm_"));
   const selectedNodeIdRef = useRef(selectedNodeId);
   const hoveredNodeRef = useRef<string | null>(null);
+  const [hoveredNodeData, setHoveredNodeData] = useState<EntityGraphNode | null>(null);
   const visibleLabelNodeIdsRef = useRef<Set<string>>(new Set());
   const refreshVisibleLabelsRef = useRef<() => void>(() => undefined);
   const communityInitialFitRafRef = useRef<number | null>(null);
@@ -1306,6 +1310,11 @@ const EntityRelationGraph = forwardRef<
     sigma.on("enterNode", (e) => {
       if (movedDuringDrag) return;
       hoveredNodeRef.current = e.node;
+      const originalData = graph.getNodeAttribute(e.node, "originalData") as EntityGraphNode | undefined;
+      setHoveredNodeData(originalData || null);
+      if (containerRef.current) {
+        containerRef.current.style.cursor = "pointer";
+      }
       if (isCommunityGraphData) {
         refreshVisibleLabelsRef.current();
       }
@@ -1315,6 +1324,10 @@ const EntityRelationGraph = forwardRef<
     sigma.on("leaveNode", () => {
       if (movedDuringDrag) return;
       hoveredNodeRef.current = null;
+      setHoveredNodeData(null);
+      if (containerRef.current) {
+        containerRef.current.style.cursor = "default";
+      }
       if (isCommunityGraphData) {
         refreshVisibleLabelsRef.current();
       }
@@ -1365,6 +1378,10 @@ const EntityRelationGraph = forwardRef<
       if (draggedNode) {
         draggedNode = null;
         sigma.getCamera().enable();
+        setHoveredNodeData(null);
+        if (containerRef.current) {
+          containerRef.current.style.cursor = "default";
+        }
         window.setTimeout(() => {
           movedDuringDrag = false;
         }, 0);
@@ -1397,6 +1414,7 @@ const EntityRelationGraph = forwardRef<
         minHeight: typeof height === "number" ? height : 640,
         position: "relative",
         overflow: "hidden",
+        cursor: "default",
       }}
     >
       <style>{`
@@ -1407,7 +1425,20 @@ const EntityRelationGraph = forwardRef<
           height: 100% !important;
         }
       `}</style>
-
+      {hoveredNodeData && renderHoverCard ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 16,
+            right: 16,
+            zIndex: 3,
+            maxWidth: 320,
+            pointerEvents: "none",
+          }}
+        >
+          {renderHoverCard(hoveredNodeData)}
+        </div>
+      ) : null}
     </div>
   );
 });

@@ -15,6 +15,13 @@ import {
   type EntityTypeAttributeItem,
   type EntityTypeItem,
 } from '@/services/biz/entity-type';
+import EntityRelationGraph from '@/components/Graph/EntityRelationGraph';
+import type { EntityGraphData } from '@/data/entityGraphMock';
+import {
+  buildKnowledgeExtractPrompt,
+  extractEntityLlm,
+  type ExtractEntityLlmResult,
+} from '@/services/biz/graph';
 import { getLlmModelConfigList, type LlmModelConfigItem } from '@/services/biz/llm-model-config';
 import {
   Card,
@@ -36,6 +43,7 @@ import {
   Switch,
   Modal,
   Form,
+  Spin,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -76,6 +84,35 @@ interface KnowledgeExtractConfig {
   maxTokens: number;
 }
 
+interface ExtractPreviewEntity {
+  name: string;
+  type: string;
+  description: string;
+  entityId: string;
+  attributes: Array<[string, string]>;
+}
+
+interface ExtractPreviewRelation {
+  source: string;
+  relation: string;
+  target: string;
+  evidence: string;
+  sourceEntityId?: string;
+  targetEntityId?: string;
+}
+
+interface ExtractPreviewResolution {
+  mention: string;
+  canonicalEntity: string;
+  entityId: string;
+}
+
+interface ExtractPreviewData {
+  entities: ExtractPreviewEntity[];
+  relations: ExtractPreviewRelation[];
+  resolutions: ExtractPreviewResolution[];
+}
+
 const defaultTagOptions = [
   { label: '新闻', value: '新闻' },
   { label: '公告', value: '公告' },
@@ -111,46 +148,6 @@ const categoryLimitOptions = [
   { label: '15个', value: 15 },
   { label: '20个', value: 20 },
 ];
-
-const samplePrompt = `你是专业的智能问答知识抽取专家，请根据配置的实体类型和实体属性完成知识抽取：
-1. 粗颗粒度：按实体类型输出实体识别结果
-2. 细颗粒度：按实体类型下的属性输出结构化信息
-3. 要求：
-- 严格基于原文抽取，不添加任何主观信息
-- 缺失的类别需用"无"
-- 输出结构化JSON格式`;
-
-const sampleText =
-  '2023年10月15日，张三代表阿里巴巴集团在杭州举办云栖大会上发布了新AI大模型该模型测试中超过了行业平均水平。';
-
-const sampleTexts = [
-  {
-    label: '新闻',
-    text: '2023年10月15日，张三代表阿里巴巴集团在杭州举办云栖大会上发布了新AI大模型，该模型测试中超过了行业平均水平。',
-  },
-  {
-    label: '公告',
-    text: '本公司于2023年11月1日发布公告称，因业务发展需要，现招聘JAVA开发工程师5名，要求本科以上学历，工作地点在北京，月薪20000-35000元。',
-  },
-  {
-    label: '政策',
-    text: '为贯彻落实国家关于促进中小企业发展的若干意见，北京市政府于2023年12月1日起实施新的税收优惠政策，符合条件的企业可享受增值税减免。',
-  },
-  {
-    label: '金融',
-    text: '中国工商银行宣布，从2024年1月1日起调整贷款利率，首套房贷款利率调整为4.1%，二套房为4.9%。',
-  },
-  {
-    label: '医疗',
-    text: '患者李某，男，45岁，因反复咳嗽伴发热3天于2023年12月1日入院，体温38.5℃，经检查诊断为肺炎。',
-  },
-];
-
-const sampleResult = `人物：张三
-机构：阿里巴巴集团
-地点：杭州
-时间：2023年10月15日
-事件：云栖大会`;
 
 interface ModelOption {
   label: ReactNode;
@@ -224,7 +221,8 @@ export default function KnowledgeExtractConfigPage() {
     maxTokens: 512,
   });
   const [testText, setTestText] = useState('');
-  const [extractResult, setExtractResult] = useState('');
+  const [extractPreviewData, setExtractPreviewData] = useState<ExtractPreviewData | null>(null);
+  const [extractGraphLabelMaxLength, setExtractGraphLabelMaxLength] = useState(16);
   const [modelPrecision, setModelPrecision] = useState<string>('精确抽取');
   const [tempEnabled, setTempEnabled] = useState(true);
   const [topPEnabled, setTopPEnabled] = useState(true);
@@ -240,6 +238,7 @@ export default function KnowledgeExtractConfigPage() {
   const [attributeLoadingMap, setAttributeLoadingMap] = useState<Record<string, boolean>>({});
   const [activeFineEntityTypeId, setActiveFineEntityTypeId] = useState('');
   const [generatedPrompt, setGeneratedPrompt] = useState<string>('');
+  const [promptBuilding, setPromptBuilding] = useState(false);
   const [tagModalVisible, setTagModalVisible] = useState(false);
   const [tagSubmitting, setTagSubmitting] = useState(false);
   const [tagForm] = Form.useForm<TagFormValues>();
@@ -314,7 +313,7 @@ export default function KnowledgeExtractConfigPage() {
       Boolean(detail?.frequencyPenaltyEnabled ?? snapshot?.frequencyPenaltyEnabled ?? false),
     );
     setMaxTokensEnabled(Boolean(detail?.maxTokensEnabled ?? snapshot?.maxTokensEnabled ?? false));
-    setGeneratedPrompt(detail?.generatedPrompt || snapshot?.generatedPrompt || '');
+    setGeneratedPrompt('');
     const firstTypeId = Object.keys(normalizedFineAttributeIdsByType)[0];
     if (firstTypeId) {
       setActiveFineEntityTypeId(firstTypeId);
@@ -584,28 +583,6 @@ export default function KnowledgeExtractConfigPage() {
     });
   };
 
-  const inferAttributeValue = (attributeName: string, text: string) => {
-    if (attributeName.includes('性别')) {
-      return text.match(/男|女/)?.[0] || '无';
-    }
-    if (attributeName.includes('年龄')) {
-      return text.match(/\d+岁/)?.[0] || '无';
-    }
-    if (attributeName.includes('学历')) {
-      return text.match(/本科|硕士|博士|大专/)?.[0] || '无';
-    }
-    if (attributeName.includes('时间') || attributeName.includes('日期')) {
-      return text.match(/\d{4}年\d{1,2}月\d{1,2}日/)?.[0] || '无';
-    }
-    if (attributeName.includes('金额') || attributeName.includes('薪资')) {
-      return text.match(/\d+(?:\.\d+)?(?:元|万|亿元|%)/)?.[0] || '无';
-    }
-    if (attributeName.includes('地点') || attributeName.includes('地址')) {
-      return text.match(/北京|杭州|上海|广州|深圳/)?.[0] || '无';
-    }
-    return '示例值';
-  };
-
   const handleSave = async () => {
     if (!config.name?.trim()) {
       message.error('请输入模板名称');
@@ -628,7 +605,7 @@ export default function KnowledgeExtractConfigPage() {
       return;
     }
 
-    const prompt = generatedPrompt || samplePrompt;
+    const prompt = generatedPrompt.trim();
     const extractSchema = {
       granularity: config.granularity,
       categoryLimit: config.categoryLimit,
@@ -712,76 +689,331 @@ export default function KnowledgeExtractConfigPage() {
     }
   };
 
-  const handleExtract = () => {
-    setTestLoading(true);
-    setTimeout(() => {
-      const text = testText;
-      let result = '';
-
-      if (config.granularity === '粗颗粒度') {
-        const selectedNames = selectedCoarseEntityTypes.map((item) => item.name);
-        result = `【${getSelectedModelName()} - ${modelPrecision}粗颗粒度抽取结果】\n`;
-        if (selectedNames.length === 0) {
-          result += '未选择实体类型';
-        } else {
-          result += `抽取实体类型：${selectedNames.join('、')}\n\n`;
-          selectedNames.forEach((name) => {
-            result += `${name}：示例${name}结果\n`;
-          });
-        }
-      } else {
-        result = `【${getSelectedModelName()} - ${modelPrecision}细颗粒度抽取结果】\n`;
-        if (selectedFineAttributeGroups.length === 0) {
-          result += '未选择实体属性';
-        } else {
-          selectedFineAttributeGroups.forEach(({ entityType, attributes }) => {
-            result += `\n【${entityType.name}】\n`;
-            attributes.forEach((attribute) => {
-              result += `${attribute.name}：${inferAttributeValue(attribute.name, text)}\n`;
-            });
-          });
-        }
-      }
-
-      setExtractResult(result.trim() || '暂无结果');
-      setTestLoading(false);
-    }, 1500);
-  };
-
-  const handleGeneratePrompt = () => {
-    const granularity = config.granularity;
-    const blockSize = config.blockSize;
-    const splitMode = config.splitMode;
-    const precision = modelPrecision;
-
-    let prompt = `你是专业的知识抽取专家，请从文本中抽取知识实体。\n\n`;
-    prompt += `【抽取模式】${splitMode === '字数' ? `每${blockSize}字抽取一次` : `每${blockSize}段抽取一次`}\n\n`;
-    prompt += `【颗粒度】${granularity}\n\n`;
-    prompt += `【精度模式】${precision}\n\n`;
-
-    if (granularity === '粗颗粒度') {
-      const categoryText =
-        selectedCoarseEntityTypes.map((item) => item.name).join('、') || '未选择';
-      prompt += `【抽取类别】${categoryText}\n\n`;
-    } else {
-      prompt += `【抽取类别】按以下实体类型及属性抽取：\n\n`;
-      if (selectedFineAttributeGroups.length === 0) {
-        prompt += `【未选择属性】请先选择实体类型属性\n`;
-      } else {
-        selectedFineAttributeGroups.forEach(({ entityType, attributes }) => {
-          prompt += `【${entityType.name}】${attributes.map((item) => item.name).join('、')}\n`;
-        });
-      }
+  const handleExtract = async () => {
+    if (!testText.trim()) {
+      message.warning('请输入测试文本');
+      return;
+    }
+    if (!generatedPrompt.trim()) {
+      message.warning('请先生成提示词');
+      return;
     }
 
-    prompt += `\n【要求】\n`;
-    prompt += `1. 严格基于原文抽取，不添加任何主观信息\n`;
-    prompt += `2. 缺失的类别用"无"表示\n`;
-    prompt += `3. 输出JSON格式\n`;
-    prompt += `4. 每个类别限制${config.categoryLimit}个`;
+    setTestLoading(true);
+    try {
+      const prompt = generatedPrompt.trim();
+      const extractSchema = {
+        granularity: config.granularity,
+        categoryLimit: config.categoryLimit,
+        modelPrecision,
+        coarseEntityTypeIds: config.coarseEntityTypeIds,
+        fineAttributeIdsByType: config.fineAttributeIdsByType,
+      };
+      const configSnapshot = {
+        name: config.name,
+        description: config.description,
+        tags: config.tags,
+        splitMode: config.splitMode,
+        blockSize: config.blockSize,
+        granularity: config.granularity,
+        modelName: getSelectedModelName(),
+        modelId: config.modelId,
+        modelPrecision,
+        categoryLimit: config.categoryLimit,
+        categories: config.categories,
+        coarseEntityTypeIds: config.coarseEntityTypeIds,
+        fineAttributeIdsByType: config.fineAttributeIdsByType,
+        generatedPrompt: prompt,
+        temperatureEnabled: tempEnabled,
+        temperature: config.temperature,
+        topPEnabled,
+        topP: config.topP,
+        presencePenaltyEnabled,
+        presencePenalty: config.presencePenalty,
+        frequencyPenaltyEnabled,
+        frequencyPenalty: config.frequencyPenalty,
+        maxTokensEnabled,
+        maxTokens: config.maxTokens,
+      };
+      const modelParams = {
+        id: config.id,
+        name: config.name?.trim(),
+        description: config.description?.trim() || '',
+        enabled: config.enabled,
+        isBuiltin: Boolean(config.isBuiltin),
+        tags: config.tags,
+        splitMode: config.splitMode,
+        blockSize: config.blockSize,
+        granularity: config.granularity,
+        modelName: getSelectedModelName(),
+        modelId: config.modelId,
+        temperatureEnabled: tempEnabled,
+        temperature: config.temperature,
+        topPEnabled,
+        topP: config.topP,
+        presencePenaltyEnabled,
+        presencePenalty: config.presencePenalty,
+        frequencyPenaltyEnabled,
+        frequencyPenalty: config.frequencyPenalty,
+        maxTokensEnabled,
+        maxTokens: config.maxTokens,
+        generatedPrompt: prompt,
+        extractSchema,
+        configSnapshot,
+        sortNo: Number(config.sortNo ?? 0),
+      };
 
-    setGeneratedPrompt(prompt);
+      const res = await extractEntityLlm({
+        input_text: testText.trim(),
+        model_params: modelParams,
+      });
+
+      if (!res?.success) {
+        message.error(res?.error?.message || '执行抽取失败');
+        return;
+      }
+      if (!res?.data || typeof res.data !== 'object') {
+        message.error('执行抽取失败');
+        return;
+      }
+
+      const graphData = normalizeExtractGraphData(res.data);
+      setExtractPreviewData(graphData);
+      message.success('执行抽取成功');
+    } catch (error) {
+      console.error(error);
+      message.error('执行抽取失败');
+    } finally {
+      setTestLoading(false);
+    }
   };
+
+  const handleGeneratePromptByApi = async () => {
+    const isCoarse = config.granularity === '粗颗粒度';
+    const isFine = config.granularity === '细颗粒度';
+
+    if (isCoarse && config.coarseEntityTypeIds.length === 0) {
+      message.warning('请先选择实体类型');
+      return;
+    }
+
+    if (isFine && selectedFineAttributeCount === 0) {
+      message.warning('请先选择实体属性');
+      return;
+    }
+
+    const payload = {
+      granularity: config.granularity,
+      coarseEntityTypeIds: isCoarse ? config.coarseEntityTypeIds : [],
+      fineAttributeIdsByType: isFine ? config.fineAttributeIdsByType : {},
+    };
+
+    setPromptBuilding(true);
+    try {
+      const res: any = await buildKnowledgeExtractPrompt(payload);
+      if (!res?.success) {
+        message.error(res?.error || '生成提示词失败');
+        return;
+      }
+
+      if (typeof res?.data !== 'string' || !res.data) {
+        message.error('生成提示词失败');
+        return;
+      }
+
+      setGeneratedPrompt(res.data);
+      message.success('已生成提示词，请查看提示词预览');
+    } catch (error) {
+      console.error(error);
+      message.error('生成提示词失败');
+    } finally {
+      setPromptBuilding(false);
+    }
+  };
+
+  const normalizeExtractGraphData = (
+    parsed: ExtractEntityLlmResult | null | undefined,
+  ): ExtractPreviewData => {
+    const entities = Array.isArray(parsed?.entities) ? parsed.entities : [];
+    const relations = Array.isArray(parsed?.relations)
+      ? parsed.relations
+      : Array.isArray(parsed?.relationships)
+        ? parsed.relationships
+        : [];
+    const resolutions = Array.isArray(parsed?.resolutions) ? parsed.resolutions : [];
+
+    return {
+      entities: entities
+        .map((item) => {
+          const name = String(item?.name ?? '').trim();
+          if (!name) return null;
+          const attributes =
+            item?.attributes && typeof item.attributes === 'object'
+              ? Object.entries(item.attributes)
+                  .filter(
+                    ([key, value]) => key && value !== null && value !== undefined && value !== '',
+                  )
+                  .map(([key, value]) => [String(key), String(value)] as [string, string])
+              : [];
+          return {
+            name,
+            type: String(item?.type ?? '').trim() || '-',
+            description: String(item?.description ?? '').trim() || '-',
+            entityId: String(item?.entity_id ?? '').trim() || '-',
+            attributes,
+          };
+        })
+        .filter(Boolean) as ExtractPreviewEntity[],
+      relations: relations
+        .map((item) => {
+          const source = String(item?.source ?? '').trim();
+          const target = String(item?.target ?? '').trim();
+          const sourceEntityId = String(item?.head_entity_id ?? '').trim();
+          const targetEntityId = String(item?.tail_entity_id ?? '').trim();
+          const relation = String(item?.relation ?? item?.relationCode ?? '').trim();
+          if (!relation || (!source && !sourceEntityId) || (!target && !targetEntityId)) return null;
+          return {
+            source,
+            relation,
+            target,
+            evidence: String(item?.evidence ?? '').trim() || '-',
+            sourceEntityId: sourceEntityId || undefined,
+            targetEntityId: targetEntityId || undefined,
+          };
+        })
+        .filter(Boolean) as ExtractPreviewRelation[],
+      resolutions: resolutions
+        .map((item) => {
+          const mention = String(item?.mention ?? '').trim();
+          const canonicalEntity = String(item?.canonical_entity ?? '').trim();
+          if (!mention || !canonicalEntity) return null;
+          return {
+            mention,
+            canonicalEntity,
+            entityId: String(item?.entity_id ?? '').trim() || '-',
+          };
+        })
+        .filter(Boolean) as ExtractPreviewResolution[],
+    };
+  };
+
+  const buildEntityRelationGraphData = (
+    data: ExtractPreviewData | null | undefined,
+  ): EntityGraphData => {
+    if (!data || data.entities.length === 0) {
+      return {
+        centerId: 'empty-center',
+        nodes: [],
+        links: [],
+      };
+    }
+
+    const relationDegreeMap = new Map<string, number>();
+    data.entities.forEach((item) => relationDegreeMap.set(item.name, 0));
+    data.relations.forEach((item) => {
+      relationDegreeMap.set(item.source, (relationDegreeMap.get(item.source) || 0) + 1);
+      relationDegreeMap.set(item.target, (relationDegreeMap.get(item.target) || 0) + 1);
+    });
+    data.resolutions.forEach((item) => {
+      relationDegreeMap.set(
+        item.canonicalEntity,
+        (relationDegreeMap.get(item.canonicalEntity) || 0) + 1,
+      );
+    });
+
+    const centerEntity =
+      [...data.entities].sort((left, right) => {
+        const degreeDiff =
+          (relationDegreeMap.get(right.name) || 0) - (relationDegreeMap.get(left.name) || 0);
+        if (degreeDiff !== 0) return degreeDiff;
+        return left.name.length - right.name.length;
+      })[0] || data.entities[0];
+
+    const entityNodes = data.entities.map((entity) => ({
+      id: `entity_${entity.entityId}_${entity.name}`,
+      name: entity.name,
+      type: entity.name === centerEntity.name ? ('center' as const) : ('entity' as const),
+      desc: entity.description !== '-' ? entity.description : undefined,
+      tag: entity.type && entity.type !== '-' ? [entity.type] : [],
+      avp: [...entity.attributes],
+      entityType: entity.type !== '-' ? entity.type : undefined,
+      relationCount: relationDegreeMap.get(entity.name) || 0,
+      branchId: centerEntity.name,
+      depth: entity.name === centerEntity.name ? 0 : 1,
+    }));
+
+    const resolutionNodes = data.resolutions.map((item, index) => ({
+      id: `resolution_${index}_${item.mention}`,
+      name: item.mention,
+      type: 'value' as const,
+      desc: `指向 ${item.canonicalEntity}`,
+      tag: ['消歧'],
+      avp: [['规范实体', item.canonicalEntity]],
+      parentId: `entity_${item.entityId}_${item.canonicalEntity}`,
+      branchId: centerEntity.name,
+      relationFromParent: '别名',
+      depth: 2,
+    }));
+
+    const entityIdMap = new Map<string, string>();
+    const entityNodeIdByEntityId = new Map<string, string>();
+    entityNodes.forEach((node) => {
+      entityIdMap.set(node.name, node.id);
+      const originalEntityId = String(node.id).split('_')[1];
+      if (originalEntityId) {
+        entityNodeIdByEntityId.set(originalEntityId, node.id);
+      }
+    });
+
+    const relationLinks = data.relations
+      .map((relation) => {
+        const source =
+          (relation.sourceEntityId && entityNodeIdByEntityId.get(relation.sourceEntityId)) ||
+          entityIdMap.get(relation.source);
+        const target =
+          (relation.targetEntityId && entityNodeIdByEntityId.get(relation.targetEntityId)) ||
+          entityIdMap.get(relation.target);
+        if (!source || !target) return null;
+        return {
+          source,
+          target,
+          relation: relation.relation,
+        };
+      })
+      .filter(Boolean) as EntityGraphData['links'];
+
+    const fallbackLinks =
+      relationLinks.length > 0
+        ? []
+        : entityNodes
+            .filter((node) => node.id !== entityIdMap.get(centerEntity.name))
+            .map((node) => ({
+              source: entityIdMap.get(centerEntity.name) || node.id,
+              target: node.id,
+              relation: '关联',
+            }));
+
+    const resolutionLinks = data.resolutions
+      .map((item, index) => {
+        const source = entityIdMap.get(item.canonicalEntity);
+        const target = `resolution_${index}_${item.mention}`;
+        if (!source) return null;
+        return {
+          source,
+          target,
+          relation: '别名',
+        };
+      })
+      .filter(Boolean) as EntityGraphData['links'];
+
+    return {
+      centerId: entityIdMap.get(centerEntity.name) || entityNodes[0]?.id || 'empty-center',
+      nodes: [...entityNodes, ...resolutionNodes],
+      links: [...relationLinks, ...fallbackLinks, ...resolutionLinks],
+    };
+  };
+
+  const extractEntityRelationGraphData = buildEntityRelationGraphData(extractPreviewData);
 
   return (
     <>
@@ -1728,322 +1960,303 @@ export default function KnowledgeExtractConfigPage() {
 
         <Col span={10}>
           <Card title="配置预览" style={{ marginBottom: 16 }}>
-            <Space direction="vertical" style={{ width: '100%' }} size={16}>
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  background: '#f0f5ff',
-                  border: '1px solid #d6e4ff',
-                }}
-              >
-                <Space>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: '#1677ff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <AppstoreOutlined style={{ color: '#fff', fontSize: 16 }} />
-                  </div>
-                  <div>
+            <Row gutter={[16, 16]}>
+              <Col span={12}>
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    background: '#f0f5ff',
+                    border: '1px solid #d6e4ff',
+                  }}
+                >
+                  <Space align="start">
                     <div
                       style={{
-                        fontWeight: 500,
-                        color: '#1677ff',
-                        fontSize: 12,
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: '#1677ff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                       }}
                     >
-                      抽取模式
+                      <AppstoreOutlined style={{ color: '#fff', fontSize: 16 }} />
                     </div>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: 15,
-                        color: '#1f1f1f',
-                      }}
-                    >
-                      {config.splitMode === '字数'
-                        ? `按字数抽取，每${config.blockSize}字`
-                        : `按段落抽取，每${config.blockSize}段`}
-                    </div>
-                  </div>
-                </Space>
-              </div>
-
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  background: '#f0f5ff',
-                  border: '1px solid #d6e4ff',
-                }}
-              >
-                <Space>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: '#1677ff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <TagOutlined style={{ color: '#fff', fontSize: 16 }} />
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 500,
-                        color: '#1677ff',
-                        fontSize: 12,
-                      }}
-                    >
-                      适用标签
-                    </div>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: 15,
-                        color: '#1f1f1f',
-                      }}
-                    >
-                      {config.tags.join('、')}
-                    </div>
-                  </div>
-                </Space>
-              </div>
-
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  background: '#f0f5ff',
-                  border: '1px solid #d6e4ff',
-                }}
-              >
-                <Space>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: '#1677ff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <ClusterOutlined style={{ color: '#fff', fontSize: 16 }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontWeight: 500,
-                        color: '#1677ff',
-                        fontSize: 12,
-                      }}
-                    >
-                      颗粒度级别
-                    </div>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: 15,
-                        color: '#1f1f1f',
-                      }}
-                    >
-                      {config.granularity}抽取
-                    </div>
-                    {config.granularity === '粗颗粒度' ? (
-                      <div style={{ marginTop: 8 }}>
-                        {selectedCoarseEntityTypes.length > 0 ? (
-                          <Space wrap size={4}>
-                            {selectedCoarseEntityTypes.map((entityType) => (
-                              <Tag key={entityType.id} color="blue" style={{ margin: 0 }}>
-                                {entityType.name}
-                              </Tag>
-                            ))}
-                          </Space>
-                        ) : (
-                          <div style={{ fontSize: 12, color: '#8c8c8c' }}>未选择实体类型</div>
-                        )}
+                    <div>
+                      <div
+                        style={{
+                          fontWeight: 500,
+                          color: '#1677ff',
+                          fontSize: 12,
+                        }}
+                      >
+                        抽取模式
                       </div>
-                    ) : (
-                      <div style={{ marginTop: 8 }}>
-                        {selectedFineAttributeGroups.length > 0 ? (
-                          selectedFineAttributeGroups.map(({ entityType, attributes }) => (
-                            <div key={entityType.id} style={{ marginBottom: 6 }}>
-                              <div
-                                style={{
-                                  fontSize: 11,
-                                  color: '#595959',
-                                  marginBottom: 2,
-                                }}
-                              >
-                                {entityType.name}：
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 15,
+                          color: '#1f1f1f',
+                        }}
+                      >
+                        {config.splitMode === '字数'
+                          ? `按字数抽取，每${config.blockSize}字`
+                          : `按段落抽取，每${config.blockSize}段`}
+                      </div>
+                    </div>
+                  </Space>
+                </div>
+              </Col>
+
+              <Col span={12}>
+                <div
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    background: '#f0f5ff',
+                    border: '1px solid #d6e4ff',
+                  }}
+                >
+                  <Space>
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: '#1677ff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <TagOutlined style={{ color: '#fff', fontSize: 16 }} />
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          fontWeight: 500,
+                          color: '#1677ff',
+                          fontSize: 12,
+                        }}
+                      >
+                        适用标签
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 15,
+                          color: '#1f1f1f',
+                        }}
+                      >
+                        {config.tags.join('、')}
+                      </div>
+                    </div>
+                  </Space>
+                </div>
+              </Col>
+
+              <Col span={12} style={{ display: 'flex' }}>
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    padding: 12,
+                    borderRadius: 8,
+                    background: '#f0f5ff',
+                    border: '1px solid #d6e4ff',
+                    minHeight: 152,
+                  }}
+                >
+                  <Space>
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: '#1677ff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <ClusterOutlined style={{ color: '#fff', fontSize: 16 }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontWeight: 500,
+                          color: '#1677ff',
+                          fontSize: 12,
+                        }}
+                      >
+                        颗粒度级别
+                      </div>
+                      <div
+                        style={{
+                          fontWeight: 600,
+                          fontSize: 15,
+                          color: '#1f1f1f',
+                        }}
+                      >
+                        {config.granularity}抽取
+                      </div>
+                      {config.granularity === '粗颗粒度' ? (
+                        <div style={{ marginTop: 8 }}>
+                          {selectedCoarseEntityTypes.length > 0 ? (
+                            <Space wrap size={4}>
+                              {selectedCoarseEntityTypes.map((entityType) => (
+                                <Tag key={entityType.id} color="blue" style={{ margin: 0 }}>
+                                  {entityType.name}
+                                </Tag>
+                              ))}
+                            </Space>
+                          ) : (
+                            <div style={{ fontSize: 12, color: '#8c8c8c' }}>未选择实体类型</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 8 }}>
+                          {selectedFineAttributeGroups.length > 0 ? (
+                            selectedFineAttributeGroups.map(({ entityType, attributes }) => (
+                              <div key={entityType.id} style={{ marginBottom: 6 }}>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    color: '#595959',
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  {entityType.name}：
+                                </div>
+                                <Space wrap size={4}>
+                                  {attributes.map((attribute) => (
+                                    <Tag key={attribute.id} color="orange" style={{ margin: 0 }}>
+                                      {attribute.name}
+                                    </Tag>
+                                  ))}
+                                </Space>
                               </div>
-                              <Space wrap size={4}>
-                                {attributes.map((attribute) => (
-                                  <Tag key={attribute.id} color="orange" style={{ margin: 0 }}>
-                                    {attribute.name}
-                                  </Tag>
-                                ))}
-                              </Space>
+                            ))
+                          ) : (
+                            <div style={{ fontSize: 12, color: '#8c8c8c' }}>未选择实体属性</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </Space>
+                </div>
+              </Col>
+
+              <Col span={12} style={{ display: 'flex' }}>
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    padding: 12,
+                    borderRadius: 8,
+                    background: '#f0f5ff',
+                    border: '1px solid #d6e4ff',
+                    minHeight: 152,
+                  }}
+                >
+                  <Space>
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: '#1677ff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <RobotOutlined style={{ color: '#fff', fontSize: 16 }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 8,
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 500,
+                              color: '#1677ff',
+                              fontSize: 12,
+                            }}
+                          >
+                            抽取模型 / 精度
+                          </div>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              fontSize: 15,
+                              color: '#1f1f1f',
+                            }}
+                          >
+                            {getSelectedModelName()}
+                            <Tag color="blue" style={{ marginLeft: 8 }}>
+                              {modelPrecision}
+                            </Tag>
+                          </div>
+                        </div>
+                        {(tempEnabled ||
+                          topPEnabled ||
+                          presencePenaltyEnabled ||
+                          frequencyPenaltyEnabled ||
+                          maxTokensEnabled) && (
+                          <div
+                            style={{
+                              marginTop: 0,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 6,
+                              }}
+                            >
+                              {tempEnabled && (
+                                <Tag color="orange" style={{ margin: 0 }}>
+                                  温度：{config.temperature}
+                                </Tag>
+                              )}
+                              {topPEnabled && (
+                                <Tag color="orange" style={{ margin: 0 }}>
+                                  Top P：{config.topP}
+                                </Tag>
+                              )}
+                              {presencePenaltyEnabled && (
+                                <Tag color="orange" style={{ margin: 0 }}>
+                                  存在惩罚：{config.presencePenalty}
+                                </Tag>
+                              )}
+                              {frequencyPenaltyEnabled && (
+                                <Tag color="orange" style={{ margin: 0 }}>
+                                  频率惩罚：{config.frequencyPenalty}
+                                </Tag>
+                              )}
+                              {maxTokensEnabled && (
+                                <Tag color="orange" style={{ margin: 0 }}>
+                                  最大Token：{config.maxTokens}
+                                </Tag>
+                              )}
                             </div>
-                          ))
-                        ) : (
-                          <div style={{ fontSize: 12, color: '#8c8c8c' }}>未选择实体属性</div>
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                </Space>
-              </div>
-
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  background: '#f0f5ff',
-                  border: '1px solid #d6e4ff',
-                }}
-              >
-                <Space>
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: '#1677ff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <RobotOutlined style={{ color: '#fff', fontSize: 16 }} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontWeight: 500,
-                        color: '#1677ff',
-                        fontSize: 12,
-                      }}
-                    >
-                      抽取模型 / 精度
                     </div>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: 15,
-                        color: '#1f1f1f',
-                      }}
-                    >
-                      {getSelectedModelName()}
-                      <Tag color="blue" style={{ marginLeft: 8 }}>
-                        {modelPrecision}
-                      </Tag>
-                    </div>
-                    {(tempEnabled ||
-                      topPEnabled ||
-                      presencePenaltyEnabled ||
-                      frequencyPenaltyEnabled ||
-                      maxTokensEnabled) && (
-                      <div style={{ marginTop: 8 }}>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: '#595959',
-                            marginBottom: 4,
-                            paddingBottom: 4,
-                            borderBottom: '1px solid #e8e8e8',
-                          }}
-                        >
-                          推理参数配置
-                        </div>
-                        <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(2, 1fr)',
-                            gap: 6,
-                            marginTop: 6,
-                          }}
-                        >
-                          {tempEnabled && (
-                            <div
-                              style={{
-                                padding: '4px 8px',
-                                background: '#fff',
-                                borderRadius: 4,
-                                fontSize: 12,
-                              }}
-                            >
-                              温度：{config.temperature}
-                            </div>
-                          )}
-                          {topPEnabled && (
-                            <div
-                              style={{
-                                padding: '4px 8px',
-                                background: '#fff',
-                                borderRadius: 4,
-                                fontSize: 12,
-                              }}
-                            >
-                              Top P：{config.topP}
-                            </div>
-                          )}
-                          {presencePenaltyEnabled && (
-                            <div
-                              style={{
-                                padding: '4px 8px',
-                                background: '#fff',
-                                borderRadius: 4,
-                                fontSize: 12,
-                              }}
-                            >
-                              存在惩罚：{config.presencePenalty}
-                            </div>
-                          )}
-                          {frequencyPenaltyEnabled && (
-                            <div
-                              style={{
-                                padding: '4px 8px',
-                                background: '#fff',
-                                borderRadius: 4,
-                                fontSize: 12,
-                              }}
-                            >
-                              频率惩罚：{config.frequencyPenalty}
-                            </div>
-                          )}
-                          {maxTokensEnabled && (
-                            <div
-                              style={{
-                                padding: '4px 8px',
-                                background: '#fff',
-                                borderRadius: 4,
-                                fontSize: 12,
-                              }}
-                            >
-                              最大Token：{config.maxTokens}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </Space>
-              </div>
-            </Space>
+                  </Space>
+                </div>
+              </Col>
+            </Row>
 
             <div style={{ marginTop: 16 }}>
               <Space
@@ -2058,12 +2271,22 @@ export default function KnowledgeExtractConfigPage() {
                 <Button
                   type="primary"
                   icon={<ThunderboltOutlined />}
-                  onClick={handleGeneratePrompt}
+                  loading={promptBuilding}
+                  onClick={handleGeneratePromptByApi}
                 >
                   生成提示词
                 </Button>
               </Space>
-              <pre style={styles.promptBox}>{generatedPrompt || samplePrompt}</pre>
+              {generatedPrompt ? (
+                <pre style={styles.promptBox}>{generatedPrompt}</pre>
+              ) : (
+                <div style={styles.promptPlaceholder}>
+                  <div style={styles.promptPlaceholderTitle}>暂未生成提示词</div>
+                  <div style={styles.promptPlaceholderText}>
+                    请先完成实体类型或属性配置，然后点击“生成提示词”，系统会根据当前抽取粒度自动生成提示词。
+                  </div>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -2094,7 +2317,7 @@ export default function KnowledgeExtractConfigPage() {
                 />
               </div>
 
-              <div style={{ marginTop: 12 }}>
+              {/* <div style={{ marginTop: 12 }}>
                 <div
                   style={{
                     fontWeight: 500,
@@ -2148,7 +2371,7 @@ export default function KnowledgeExtractConfigPage() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </div> */}
 
               <div
                 style={{
@@ -2194,19 +2417,317 @@ export default function KnowledgeExtractConfigPage() {
                     background: '#f0f5ff',
                     border: '1px solid #d6e4ff',
                     marginBottom: 12,
-                    minHeight: 80,
+                    minHeight: 120,
                   }}
                 >
-                  {extractResult ? (
-                    <pre
+                  {testLoading ? (
+                    <div
                       style={{
-                        margin: 0,
-                        whiteSpace: 'pre-wrap',
-                        fontFamily: 'monospace',
+                        height: '71vh',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderRadius: 14,
+                        background: '#f8fbff',
+                        border: '1px solid #d6e4ff',
                       }}
                     >
-                      {extractResult}
-                    </pre>
+                      <Spin size="large" tip="抽取结果生成中..." />
+                    </div>
+                  ) : extractPreviewData ? (
+                    <div>
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          display: 'flex',
+                          justifyContent: 'flex-end',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: 260 }}>
+                          <span style={{ color: '#334155', fontSize: 13 }}>文本长度</span>
+                          <Slider
+                            style={{ flex: 1, margin: 0 }}
+                            min={2}
+                            max={20}
+                            step={1}
+                            value={extractGraphLabelMaxLength}
+                            onChange={setExtractGraphLabelMaxLength}
+                          />
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          marginBottom: 12,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 12,
+                          flexWrap: 'wrap',
+                          display: 'none',
+                        }}
+                      >
+                        <div style={{ color: '#64748b', fontSize: 13 }}>
+                          本次抽取共识别 {extractPreviewData.entities.length} 个实体，{' '}
+                          {extractPreviewData.relations.length} 条关系，{' '}
+                          {extractPreviewData.resolutions.length} 条消歧结果
+                        </div>
+                        <Space size={8} wrap>
+                          <Tag color="blue">实体 {extractPreviewData.entities.length}</Tag>
+                          <Tag color="cyan">关系 {extractPreviewData.relations.length}</Tag>
+                          <Tag color="purple">消歧 {extractPreviewData.resolutions.length}</Tag>
+                        </Space>
+                      </div>
+                      <div style={styles.extractPreviewWrap}>
+                        <div style={styles.extractPreviewMain}>
+                          <div style={styles.extractPanel}>
+                            <div style={styles.extractPanelHeader}>
+                              <Space align="center" size={8}>
+                                <ClusterOutlined style={{ color: '#1677ff' }} />
+                                <span style={styles.extractPanelTitle}>实体结果</span>
+                              </Space>
+                              <Tag color="blue">{extractPreviewData.entities.length}</Tag>
+                            </div>
+                            {extractPreviewData.entities.length > 0 ? (
+                              <>
+                                <div style={styles.graphWrap}>
+                                  <EntityRelationGraph
+                                    data={extractEntityRelationGraphData}
+                                    height="71vh"
+                                    labelMaxLength={extractGraphLabelMaxLength}
+                                    renderHoverCard={(node) => {
+                                      if (node.type === 'value') return null;
+                                      const detailPairs = Array.isArray(node.avp) ? node.avp : [];
+                                      return (
+                                        <div
+                                          style={{
+                                            padding: 14,
+                                            borderRadius: 12,
+                                            background: 'rgba(255,255,255,0.96)',
+                                            border: '1px solid #d6e4ff',
+                                            boxShadow: '0 10px 30px rgba(15, 23, 42, 0.16)',
+                                            backdropFilter: 'blur(8px)',
+                                          }}
+                                        >
+                                          <div
+                                            style={{
+                                              fontSize: 16,
+                                              fontWeight: 600,
+                                              color: '#1f2937',
+                                              lineHeight: 1.5,
+                                              marginBottom: 8,
+                                            }}
+                                          >
+                                            {node.name}
+                                          </div>
+                                          <Space size={[8, 8]} wrap style={{ marginBottom: 10 }}>
+                                            {node.entityType ? (
+                                              <Tag color="blue">{node.entityType}</Tag>
+                                            ) : null}
+                                            {node.type === 'center' ? (
+                                              <Tag color="gold">中心实体</Tag>
+                                            ) : null}
+                                          </Space>
+                                          <div
+                                            style={{
+                                              fontSize: 13,
+                                              color: '#475569',
+                                              lineHeight: 1.75,
+                                              marginBottom: detailPairs.length > 0 ? 10 : 0,
+                                              whiteSpace: 'pre-wrap',
+                                              wordBreak: 'break-word',
+                                            }}
+                                          >
+                                            {node.desc || '暂无描述'}
+                                          </div>
+                                          {detailPairs.length > 0 ? (
+                                            <div
+                                              style={{
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: 8,
+                                              }}
+                                            >
+                                              {detailPairs.map(([key, value], index) => (
+                                                <div
+                                                  key={`${node.id}-${key}-${index}`}
+                                                  style={{
+                                                    padding: '8px 10px',
+                                                    borderRadius: 8,
+                                                    background: '#f8fbff',
+                                                    border: '1px solid #e5edff',
+                                                  }}
+                                                >
+                                                  <div
+                                                    style={{
+                                                      fontSize: 12,
+                                                      color: '#1677ff',
+                                                      fontWeight: 500,
+                                                      marginBottom: 4,
+                                                    }}
+                                                  >
+                                                    {key}
+                                                  </div>
+                                                  <div
+                                                    style={{
+                                                      fontSize: 13,
+                                                      color: '#334155',
+                                                      lineHeight: 1.6,
+                                                      wordBreak: 'break-word',
+                                                    }}
+                                                  >
+                                                    {value || '-'}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    }}
+                                  />
+                                </div>
+                                <div style={styles.entityGrid}>
+                                  {extractPreviewData.entities.map((entity) => (
+                                    <div
+                                      key={`${entity.entityId}-${entity.name}`}
+                                      style={styles.entityCard}
+                                    >
+                                      <div style={styles.entityCardHeader}>
+                                        <div style={styles.entityName}>{entity.name}</div>
+                                        <Tag color="geekblue">{entity.type}</Tag>
+                                      </div>
+                                      <div style={styles.entityDesc}>{entity.description}</div>
+                                      <div style={styles.entityMeta}>
+                                        实体 ID：{entity.entityId}
+                                      </div>
+                                      <div style={styles.entityAttrWrap}>
+                                        {entity.attributes.length > 0 ? (
+                                          entity.attributes.map(([key, value]) => (
+                                            <div
+                                              key={`${entity.name}-${key}`}
+                                              style={styles.entityAttrItem}
+                                            >
+                                              <span style={styles.entityAttrKey}>{key}</span>
+                                              <span style={styles.entityAttrValue}>{value}</span>
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <div style={styles.emptyTipInline}>暂无属性信息</div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <div style={styles.emptyBlock}>当前未抽取到实体</div>
+                            )}
+                          </div>
+                          <div style={styles.extractPanel}>
+                            <div style={styles.extractPanelHeader}>
+                              <Space align="center" size={8}>
+                                <BranchesOutlined style={{ color: '#13c2c2' }} />
+                                <span style={styles.extractPanelTitle}>关系结果</span>
+                              </Space>
+                              <Tag color="cyan">{extractPreviewData.relations.length}</Tag>
+                            </div>
+                            {extractPreviewData.relations.length > 0 ? (
+                              <div style={styles.relationList}>
+                                {extractPreviewData.relations.map((relation, index) => (
+                                  <div
+                                    key={`${relation.source}-${relation.target}-${index}`}
+                                    style={styles.relationItem}
+                                  >
+                                    <div style={styles.relationMain}>
+                                      <span style={styles.relationNode}>{relation.source}</span>
+                                      <Tag color="cyan">{relation.relation}</Tag>
+                                      <span style={styles.relationNode}>{relation.target}</span>
+                                    </div>
+                                    <div style={styles.relationEvidence}>
+                                      证据：{relation.evidence}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={styles.emptyBlock}>当前未抽取到关系</div>
+                            )}
+                          </div>
+                        </div>
+                        <div style={styles.extractPreviewSide}>
+                          <div style={styles.extractPanel}>
+                            <div style={styles.extractPanelHeader}>
+                              <Space align="center" size={8}>
+                                <AppstoreOutlined style={{ color: '#722ed1' }} />
+                                <span style={styles.extractPanelTitle}>消歧结果</span>
+                              </Space>
+                              <Tag color="purple">{extractPreviewData.resolutions.length}</Tag>
+                            </div>
+                            {extractPreviewData.resolutions.length > 0 ? (
+                              <div style={styles.resolutionList}>
+                                {extractPreviewData.resolutions.map((item, index) => (
+                                  <div
+                                    key={`${item.mention}-${item.canonicalEntity}-${index}`}
+                                    style={styles.resolutionItem}
+                                  >
+                                    <div style={styles.resolutionMention}>{item.mention}</div>
+                                    <div style={styles.resolutionArrow}>指向</div>
+                                    <div style={styles.resolutionCanonical}>
+                                      {item.canonicalEntity}
+                                    </div>
+                                    <div style={styles.entityMeta}>实体 ID：{item.entityId}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={styles.emptyBlock}>当前未抽取到消歧结果</div>
+                            )}
+                          </div>
+                          <div style={styles.extractPanel}>
+                            <div style={styles.extractPanelHeader}>
+                              <Space align="center" size={8}>
+                                <FireOutlined style={{ color: '#fa8c16' }} />
+                                <span style={styles.extractPanelTitle}>结果概览</span>
+                              </Space>
+                            </div>
+                            <div style={styles.summaryList}>
+                              <div style={styles.summaryItem}>
+                                <span style={styles.summaryLabel}>实体类型数</span>
+                                <span style={styles.summaryValue}>
+                                  {
+                                    new Set(extractPreviewData.entities.map((item) => item.type))
+                                      .size
+                                  }
+                                </span>
+                              </div>
+                              <div style={styles.summaryItem}>
+                                <span style={styles.summaryLabel}>含属性实体</span>
+                                <span style={styles.summaryValue}>
+                                  {
+                                    extractPreviewData.entities.filter(
+                                      (item) => item.attributes.length > 0,
+                                    ).length
+                                  }
+                                </span>
+                              </div>
+                              <div style={styles.summaryItem}>
+                                <span style={styles.summaryLabel}>已识别关系</span>
+                                <span style={styles.summaryValue}>
+                                  {extractPreviewData.relations.length}
+                                </span>
+                              </div>
+                              <div style={styles.summaryItem}>
+                                <span style={styles.summaryLabel}>已识别消歧</span>
+                                <span style={styles.summaryValue}>
+                                  {extractPreviewData.resolutions.length}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     <span style={{ color: '#bfbfbf', fontSize: 13 }}>
                       点击执行抽取后显示结果...
@@ -2284,14 +2805,49 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#666',
   },
   promptBox: {
-    background: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 12,
+    minHeight: 300,
+    maxHeight: 300,
+    background: 'linear-gradient(180deg, #f8fbff 0%, #f3f6fb 100%)',
+    border: '1px solid #d9e6f7',
+    boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.04)',
+    padding: 16,
+    borderRadius: 12,
+    fontSize: 13,
     fontFamily: 'monospace',
-    lineHeight: 1.6,
-    maxHeight: 200,
+    lineHeight: 1.75,
+    color: '#1f2937',
+    whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-word' as const,
     overflow: 'auto',
+    margin: 0,
+  },
+  promptPlaceholder: {
+    minHeight: 300,
+    maxHeight: 300,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'center',
+    gap: 12,
+    padding: '24px 28px',
+    borderRadius: 12,
+    border: '1px dashed #c7d8ee',
+    background: 'linear-gradient(180deg, #fbfdff 0%, #f4f8fd 100%)',
+  },
+  promptPlaceholderTitle: {
+    fontSize: 18,
+    fontWeight: 600,
+    color: '#1d3557',
+  },
+  promptPlaceholderText: {
+    fontSize: 14,
+    lineHeight: 1.8,
+    color: '#4b5563',
+    maxWidth: 720,
+  },
+  promptPlaceholderTip: {
+    fontSize: 13,
+    lineHeight: 1.7,
+    color: '#6b7280',
   },
   resultBox: {
     background: '#f5f5f5',
@@ -2299,5 +2855,195 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     fontSize: 13,
     lineHeight: 1.6,
+  },
+  extractPreviewWrap: {
+    height: '71vh',
+    display: 'block',
+  },
+  extractPreviewMain: {
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 0,
+  },
+  extractPreviewSide: {
+    display: 'none',
+  },
+  extractPanel: {
+    minHeight: 0,
+    flex: 1,
+    padding: 0,
+    borderRadius: 0,
+    background: 'transparent',
+    border: 'none',
+    boxShadow: 'none',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  extractPanelHeader: {
+    display: 'none',
+  },
+  extractPanelTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#1f2937',
+  },
+  graphWrap: {
+    height: '71vh',
+    marginBottom: 0,
+    borderRadius: 14,
+    overflow: 'hidden',
+    border: '1px solid #d6e4ff',
+    background: '#f8fbff',
+  },
+  entityGrid: {
+    display: 'none',
+  },
+  entityCard: {
+    padding: 14,
+    borderRadius: 12,
+    background: 'linear-gradient(180deg, #f8fbff 0%, #f3f8ff 100%)',
+    border: '1px solid #d6e4ff',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  entityCardHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  entityName: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#1d3557',
+    lineHeight: 1.5,
+  },
+  entityDesc: {
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 1.7,
+  },
+  entityMeta: {
+    fontSize: 12,
+    color: '#94a3b8',
+    wordBreak: 'break-all',
+  },
+  entityAttrWrap: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    marginTop: 4,
+  },
+  entityAttrItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    padding: '8px 10px',
+    borderRadius: 8,
+    background: '#fff',
+    border: '1px solid #e5edff',
+  },
+  entityAttrKey: {
+    fontSize: 12,
+    color: '#1677ff',
+    fontWeight: 500,
+  },
+  entityAttrValue: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 1.6,
+    wordBreak: 'break-word',
+  },
+  relationList: {
+    display: 'none',
+  },
+  relationItem: {
+    padding: 14,
+    borderRadius: 12,
+    background: '#f6fffe',
+    border: '1px solid #d9f7ef',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  relationMain: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  relationNode: {
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: '#ffffff',
+    border: '1px solid #b7eb8f',
+    color: '#135200',
+    fontSize: 13,
+    lineHeight: 1.5,
+  },
+  relationEvidence: {
+    fontSize: 13,
+    lineHeight: 1.7,
+    color: '#4b5563',
+    wordBreak: 'break-word',
+  },
+  resolutionList: {
+    display: 'none',
+  },
+  resolutionItem: {
+    padding: 14,
+    borderRadius: 12,
+    background: '#faf5ff',
+    border: '1px solid #ead5ff',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  resolutionMention: {
+    fontSize: 13,
+    color: '#722ed1',
+    fontWeight: 500,
+  },
+  resolutionArrow: {
+    fontSize: 12,
+    color: '#8c8c8c',
+  },
+  resolutionCanonical: {
+    fontSize: 15,
+    color: '#1f2937',
+    fontWeight: 600,
+    lineHeight: 1.6,
+  },
+  summaryList: {
+    display: 'none',
+  },
+  summaryItem: {
+    padding: 14,
+    borderRadius: 12,
+    background: 'linear-gradient(180deg, #fff7e6 0%, #fffaf0 100%)',
+    border: '1px solid #ffe7ba',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: '#ad6800',
+  },
+  summaryValue: {
+    fontSize: 24,
+    fontWeight: 700,
+    lineHeight: 1.2,
+    color: '#d46b08',
+  },
+  emptyBlock: {
+    display: 'none',
+  },
+  emptyTipInline: {
+    fontSize: 12,
+    color: '#8c8c8c',
   },
 };
