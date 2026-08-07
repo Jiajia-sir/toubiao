@@ -236,8 +236,7 @@ const sanitizePreviewInlineStyle = (styleText: string) =>
     .map((item) => item.trim())
     .filter(Boolean)
     .filter(
-      (rule) =>
-        !/^(overflow|overflow-x|overflow-y|height|min-height|max-height)\s*:/i.test(rule),
+      (rule) => !/^(overflow|overflow-x|overflow-y|height|min-height|max-height)\s*:/i.test(rule),
     )
     .join('; ');
 
@@ -783,7 +782,11 @@ export default function DataDetailPage() {
         }
 
         const nextDetailData = extractDetailData(response);
-        if (!nextDetailData || typeof nextDetailData !== 'object' || !Object.keys(nextDetailData).length) {
+        if (
+          !nextDetailData ||
+          typeof nextDetailData !== 'object' ||
+          !Object.keys(nextDetailData).length
+        ) {
           setDetailData(null);
           setDetailError('当前文档不存在');
           return;
@@ -920,7 +923,10 @@ export default function DataDetailPage() {
     () => ({
       source: toPlainText(detailData?.channelName) || '-',
       catalog: toPlainText(detailData?.catalogName) || '-',
-      knowledgeBase: extractKnowledgeBases(detailData).length > 0 ? toPlainText(document.knowledgeBase) || '-' : '未关联知识库',
+      knowledgeBase:
+        extractKnowledgeBases(detailData).length > 0
+          ? toPlainText(document.knowledgeBase) || '-'
+          : '未关联知识库',
       knowledgeBases: extractKnowledgeBases(detailData),
       createdAt: formatDateTime(detailData?.createTime ?? detailData?.fileCreateTime),
       updatedAt: formatDateTime(detailData?.updateTime),
@@ -930,10 +936,7 @@ export default function DataDetailPage() {
     [detailData, document.knowledgeBase],
   );
 
-  const originalFilePath = useMemo(
-    () => String(detailData?.filePath ?? '').trim(),
-    [detailData],
-  );
+  const originalFilePath = useMemo(() => String(detailData?.filePath ?? '').trim(), [detailData]);
 
   const originalPreviewFileName = useMemo(() => {
     const detailFileName = stripHtml(
@@ -969,13 +972,20 @@ export default function DataDetailPage() {
   );
   const richKeywords = useMemo(() => {
     const values = toRichTextList(
-      detailData?.keywordsList ?? detailData?.keywords ?? detailData?.keywordList ?? detailData?.keywordNames,
+      detailData?.keywordsList ??
+        detailData?.keywords ??
+        detailData?.keywordList ??
+        detailData?.keywordNames,
     );
     return values.length > 0 ? values : plainKeywords;
   }, [detailData, plainKeywords]);
   const richTags = useMemo(() => {
     const values = toRichTextList(
-      detailData?.fileTagNames ?? detailData?.tags ?? detailData?.tagList ?? detailData?.fileTags ?? detailData?.tagNames,
+      detailData?.fileTagNames ??
+        detailData?.tags ??
+        detailData?.tagList ??
+        detailData?.fileTags ??
+        detailData?.tagNames,
     );
     return values.length > 0 ? values : plainTags;
   }, [detailData, plainTags]);
@@ -1063,8 +1073,7 @@ export default function DataDetailPage() {
 
   const handleGraphNodeClick = (node: EntityGraphNode) => {
     const sourceText = toPlainText(detailData?.channelName);
-    const accessMode =
-      sourceText === '页面上传' ? 'manual-upload' : 'auto-upload';
+    const accessMode = sourceText === '页面上传' ? 'manual-upload' : 'auto-upload';
     const query = new URLSearchParams({
       entity: node.name,
       docId: document.id,
@@ -1120,149 +1129,150 @@ export default function DataDetailPage() {
               boxShadow: '0 10px 30px rgba(15, 23, 42, 0.05)',
             }}
           >
-          <div
-            style={{
-              display: 'flex',
-              gap: 14,
-              minWidth: 0,
-              flex: '1 1 620px',
-              alignItems: 'flex-start',
-            }}
-          >
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => history.go(-1)}
+            <div
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                borderColor: '#dbe3ef',
-                color: '#475569',
-                background: '#fff',
-                boxShadow: '0 4px 14px rgba(148, 163, 184, 0.12)',
-                flexShrink: 0,
-              }}
-            />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 700,
-                    lineHeight: 1.35,
-                    color: '#0f172a',
-                    letterSpacing: '-0.01em',
-                    wordBreak: 'break-word',
-                    flex: '1 1 360px',
-                  }}
-                >
-                  {renderHighlightedText(document.title, previewKeyword)}
-                </div>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    color: '#15803d',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    padding: '8px 12px',
-                    borderRadius: 999,
-                    background: '#ecfdf5',
-                    border: '1px solid #bbf7d0',
-                    flexShrink: 0,
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: '50%',
-                      background: '#22c55e',
-                      boxShadow: '0 0 0 4px rgba(34, 197, 94, 0.12)',
-                    }}
-                  />
-                  {currentStatus.text}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                  marginTop: 14,
-                }}
-              >
-                <InlineMeta icon={<FileOutlined />} text={`${document.type} 文件`} />
-                <InlineMeta icon={<AppstoreOutlined />} text={document.size} />
-                <InlineMeta
-                  icon={<ClockCircleOutlined />}
-                  text={`上传时间：${document.uploadedAt}`}
-                />
-                <InlineMeta
-                  icon={<UserOutlined />}
-                  text={
-                    <>
-                      上传人：
-                      {renderInlineRichText(
-                        detailData?.creatorName ??
-                          detailData?.creator ??
-                          detailData?.uploader ??
-                          detailData?.createBy ??
-                          document.uploader,
-                        plainUploader,
-                      )}
-                    </>
-                  }
-                />
-                <InlineMeta
-                  icon={<TagOutlined />}
-                  text={
-                    <>
-                      来源：
-                      {renderInlineRichText(detailData?.channelName, detailSummary.source)}
-                    </>
-                  }
-                />
-              </div>
-              {fromEntity && (
-                <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>
-                  {fromEntity ? `来源实体：${fromEntity}` : ''}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <Space wrap size={[8, 8]}>
-            <Button icon={<CloudDownloadOutlined />} style={actionButtonStyle}>
-              下载解析结果
-            </Button>
-            <Button icon={<ReloadOutlined />} style={actionButtonStyle}>
-              重新解析
-            </Button>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              style={{
-                ...actionButtonStyle,
-                color: '#fff',
-                borderColor: '#2563eb',
-                background: '#2563eb',
-                boxShadow: '0 10px 18px rgba(37, 99, 235, 0.16)',
+                display: 'flex',
+                gap: 14,
+                minWidth: 0,
+                flex: '1 1 620px',
+                alignItems: 'flex-start',
               }}
             >
-              保存到知识库
-            </Button>
-          </Space>
+              <Button
+                icon={<ArrowLeftOutlined />}
+                onClick={() => history.go(-1)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  borderColor: '#dbe3ef',
+                  color: '#475569',
+                  background: '#fff',
+                  boxShadow: '0 4px 14px rgba(148, 163, 184, 0.12)',
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 20,
+                      fontWeight: 700,
+                      lineHeight: 1.35,
+                      color: '#0f172a',
+                      letterSpacing: '-0.01em',
+                      wordBreak: 'break-word',
+                      flex: '1 1 360px',
+                    }}
+                  >
+                    {renderHighlightedText(document.title, previewKeyword)}
+                  </div>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      color: '#15803d',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      padding: '8px 12px',
+                      borderRadius: 999,
+                      background: '#ecfdf5',
+                      border: '1px solid #bbf7d0',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: '#22c55e',
+                        boxShadow: '0 0 0 4px rgba(34, 197, 94, 0.12)',
+                      }}
+                    />
+                    {currentStatus.text}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                    marginTop: 14,
+                  }}
+                >
+                  <InlineMeta icon={<FileOutlined />} text={`${document.type} 文件`} />
+                  <InlineMeta icon={<AppstoreOutlined />} text={document.size} />
+                  <InlineMeta
+                    icon={<ClockCircleOutlined />}
+                    text={`上传时间：${document.uploadedAt}`}
+                  />
+                  <InlineMeta
+                    icon={<UserOutlined />}
+                    text={
+                      <>
+                        上传人：
+                        {renderInlineRichText(
+                          detailData?.creatorName ??
+                            detailData?.creator ??
+                            detailData?.uploader ??
+                            detailData?.createBy ??
+                            document.uploader,
+                          plainUploader,
+                        )}
+                      </>
+                    }
+                  />
+                  <InlineMeta
+                    icon={<TagOutlined />}
+                    text={
+                      <>
+                        来源：
+                        {renderInlineRichText(detailData?.channelName, detailSummary.source)}
+                      </>
+                    }
+                  />
+                </div>
+                {fromEntity && (
+                  <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>
+                    {fromEntity ? `来源实体：${fromEntity}` : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Space wrap size={[8, 8]}>
+              <Button disabled icon={<CloudDownloadOutlined />} style={actionButtonStyle}>
+                下载解析结果
+              </Button>
+              <Button disabled icon={<ReloadOutlined />} style={actionButtonStyle}>
+                重新解析
+              </Button>
+              <Button
+                disabled
+                type="primary"
+                icon={<SaveOutlined />}
+                style={{
+                  ...actionButtonStyle,
+                  color: '#fff',
+                  borderColor: '#2563eb',
+                  background: '#2563eb',
+                  boxShadow: '0 10px 18px rgba(37, 99, 235, 0.16)',
+                }}
+              >
+                保存到知识库
+              </Button>
+            </Space>
           </div>
         )}
 
@@ -1308,219 +1318,219 @@ export default function DataDetailPage() {
             </div>
           </div>
         ) : (
-        <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 12 }}>
-          <Col xs={24} xl={10} style={{ display: 'flex' }}>
-            <Card
-              bordered={false}
-              title="解析进度"
-              style={{ ...surfaceCardStyle, width: '100%', height: '100%' }}
-              styles={{ header: { minHeight: 44, padding: '0 14px' }, body: { padding: 12 } }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: '#334155', fontWeight: 600 }}>整体进度</span>
-                <span
-                  style={{
-                    color: document.status === 'failed' ? '#ef4444' : '#16a34a',
-                    fontWeight: 700,
-                  }}
-                >
-                  {parseProgress}%
-                </span>
-              </div>
-              <Progress
-                percent={parseProgress}
-                showInfo={false}
-                strokeColor={document.status === 'failed' ? '#ef4444' : '#16a34a'}
-                trailColor={document.status === 'failed' ? '#fee2e2' : '#ebf7ef'}
-              />
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  marginTop: 10,
-                  overflowX: 'auto',
-                  flexWrap: 'nowrap',
-                  paddingBottom: 2,
-                }}
+          <Row gutter={[12, 12]} align="stretch" style={{ marginBottom: 12 }}>
+            <Col xs={24} xl={10} style={{ display: 'flex' }}>
+              <Card
+                bordered={false}
+                title="解析进度"
+                style={{ ...surfaceCardStyle, width: '100%', height: '100%' }}
+                styles={{ header: { minHeight: 44, padding: '0 14px' }, body: { padding: 12 } }}
               >
-                {document.parseSteps.map((step) => (
-                  <div
-                    key={step.name}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <span style={{ color: '#334155', fontWeight: 600 }}>整体进度</span>
+                  <span
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '6px 10px',
-                      borderRadius: 999,
-                      background:
-                        step.status === 'completed'
-                          ? '#f0fdf4'
-                          : step.status === 'failed'
-                            ? '#fff1f2'
-                            : '#f8fafc',
-                      border: `1px solid ${
-                        step.status === 'completed'
-                          ? '#bbf7d0'
-                          : step.status === 'failed'
-                            ? '#fecdd3'
-                            : '#e2e8f0'
-                      }`,
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
+                      color: document.status === 'failed' ? '#ef4444' : '#16a34a',
+                      fontWeight: 700,
                     }}
                   >
-                    <CheckCircleFilled
+                    {parseProgress}%
+                  </span>
+                </div>
+                <Progress
+                  percent={parseProgress}
+                  showInfo={false}
+                  strokeColor={document.status === 'failed' ? '#ef4444' : '#16a34a'}
+                  trailColor={document.status === 'failed' ? '#fee2e2' : '#ebf7ef'}
+                />
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginTop: 10,
+                    overflowX: 'auto',
+                    flexWrap: 'nowrap',
+                    paddingBottom: 2,
+                  }}
+                >
+                  {document.parseSteps.map((step) => (
+                    <div
+                      key={step.name}
                       style={{
-                        color:
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 10px',
+                        borderRadius: 999,
+                        background:
                           step.status === 'completed'
-                            ? '#22c55e'
+                            ? '#f0fdf4'
                             : step.status === 'failed'
-                              ? '#ef4444'
-                              : '#cbd5e1',
-                        fontSize: 13,
-                      }}
-                    />
-                    <span
-                      style={{
-                        color: step.status === 'failed' ? '#b91c1c' : '#64748b',
-                        fontSize: 12,
+                              ? '#fff1f2'
+                              : '#f8fafc',
+                        border: `1px solid ${
+                          step.status === 'completed'
+                            ? '#bbf7d0'
+                            : step.status === 'failed'
+                              ? '#fecdd3'
+                              : '#e2e8f0'
+                        }`,
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
                       }}
                     >
-                      {step.name}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </Col>
+                      <CheckCircleFilled
+                        style={{
+                          color:
+                            step.status === 'completed'
+                              ? '#22c55e'
+                              : step.status === 'failed'
+                                ? '#ef4444'
+                                : '#cbd5e1',
+                          fontSize: 13,
+                        }}
+                      />
+                      <span
+                        style={{
+                          color: step.status === 'failed' ? '#b91c1c' : '#64748b',
+                          fontSize: 12,
+                        }}
+                      >
+                        {step.name}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </Col>
 
-          <Col xs={24} xl={14} style={{ display: 'flex' }}>
-            <Card
-              bordered={false}
-              title="文档统计"
-              style={{ ...surfaceCardStyle, width: '100%', height: '100%' }}
-              styles={{
-                header: { minHeight: 44, padding: '0 14px' },
-                body: { padding: 14, height: '100%' },
-              }}
-            >
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                  gap: 10,
+            <Col xs={24} xl={14} style={{ display: 'flex' }}>
+              <Card
+                bordered={false}
+                title="文档统计"
+                style={{ ...surfaceCardStyle, width: '100%', height: '100%' }}
+                styles={{
+                  header: { minHeight: 44, padding: '0 14px' },
+                  body: { padding: 14, height: '100%' },
                 }}
               >
-                <StatPanel
-                  icon={<KeyOutlined />}
-                  color="#ef4444"
-                  label="关键词"
-                  value={document.keywords.length}
-                />
-                <StatPanel
-                  icon={<ClusterOutlined />}
-                  color="#0891b2"
-                  label="实体数量"
-                  value={entityCount}
-                />
-                <StatPanel
-                  icon={<TagOutlined />}
-                  color="#0ea5e9"
-                  label="标签数量"
-                  value={document.tags.length}
-                />
-                <StatPanel
-                  icon={<SearchOutlined />}
-                  color="#6366f1"
-                  label="查看次数"
-                  value={detailSummary.viewCount}
-                />
-                <StatPanel
-                  icon={<AppstoreOutlined />}
-                  color="#0f766e"
-                  label="关系数量"
-                  value={detailSummary.relationCount}
-                />
-              </div>
-            </Card>
-          </Col>
-        </Row>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gap: 10,
+                  }}
+                >
+                  <StatPanel
+                    icon={<KeyOutlined />}
+                    color="#ef4444"
+                    label="关键词"
+                    value={document.keywords.length}
+                  />
+                  <StatPanel
+                    icon={<ClusterOutlined />}
+                    color="#0891b2"
+                    label="实体数量"
+                    value={entityCount}
+                  />
+                  <StatPanel
+                    icon={<TagOutlined />}
+                    color="#0ea5e9"
+                    label="标签数量"
+                    value={document.tags.length}
+                  />
+                  <StatPanel
+                    icon={<SearchOutlined />}
+                    color="#6366f1"
+                    label="查看次数"
+                    value={detailSummary.viewCount}
+                  />
+                  <StatPanel
+                    icon={<AppstoreOutlined />}
+                    color="#0f766e"
+                    label="关系数量"
+                    value={detailSummary.relationCount}
+                  />
+                </div>
+              </Card>
+            </Col>
+          </Row>
         )}
 
         {detailData && (
-        <Row gutter={[12, 12]} align="stretch">
-          <Col xs={24} xl={16} style={{ display: 'flex' }}>
-            <Card
-              bordered={false}
-              title="内容预览"
-              extra={
-                <Space size={8}>
-                  <Segmented
-                    value={previewMode}
-                    onChange={(value) => setPreviewMode(value as 'parsed' | 'original')}
-                    options={[
-                      { label: '解析内容', value: 'parsed' },
-                      { label: '原文件预览', value: 'original' },
-                    ]}
-                  />
-                  {previewMode === 'parsed' ? (
-                    <Input
-                      allowClear
-                      value={previewKeyword}
-                      onChange={(event) => setPreviewKeyword(event.target.value)}
-                      placeholder="搜索内容"
-                      prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
-                      style={{ width: 220 }}
+          <Row gutter={[12, 12]} align="stretch">
+            <Col xs={24} xl={16} style={{ display: 'flex' }}>
+              <Card
+                bordered={false}
+                title="内容预览"
+                extra={
+                  <Space size={8}>
+                    <Segmented
+                      value={previewMode}
+                      onChange={(value) => setPreviewMode(value as 'parsed' | 'original')}
+                      options={[
+                        { label: '解析内容', value: 'parsed' },
+                        { label: '原文件预览', value: 'original' },
+                      ]}
                     />
-                  ) : null}
-                </Space>
-              }
-              style={{
-                ...surfaceCardStyle,
-                width: '100%',
-                height: PREVIEW_CARD_HEIGHT,
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-              }}
-              styles={{ body: { padding: 14, flex: 1, minHeight: 0 } }}
-            >
-              {previewMode === 'parsed' ? (
-                <div
-                  onScroll={handlePreviewScroll}
-                  style={{
-                    border: '1px solid #dfe7f2',
-                    borderRadius: 12,
-                    background: '#fbfcff',
-                    padding: '16px 20px',
-                    height: '100%',
-                    overflowY: 'auto',
-                  }}
-                >
+                    {previewMode === 'parsed' ? (
+                      <Input
+                        allowClear
+                        value={previewKeyword}
+                        onChange={(event) => setPreviewKeyword(event.target.value)}
+                        placeholder="搜索内容"
+                        prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                        style={{ width: 220 }}
+                      />
+                    ) : null}
+                  </Space>
+                }
+                style={{
+                  ...surfaceCardStyle,
+                  width: '100%',
+                  height: PREVIEW_CARD_HEIGHT,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+                styles={{ body: { padding: 14, flex: 1, minHeight: 0 } }}
+              >
+                {previewMode === 'parsed' ? (
                   <div
-                    style={{ fontSize: 18, fontWeight: 700, color: '#1f2a44', marginBottom: 12 }}
-                  >
-                    {renderHighlightedText(
-                      document.title.replace(/\.(pdf|docx|txt)$/i, ''),
-                      previewKeyword,
-                    )}
-                  </div>
-                  <div
+                    onScroll={handlePreviewScroll}
                     style={{
-                      display: 'grid',
-                      gap: 4,
-                      color: '#64748b',
-                      marginBottom: 18,
-                      fontSize: 13,
+                      border: '1px solid #dfe7f2',
+                      borderRadius: 12,
+                      background: '#fbfcff',
+                      padding: '16px 20px',
+                      height: '100%',
+                      overflowY: 'auto',
                     }}
                   >
-                    <div>来源：{detailSummary.source}</div>
-                    <div>更新时间：{detailSummary.updatedAt}</div>
-                    <div>上传人：{plainUploader}</div>
-                  </div>
+                    <div
+                      style={{ fontSize: 18, fontWeight: 700, color: '#1f2a44', marginBottom: 12 }}
+                    >
+                      {renderHighlightedText(
+                        document.title.replace(/\.(pdf|docx|txt)$/i, ''),
+                        previewKeyword,
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 4,
+                        color: '#64748b',
+                        marginBottom: 18,
+                        fontSize: 13,
+                      }}
+                    >
+                      <div>来源：{detailSummary.source}</div>
+                      <div>更新时间：{detailSummary.updatedAt}</div>
+                      <div>上传人：{plainUploader}</div>
+                    </div>
 
-                  <style>{`
+                    <style>{`
                   .document-preview-html {
                     color: #334155;
                     font-size: 15px;
@@ -1578,337 +1588,341 @@ export default function DataDetailPage() {
                   }
                 `}</style>
 
-                  {filteredPreviewBlocks.length > 0 ? (
-                    <>
-                      {filteredPreviewBlocks.map((block, index) => (
-                        <div
-                          key={`${block.seq}-${index}`}
-                          style={{
-                            marginBottom: index === filteredPreviewBlocks.length - 1 ? 0 : 18,
-                          }}
-                        >
-                          {block.hit && (
-                            <div style={{ marginBottom: 8 }}>
-                              <Tag color="processing" style={{ margin: 0 }}>
-                                命中片段
-                              </Tag>
+                    {filteredPreviewBlocks.length > 0 ? (
+                      <>
+                        {filteredPreviewBlocks.map((block, index) => (
+                          <div
+                            key={`${block.seq}-${index}`}
+                            style={{
+                              marginBottom: index === filteredPreviewBlocks.length - 1 ? 0 : 18,
+                            }}
+                          >
+                            {block.hit && (
+                              <div style={{ marginBottom: 8 }}>
+                                <Tag color="processing" style={{ margin: 0 }}>
+                                  命中片段
+                                </Tag>
+                              </div>
+                            )}
+                            <PreviewBlock type={block.type} keyword={previewKeyword}>
+                              {block.value}
+                            </PreviewBlock>
+                          </div>
+                        ))}
+                        <div style={{ display: 'grid', gap: 8, marginTop: 20, paddingBottom: 4 }}>
+                          {previewLoading && (
+                            <div style={{ textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+                              正在加载更多内容...
                             </div>
                           )}
-                          <PreviewBlock type={block.type} keyword={previewKeyword}>
-                            {block.value}
-                          </PreviewBlock>
+                          {!previewHasMore && previewInitialized && previewChunks.length > 0 && (
+                            <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                              已加载全部内容
+                            </div>
+                          )}
+                          {!previewLoading && previewHasMore && (
+                            <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+                              下滑继续加载更多内容
+                            </div>
+                          )}
                         </div>
-                      ))}
-                      <div style={{ display: 'grid', gap: 8, marginTop: 20, paddingBottom: 4 }}>
-                        {previewLoading && (
-                          <div style={{ textAlign: 'center', color: '#64748b', fontSize: 13 }}>
-                            正在加载更多内容...
-                          </div>
-                        )}
-                        {!previewHasMore && previewInitialized && previewChunks.length > 0 && (
-                          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-                            已加载全部内容
-                          </div>
-                        )}
-                        {!previewLoading && previewHasMore && (
-                          <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
-                            下滑继续加载更多内容
-                          </div>
-                        )}
+                      </>
+                    ) : !previewLoading && previewInitialized ? (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description="未找到匹配内容"
+                        style={{ marginTop: 48 }}
+                      />
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#64748b', paddingTop: 48 }}>
+                        内容加载中...
                       </div>
-                    </>
-                  ) : !previewLoading && previewInitialized ? (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="未找到匹配内容"
-                      style={{ marginTop: 48 }}
-                    />
-                  ) : (
-                    <div style={{ textAlign: 'center', color: '#64748b', paddingTop: 48 }}>
-                      内容加载中...
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    border: '1px solid #dfe7f2',
-                    borderRadius: 12,
-                    background: '#fbfcff',
-                    height: '100%',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                  }}
-                >
+                    )}
+                  </div>
+                ) : (
                   <div
                     style={{
-                      padding: '14px 16px',
-                      borderBottom: '1px solid #e2e8f0',
-                      background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
+                      border: '1px solid #dfe7f2',
+                      borderRadius: 12,
+                      background: '#fbfcff',
+                      height: '100%',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
                     }}
                   >
-                    <div style={{ fontSize: 16, fontWeight: 700, color: '#1f2a44' }}>
-                      {renderInlineRichText(
-                        sourceTitle ??
-                          detailData?.name ??
-                          detailData?.fileName ??
-                          detailData?.documentName ??
-                          detailData?.title ??
-                          document.title,
-                        plainDocumentTitle,
-                      )}
-                    </div>
                     <div
                       style={{
-                        display: 'flex',
-                        gap: 12,
-                        flexWrap: 'wrap',
-                        marginTop: 8,
-                        color: '#64748b',
-                        fontSize: 13,
+                        padding: '14px 16px',
+                        borderBottom: '1px solid #e2e8f0',
+                        background: 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
                       }}
                     >
-                      <span>文件类型：{document.type || '-'}</span>
-                      <span>
-                        来源：{renderInlineRichText(detailData?.channelName, detailSummary.source)}
-                      </span>
-                      <span>
-                        上传人：
+                      <div style={{ fontSize: 16, fontWeight: 700, color: '#1f2a44' }}>
                         {renderInlineRichText(
+                          sourceTitle ??
+                            detailData?.name ??
+                            detailData?.fileName ??
+                            detailData?.documentName ??
+                            detailData?.title ??
+                            document.title,
+                          plainDocumentTitle,
+                        )}
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 12,
+                          flexWrap: 'wrap',
+                          marginTop: 8,
+                          color: '#64748b',
+                          fontSize: 13,
+                        }}
+                      >
+                        <span>文件类型：{document.type || '-'}</span>
+                        <span>
+                          来源：
+                          {renderInlineRichText(detailData?.channelName, detailSummary.source)}
+                        </span>
+                        <span>
+                          上传人：
+                          {renderInlineRichText(
+                            detailData?.creatorName ??
+                              detailData?.creator ??
+                              detailData?.uploader ??
+                              detailData?.createBy ??
+                              document.uploader,
+                            plainUploader,
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, minHeight: 0 }}>
+                      <DocumentFilePreview
+                        filePath={originalFilePath}
+                        fileName={originalPreviewFileName}
+                        searchKeyword={sourceKeyword}
+                        height="100%"
+                      />
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </Col>
+
+            <Col xs={24} xl={8} style={{ display: 'flex' }}>
+              <div style={{ display: 'grid', gap: 12, width: '100%' }}>
+                <Card
+                  bordered={false}
+                  title="元数据信息"
+                  style={{
+                    ...surfaceCardStyle,
+                    height: META_CARD_HEIGHT,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                  }}
+                  styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
+                >
+                  <InfoList
+                    items={[
+                      [
+                        '文档标题',
+                        renderInlineRichText(
+                          sourceTitle ??
+                            detailData?.name ??
+                            detailData?.fileName ??
+                            detailData?.documentName ??
+                            detailData?.title ??
+                            document.title,
+                          plainDocumentTitleWithoutExt,
+                        ),
+                      ],
+                      ['来源', renderInlineRichText(detailData?.channelName, detailSummary.source)],
+                      [
+                        '上传人',
+                        renderInlineRichText(
                           detailData?.creatorName ??
                             detailData?.creator ??
                             detailData?.uploader ??
                             detailData?.createBy ??
                             document.uploader,
                           plainUploader,
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, minHeight: 0 }}>
-                    <DocumentFilePreview
-                      filePath={originalFilePath}
-                      fileName={originalPreviewFileName}
-                      searchKeyword={sourceKeyword}
-                      height="100%"
-                    />
-                  </div>
-                </div>
-              )}
-            </Card>
-          </Col>
+                        ),
+                      ],
+                      ['创建时间', detailSummary.createdAt],
+                      ['更新时间', detailSummary.updatedAt],
+                      ['文件格式', document.type],
+                      ['文件大小', document.size],
+                      [
+                        '知识库',
+                        detailSummary.knowledgeBases.length > 0 ? (
+                          <Space size={[6, 6]} wrap style={{ justifyContent: 'flex-end' }}>
+                            {detailSummary.knowledgeBases.map((knowledge) => (
+                              <Tag
+                                key={knowledge.id}
+                                color="green"
+                                style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                                onClick={() => history.push(`/knowledge/detail/${knowledge.id}`)}
+                              >
+                                {renderInlineRichText(knowledge.name, toPlainText(knowledge.name))}
+                              </Tag>
+                            ))}
+                          </Space>
+                        ) : (
+                          detailSummary.knowledgeBase
+                        ),
+                      ],
+                      [
+                        '类目',
+                        renderInlineRichText(detailData?.catalogName, detailSummary.catalog),
+                      ],
+                    ]}
+                  />
+                </Card>
 
-          <Col xs={24} xl={8} style={{ display: 'flex' }}>
-            <div style={{ display: 'grid', gap: 12, width: '100%' }}>
-              <Card
-                bordered={false}
-                title="元数据信息"
-                style={{
-                  ...surfaceCardStyle,
-                  height: META_CARD_HEIGHT,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                }}
-                styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
-              >
-                <InfoList
-                  items={[
-                    [
-                      '文档标题',
-                      renderInlineRichText(
-                        sourceTitle ??
-                          detailData?.name ??
-                          detailData?.fileName ??
-                          detailData?.documentName ??
-                          detailData?.title ??
-                          document.title,
-                        plainDocumentTitleWithoutExt,
-                      ),
-                    ],
-                    ['来源', renderInlineRichText(detailData?.channelName, detailSummary.source)],
-                    [
-                      '上传人',
-                      renderInlineRichText(
-                        detailData?.creatorName ??
-                          detailData?.creator ??
-                          detailData?.uploader ??
-                          detailData?.createBy ??
-                          document.uploader,
-                        plainUploader,
-                      ),
-                    ],
-                    ['创建时间', detailSummary.createdAt],
-                    ['更新时间', detailSummary.updatedAt],
-                    ['文件格式', document.type],
-                    ['文件大小', document.size],
-                    [
-                      '知识库',
-                      detailSummary.knowledgeBases.length > 0 ? (
-                        <Space size={[6, 6]} wrap style={{ justifyContent: 'flex-end' }}>
-                          {detailSummary.knowledgeBases.map((knowledge) => (
-                            <Tag
-                              key={knowledge.id}
-                              color="green"
-                              style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                              onClick={() => history.push(`/knowledge/detail/${knowledge.id}`)}
-                            >
-                              {renderInlineRichText(knowledge.name, toPlainText(knowledge.name))}
-                            </Tag>
-                          ))}
-                        </Space>
-                      ) : (
-                        detailSummary.knowledgeBase
-                      ),
-                    ],
-                    ['类目', renderInlineRichText(detailData?.catalogName, detailSummary.catalog)],
-                  ]}
-                />
-              </Card>
-
-              <Card
-                bordered={false}
-                title="提取关键词"
-                extra={<span style={{ color: '#94a3b8' }}>共 {plainKeywords.length} 个</span>}
-                style={{
-                  ...surfaceCardStyle,
-                  height: KEYWORD_CARD_HEIGHT,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                }}
-                styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
-              >
-                {plainKeywords.length > 0 ? (
-                  <Space wrap size={[8, 10]}>
-                    {richKeywords.map((item, index) => (
-                      <ColorTag
-                        key={`${plainKeywords[index] || stripHtml(item) || item}-${index}`}
-                        palette={keywordPalettes[index % keywordPalettes.length]}
-                      >
-                        {renderInlineRichText(item, plainKeywords[index] || stripHtml(item))}
-                      </ColorTag>
-                    ))}
-                  </Space>
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关键词" />
-                )}
-              </Card>
-
-              <Card
-                bordered={false}
-                title="实体提取"
-                extra={
-                  <Space size={8}>
-                    <span style={{ color: '#94a3b8' }}>共 {entityCount} 个</span>
-                    <Tooltip title="查看本文档知识图谱">
-                      <Button
-                        type="text"
-                        shape="circle"
-                        icon={<ClusterOutlined />}
-                        onClick={handleOpenDocumentGraph}
-                      />
-                    </Tooltip>
-                  </Space>
-                }
-                style={{
-                  ...surfaceCardStyle,
-                  height: ENTITY_CARD_HEIGHT,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                }}
-                styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
-              >
-                {entityEntries.length > 0 ? (
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {entityEntries.map(([type, entities], index) => {
-                      const meta = entityTypeMeta[type as keyof typeof entityTypeMeta];
-                      return (
-                        <div
-                          key={type}
-                          style={{
-                            paddingBottom: 12,
-                            borderBottom:
-                              index === entityEntries.length - 1 ? 'none' : '1px dashed #edf2f7',
-                          }}
+                <Card
+                  bordered={false}
+                  title="提取关键词"
+                  extra={<span style={{ color: '#94a3b8' }}>共 {plainKeywords.length} 个</span>}
+                  style={{
+                    ...surfaceCardStyle,
+                    height: KEYWORD_CARD_HEIGHT,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                  }}
+                  styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
+                >
+                  {plainKeywords.length > 0 ? (
+                    <Space wrap size={[8, 10]}>
+                      {richKeywords.map((item, index) => (
+                        <ColorTag
+                          key={`${plainKeywords[index] || stripHtml(item) || item}-${index}`}
+                          palette={keywordPalettes[index % keywordPalettes.length]}
                         >
+                          {renderInlineRichText(item, plainKeywords[index] || stripHtml(item))}
+                        </ColorTag>
+                      ))}
+                    </Space>
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关键词" />
+                  )}
+                </Card>
+
+                <Card
+                  bordered={false}
+                  title="实体提取"
+                  extra={
+                    <Space size={8}>
+                      <span style={{ color: '#94a3b8' }}>共 {entityCount} 个</span>
+                      <Tooltip title="查看本文档知识图谱">
+                        <Button
+                          type="text"
+                          shape="circle"
+                          icon={<ClusterOutlined />}
+                          onClick={handleOpenDocumentGraph}
+                        />
+                      </Tooltip>
+                    </Space>
+                  }
+                  style={{
+                    ...surfaceCardStyle,
+                    height: ENTITY_CARD_HEIGHT,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                  }}
+                  styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
+                >
+                  {entityEntries.length > 0 ? (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      {entityEntries.map(([type, entities], index) => {
+                        const meta = entityTypeMeta[type as keyof typeof entityTypeMeta];
+                        return (
                           <div
+                            key={type}
                             style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 8,
-                              marginBottom: 8,
-                              color: '#334155',
-                              fontWeight: 600,
+                              paddingBottom: 12,
+                              borderBottom:
+                                index === entityEntries.length - 1 ? 'none' : '1px dashed #edf2f7',
                             }}
                           >
-                            <span
+                            <div
                               style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                background: meta.color,
-                                flexShrink: 0,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                marginBottom: 8,
+                                color: '#334155',
+                                fontWeight: 600,
                               }}
-                            />
-                            <span>{meta.label}</span>
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                            {entities.map((entity) => (
-                              <ColorTag
-                                key={entity.id}
-                                palette={{
-                                  bg: meta.bg,
-                                  border: `${meta.color}22`,
-                                  text: meta.color,
+                            >
+                              <span
+                                style={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: '50%',
+                                  background: meta.color,
+                                  flexShrink: 0,
                                 }}
-                              >
-                                {renderEntityText(entity.name)}
-                              </ColorTag>
-                            ))}
+                              />
+                              <span>{meta.label}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                              {entities.map((entity) => (
+                                <ColorTag
+                                  key={entity.id}
+                                  palette={{
+                                    bg: meta.bg,
+                                    border: `${meta.color}22`,
+                                    text: meta.color,
+                                  }}
+                                >
+                                  {renderEntityText(entity.name)}
+                                </ColorTag>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无实体" />
-                )}
-              </Card>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无实体" />
+                  )}
+                </Card>
 
-              <Card
-                bordered={false}
-                title="标签分类结果"
-                extra={<span style={{ color: '#94a3b8' }}>共 {plainTags.length} 个</span>}
-                style={{
-                  ...surfaceCardStyle,
-                  height: TAG_CARD_HEIGHT,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                }}
-                styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
-              >
-                {plainTags.length > 0 ? (
-                  <Space wrap size={[8, 10]}>
-                    {richTags.map((item, index) => (
-                      <ColorTag
-                        key={`${plainTags[index] || stripHtml(item) || item}-${index}`}
-                        palette={tagPalettes[index % tagPalettes.length]}
-                      >
-                        {renderInlineRichText(item, plainTags[index] || stripHtml(item))}
-                      </ColorTag>
-                    ))}
-                  </Space>
-                ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无标签分类结果" />
-                )}
-              </Card>
-            </div>
-          </Col>
-        </Row>
+                <Card
+                  bordered={false}
+                  title="标签分类结果"
+                  extra={<span style={{ color: '#94a3b8' }}>共 {plainTags.length} 个</span>}
+                  style={{
+                    ...surfaceCardStyle,
+                    height: TAG_CARD_HEIGHT,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                  }}
+                  styles={{ body: { padding: 14, flex: 1, overflowY: 'auto', minHeight: 0 } }}
+                >
+                  {plainTags.length > 0 ? (
+                    <Space wrap size={[8, 10]}>
+                      {richTags.map((item, index) => (
+                        <ColorTag
+                          key={`${plainTags[index] || stripHtml(item) || item}-${index}`}
+                          palette={tagPalettes[index % tagPalettes.length]}
+                        >
+                          {renderInlineRichText(item, plainTags[index] || stripHtml(item))}
+                        </ColorTag>
+                      ))}
+                    </Space>
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无标签分类结果" />
+                  )}
+                </Card>
+              </div>
+            </Col>
+          </Row>
         )}
 
         <Modal
@@ -2188,4 +2202,3 @@ function PreviewBlock({
     </div>
   );
 }
-
