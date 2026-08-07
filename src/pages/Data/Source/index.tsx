@@ -34,10 +34,12 @@ import {
   DeleteOutlined,
   EditOutlined,
   FileSearchOutlined,
+  PlayCircleOutlined,
   LinkOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
+  PoweroffOutlined,
 } from '@ant-design/icons';
 import {
   createDataSource,
@@ -56,6 +58,8 @@ import {
 } from '@/services/biz/data-source';
 import {
   createImportTask,
+  deleteImportTask,
+  enableImportTask,
   extractData as extractImportData,
   listImportRunsByDataSource,
   listImportTasksByDataSource,
@@ -90,6 +94,31 @@ interface EditFormValues {
   properties?: Record<string, any>;
   status: number;
 }
+
+interface ImportFormValues {
+  name: string;
+  extractMode: 'FULL' | 'INCREMENTAL';
+  scheduleType: 'MANUAL' | 'CRON';
+  writeMode: 'UPSERT' | 'APPEND';
+  batchSize: number;
+  maxRowsPerObject?: number;
+  enabled: number;
+  triggerNow?: boolean;
+  remark?: string;
+  scheduleConfig?: {
+    simpleType?: string;
+    intervalMinutes?: number;
+    dailyTime?: string;
+  };
+  cursorConfig?: {
+    incrementalMode?: string;
+    cursorField?: string;
+    cursorCompare?: string;
+    initialCursor?: string;
+  };
+}
+
+const HH_MM_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 /**
  * 把后端 CommonResult / PageResult 兼容成稳定的前端列表结构。
@@ -249,13 +278,19 @@ export default function DataSourcePage() {
     Array<{ key: string; title: string; kind: string }>
   >([]);
   const [selectedObjectKeys, setSelectedObjectKeys] = useState<string[]>([]);
+  const [selectedTargetObjectKeys, setSelectedTargetObjectKeys] = useState<string[]>([]);
   const [activeObjectKey, setActiveObjectKey] = useState<string>('');
   const [fieldOptions, setFieldOptions] = useState<
     Array<{ label: string; value: string; primaryKey?: boolean }>
   >([]);
   const [selectedFieldsMap, setSelectedFieldsMap] = useState<Record<string, string[]>>({});
   const [keyFieldsMap, setKeyFieldsMap] = useState<Record<string, string[]>>({});
-  const [importForm] = Form.useForm();
+  const [filterExprMap, setFilterExprMap] = useState<Record<string, string>>({});
+  const [cursorFieldMap, setCursorFieldMap] = useState<Record<string, string>>({});
+  const [objectConfigStatusMap, setObjectConfigStatusMap] = useState<
+    Record<string, 'default' | 'custom'>
+  >({});
+  const [importForm] = Form.useForm<ImportFormValues>();
   const [databaseOptions, setDatabaseOptions] = useState<Array<{ label: string; value: string }>>(
     [],
   );
@@ -277,8 +312,13 @@ export default function DataSourcePage() {
   const [selectedRunTask, setSelectedRunTask] = useState<ImportTaskRecord | null>(null);
   const [importRuns, setImportRuns] = useState<ImportRunRecord[]>([]);
   const [importRunTaskType, setImportRunTaskType] = useState<'MANUAL' | 'CRON' | undefined>();
+  const [taskEnableLoadingId, setTaskEnableLoadingId] = useState<number | null>(null);
+  const [taskTriggerLoadingId, setTaskTriggerLoadingId] = useState<number | null>(null);
 
   const currentType = Form.useWatch('type', editForm);
+  const importExtractMode = Form.useWatch('extractMode', importForm);
+  const importScheduleType = Form.useWatch('scheduleType', importForm);
+  const importSimpleType = Form.useWatch(['scheduleConfig', 'simpleType'], importForm);
   const currentTypeMeta = useMemo(
     () => typeOptions.find((item) => item.type === currentType),
     [currentType, typeOptions],
@@ -572,10 +612,14 @@ export default function DataSourcePage() {
     setImportTarget(record);
     setImportModalVisible(true);
     setSelectedObjectKeys([]);
+    setSelectedTargetObjectKeys([]);
     setActiveObjectKey('');
     setFieldOptions([]);
     setSelectedFieldsMap({});
     setKeyFieldsMap({});
+    setFilterExprMap({});
+    setCursorFieldMap({});
+    setObjectConfigStatusMap({});
     importForm.setFieldsValue({
       name: `${record.name}-导入任务`,
       extractMode: 'FULL',
@@ -584,6 +628,18 @@ export default function DataSourcePage() {
       maxRowsPerObject: 100,
       scheduleType: 'MANUAL',
       enabled: 1,
+      remark: '',
+      scheduleConfig: {
+        simpleType: 'EVERY_N_MINUTES',
+        intervalMinutes: 5,
+        dailyTime: '02:00',
+      },
+      cursorConfig: {
+        incrementalMode: 'TIME',
+        cursorField: '',
+        cursorCompare: '>',
+        initialCursor: '1970-01-01 00:00:00',
+      },
       triggerNow: true,
     });
     setObjectLoading(true);
@@ -609,10 +665,16 @@ export default function DataSourcePage() {
   /**
    * 按对象探查字段，并默认全选字段；主键字段自动勾为 UPSERT key。
    */
-  const loadFieldsForObject = async (objectName: string) => {
+  const loadFieldsForObject = async (
+    objectName: string,
+    initializeDefaults = false,
+    activateObject = true,
+  ) => {
     if (!importTarget) return;
-    setActiveObjectKey(objectName);
-    setFieldLoading(true);
+    if (activateObject) {
+      setActiveObjectKey(objectName);
+      setFieldLoading(true);
+    }
     try {
       const res: any = await listDataSourceFields(importTarget.id, objectName);
       const list = extractList(res) as Array<any>;
@@ -621,22 +683,31 @@ export default function DataSourcePage() {
         value: item.fieldName,
         primaryKey: !!item.primaryKey,
       }));
-      setFieldOptions(options);
-      setSelectedFieldsMap((prev) => {
-        if (prev[objectName]?.length) return prev;
-        return { ...prev, [objectName]: options.map((o) => o.value) };
-      });
-      setKeyFieldsMap((prev) => {
-        if (prev[objectName]?.length) return prev;
-        const pks = options.filter((o) => o.primaryKey).map((o) => o.value);
-        return { ...prev, [objectName]: pks };
-      });
+      if (activateObject) {
+        setFieldOptions(options);
+      }
+      if (initializeDefaults) {
+        setSelectedFieldsMap((prev) => {
+          if (prev[objectName]?.length) return prev;
+          return { ...prev, [objectName]: options.map((o) => o.value) };
+        });
+        setKeyFieldsMap((prev) => {
+          if (prev[objectName]?.length) return prev;
+          const pks = options.filter((o) => o.primaryKey).map((o) => o.value);
+          return { ...prev, [objectName]: pks };
+        });
+        setObjectConfigStatusMap((prev) => ({ ...prev, [objectName]: 'default' }));
+      }
     } catch (error) {
       console.error(error);
       message.error(`探查字段失败：${objectName}`);
-      setFieldOptions([]);
+      if (activateObject) {
+        setFieldOptions([]);
+      }
     } finally {
-      setFieldLoading(false);
+      if (activateObject) {
+        setFieldLoading(false);
+      }
     }
   };
 
@@ -654,21 +725,45 @@ export default function DataSourcePage() {
         objectKind: meta?.kind || undefined,
         columns: selectedFieldsMap[objectName] || [],
         keyFields: keyFieldsMap[objectName] || [],
+        filterExpr: filterExprMap[objectName] || undefined,
+        cursorField: cursorFieldMap[objectName] || undefined,
       };
     });
     const payload = {
       name: values.name,
       dataSourceId: importTarget.id,
-      extractMode: 'FULL',
-      scheduleType: 'MANUAL',
+      extractMode: values.extractMode,
+      scheduleType: values.scheduleType,
       batchSize: values.batchSize,
       maxRowsPerObject: values.maxRowsPerObject,
       writeMode: values.writeMode,
       enabled: values.enabled,
+      remark: values.remark || undefined,
       objects,
-      // 当前版本固定全量 + 手动触发，定时 / 增量入口隐藏
-      cursorConfig: undefined,
-      scheduleConfig: undefined,
+      cursorConfig:
+        values.extractMode === 'INCREMENTAL'
+          ? {
+              incrementalMode: values.cursorConfig?.incrementalMode,
+              cursorField: values.cursorConfig?.cursorField || undefined,
+              cursorCompare: values.cursorConfig?.cursorCompare || undefined,
+              initialCursor: values.cursorConfig?.initialCursor || undefined,
+            }
+          : undefined,
+      scheduleConfig:
+        values.scheduleType === 'CRON'
+          ? {
+              simpleType: values.scheduleConfig?.simpleType || undefined,
+              intervalMinutes:
+                values.scheduleConfig?.simpleType === 'EVERY_N_MINUTES'
+                  ? values.scheduleConfig?.intervalMinutes
+                  : undefined,
+              dailyTime:
+                values.scheduleConfig?.simpleType === 'DAILY' ||
+                values.scheduleConfig?.simpleType === 'ONCE'
+                  ? values.scheduleConfig?.dailyTime || '02:00'
+                  : undefined,
+            }
+          : undefined,
     };
     setImportSubmitting(true);
     try {
@@ -784,6 +879,66 @@ export default function DataSourcePage() {
     setImportRunTaskType(undefined);
   };
 
+  const handleToggleImportTaskEnabled = async (record: ImportTaskRecord) => {
+    setTaskEnableLoadingId(record.id);
+    try {
+      const nextEnabled = record.enabled === 1 ? 0 : 1;
+      const res: any = await enableImportTask(record.id, nextEnabled);
+      const ok =
+        res?.code === 200 || res?.code === 0 || res?.success === true || res?.data === true;
+      if (!ok) {
+        message.error(res?.msg || '更新导入任务状态失败');
+        return;
+      }
+      message.success(nextEnabled === 1 ? '导入任务已启用' : '导入任务已停用');
+      await loadImportTasks(record.dataSourceId);
+    } catch (error) {
+      console.error(error);
+      message.error('更新导入任务状态失败');
+    } finally {
+      setTaskEnableLoadingId(null);
+    }
+  };
+
+  const handleDeleteImportTask = async (record: ImportTaskRecord) => {
+    setTaskEnableLoadingId(record.id);
+    try {
+      const res: any = await deleteImportTask(record.id);
+      const ok =
+        res?.code === 200 || res?.code === 0 || res?.success === true || res?.data === true;
+      if (!ok) {
+        message.error(res?.msg || '删除导入任务失败');
+        return;
+      }
+      message.success('导入任务已删除');
+      await loadImportTasks(record.dataSourceId);
+    } catch (error) {
+      console.error(error);
+      message.error('删除导入任务失败');
+    } finally {
+      setTaskEnableLoadingId(null);
+    }
+  };
+
+  const handleTriggerImportTask = async (record: ImportTaskRecord) => {
+    setTaskTriggerLoadingId(record.id);
+    try {
+      const res: any = await triggerImportTask(record.id, 'MANUAL');
+      const ok = res?.code === 200 || res?.code === 0 || res?.success === true;
+      if (!ok) {
+        message.error(res?.msg || '触发导入任务失败');
+        return;
+      }
+      message.success(`已触发导入任务，运行ID：${res?.data ?? ''}`);
+      await loadImportTasks(record.dataSourceId);
+    } catch (error) {
+      console.error(error);
+      message.error('触发导入任务失败');
+    } finally {
+      setTaskTriggerLoadingId(null);
+    }
+  };
+
   const formatTaskValue = (value: any): string => {
     if (value === undefined || value === null || value === '') {
       return '-';
@@ -878,11 +1033,29 @@ export default function DataSourcePage() {
     return map[value] || value;
   };
 
+  const formatScheduleSimpleType = (value?: string) => {
+    if (!value) return '-';
+    const map: Record<string, string> = {
+      EVERY_N_MINUTES: '每 N 分钟',
+      DAILY: '每天固定时间',
+      ONCE: '执行一次',
+    };
+    return map[value] || value;
+  };
+
   const formatWriteMode = (value?: string) => {
     if (!value) return '-';
     const map: Record<string, string> = {
       UPSERT: '覆盖',
       APPEND: '追加',
+    };
+    return map[value] || value;
+  };
+
+  const formatIncrementalMode = (value?: string) => {
+    if (!value) return '-';
+    const map: Record<string, string> = {
+      TIME: '按时间字段',
     };
     return map[value] || value;
   };
@@ -934,7 +1107,7 @@ export default function DataSourcePage() {
     {
       title: '执行时间',
       key: 'timeRange',
-      width: 260,
+      width: 380,
       render: (_, record) => (
         <Space direction="vertical" size={2}>
           <Text type="secondary" style={{ fontSize: 12 }}>
@@ -1100,14 +1273,17 @@ export default function DataSourcePage() {
       title: '最近运行',
       key: 'lastRun',
       width: 200,
-      render: (_, record) => (
-        <Space direction="vertical" size={2}>
-          {getTaskStatusTag(record.lastRunStatus)}
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {formatTaskDateTime(record.lastRunTime)}
-          </Text>
-        </Space>
-      ),
+      render: (_, record) =>
+        record.lastRunStatus || record.lastRunTime ? (
+          <Space direction="vertical" size={2}>
+            {getTaskStatusTag(record.lastRunStatus)}
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {formatTaskDateTime(record.lastRunTime)}
+            </Text>
+          </Space>
+        ) : (
+          <Text type="secondary">未运行</Text>
+        ),
     },
     {
       title: '最近触发时间',
@@ -1134,12 +1310,35 @@ export default function DataSourcePage() {
     {
       title: '操作',
       key: 'action',
-      width: 170,
+      width: 360,
       fixed: 'right',
       render: (_, record) => (
         <Space size={4}>
-          <Button type="link" size="small" onClick={() => openImportTaskDetail(record)}>
+          <Button
+            type="link"
+            size="small"
+            icon={<SearchOutlined />}
+            onClick={() => openImportTaskDetail(record)}
+          >
             查看详情
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            icon={<PoweroffOutlined />}
+            loading={taskEnableLoadingId === record.id}
+            onClick={() => handleToggleImportTaskEnabled(record)}
+          >
+            {record.enabled === 1 ? '停用' : '启用'}
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            icon={<PlayCircleOutlined />}
+            loading={taskTriggerLoadingId === record.id}
+            onClick={() => handleTriggerImportTask(record)}
+          >
+            触发
           </Button>
           <Button
             type="link"
@@ -1157,6 +1356,20 @@ export default function DataSourcePage() {
           >
             触发记录
           </Button>
+          <Popconfirm
+            title="确认删除该导入任务吗？"
+            onConfirm={() => handleDeleteImportTask(record)}
+          >
+            <Button
+              type="link"
+              danger
+              size="small"
+              icon={<DeleteOutlined />}
+              loading={taskEnableLoadingId === record.id}
+            >
+              删除
+            </Button>
+          </Popconfirm>
         </Space>
       ),
     },
@@ -1535,6 +1748,9 @@ export default function DataSourcePage() {
               </Button>
             </Space>
             <Space size={12} wrap={false}>
+              <Button icon={<ReloadOutlined />} onClick={() => fetchData(page, searchValues)}>
+                刷新
+              </Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
                 新增数据源
               </Button>
@@ -1870,77 +2086,278 @@ export default function DataSourcePage() {
           <Text code>
             {importTarget?.databaseName || importTarget?.properties?.spaceName || '-'}
           </Text>
-          <Text type="secondary">（当前固定全量导入、手动触发）</Text>
+          <Text type="secondary">（支持全量 / 增量、手动 / 定时任务配置）</Text>
         </div>
         <Form form={importForm} layout="vertical">
-          <Row gutter={16}>
-            <Col span={10}>
-              <Form.Item
-                name="name"
-                label="任务名称"
-                rules={[{ required: true, message: '请输入任务名称' }]}
-              >
-                <Input placeholder="请输入导入任务名称" />
-              </Form.Item>
-            </Col>
-            <Col span={5}>
-              <Form.Item name="writeMode" label="写入模式">
-                <Select
-                  options={[
-                    { label: 'UPSERT 覆盖', value: 'UPSERT' },
-                    { label: 'APPEND 追加', value: 'APPEND' },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={5}>
-              <Form.Item name="maxRowsPerObject" label="限流条数" extra="0=不限制">
-                <InputNumber min={0} max={10000000} style={{ width: '100%' }} placeholder="100" />
-              </Form.Item>
-            </Col>
-            <Col span={4}>
-              <Form.Item name="batchSize" label="批大小">
-                <InputNumber min={50} max={5000} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="enabled" label="启用状态">
-                <Select
-                  options={[
-                    { label: '启用', value: 1 },
-                    { label: '停用', value: 0 },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="triggerNow" label="保存后立即执行" valuePropName="checked">
-                <Checkbox>立即触发</Checkbox>
-              </Form.Item>
-            </Col>
-          </Row>
+          <Card
+            size="small"
+            title="基础配置"
+            style={{ marginBottom: 16, background: '#fafcff' }}
+            bodyStyle={{ paddingBottom: 8 }}
+          >
+            <Row gutter={16}>
+              <Col span={10}>
+                <Form.Item
+                  name="name"
+                  label="任务名称"
+                  rules={[{ required: true, message: '请输入任务名称' }]}
+                >
+                  <Input placeholder="请输入导入任务名称" />
+                </Form.Item>
+              </Col>
+              <Col span={5}>
+                <Form.Item name="extractMode" label="抽取方式" rules={[{ required: true }]}>
+                  <Select
+                    disabled={importScheduleType === 'CRON'}
+                    options={[
+                      { label: '全量', value: 'FULL' },
+                      { label: '增量', value: 'INCREMENTAL' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={5}>
+                <Form.Item name="scheduleType" label="调度方式" rules={[{ required: true }]}>
+                  <Select
+                    options={[
+                      { label: '手动触发', value: 'MANUAL' },
+                      { label: '定时任务', value: 'CRON' },
+                    ]}
+                    onChange={(value) => {
+                      if (value === 'CRON') {
+                        importForm.setFieldValue('extractMode', 'INCREMENTAL');
+                      }
+                    }}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={4}>
+                <Form.Item name="writeMode" label="写入模式">
+                  <Select
+                    options={[
+                      { label: 'UPSERT 覆盖', value: 'UPSERT' },
+                      { label: 'APPEND 追加', value: 'APPEND' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item name="batchSize" label="批大小">
+                  <InputNumber min={50} max={5000} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item name="maxRowsPerObject" label="限流条数" extra="0=不限制">
+                  <InputNumber min={0} max={10000000} style={{ width: '100%' }} placeholder="100" />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item name="enabled" label="启用状态">
+                  <Select
+                    options={[
+                      { label: '启用', value: 1 },
+                      { label: '停用', value: 0 },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item name="triggerNow" label="保存后立即执行" valuePropName="checked">
+                  <Checkbox>立即触发</Checkbox>
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="remark" label="任务备注">
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="可填写该任务的用途、同步说明或备注信息"
+                    maxLength={300}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+
+          {importScheduleType === 'CRON' && (
+            <Card
+              size="small"
+              title="定时配置"
+              style={{ marginBottom: 16, background: '#fafcff' }}
+              bodyStyle={{ paddingBottom: 8 }}
+            >
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item
+                    name={['scheduleConfig', 'simpleType']}
+                    label="调度类型"
+                    rules={[{ required: true, message: '请选择调度类型' }]}
+                  >
+                    <Select
+                      options={[
+                        { label: '每 N 分钟', value: 'EVERY_N_MINUTES' },
+                        { label: '每天固定时间', value: 'DAILY' },
+                        { label: '执行一次', value: 'ONCE' },
+                      ]}
+                    />
+                  </Form.Item>
+                </Col>
+                {importSimpleType === 'EVERY_N_MINUTES' && (
+                  <Col span={8}>
+                    <Form.Item
+                      name={['scheduleConfig', 'intervalMinutes']}
+                      label="间隔分钟数"
+                      rules={[{ required: true, message: '请输入间隔分钟数' }]}
+                    >
+                      <InputNumber min={1} max={1440} style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                )}
+                {(importSimpleType === 'DAILY' || importSimpleType === 'ONCE') && (
+                  <Col span={8}>
+                    <Form.Item
+                      name={['scheduleConfig', 'dailyTime']}
+                      label="执行时间"
+                      extra="HH:mm 格式；不填默认 02:00"
+                      rules={[
+                        {
+                          validator: async (_, value) => {
+                            if (!value) {
+                              return Promise.reject(new Error('请输入执行时间'));
+                            }
+                            if (!HH_MM_PATTERN.test(String(value))) {
+                              return Promise.reject(new Error('请输入正确的 HH:mm 格式'));
+                            }
+                            return Promise.resolve();
+                          },
+                        },
+                      ]}
+                    >
+                      <Input placeholder="例如：02:30" />
+                    </Form.Item>
+                  </Col>
+                )}
+              </Row>
+            </Card>
+          )}
+
+          {importExtractMode === 'INCREMENTAL' && (
+            <Card
+              size="small"
+              title="增量配置"
+              style={{ marginBottom: 16, background: '#fafcff' }}
+              bodyStyle={{ paddingBottom: 8 }}
+            >
+              <Row gutter={16}>
+                <Col span={6}>
+                  <Form.Item name={['cursorConfig', 'incrementalMode']} label="增量模式">
+                    <Select options={[{ label: '按时间字段', value: 'TIME' }]} />
+                  </Form.Item>
+                </Col>
+                <Col span={6}>
+                  <Form.Item
+                    name={['cursorConfig', 'cursorField']}
+                    label="游标字段"
+                    rules={[{ required: true, message: '请输入游标字段' }]}
+                  >
+                    <Input placeholder="例如：update_time" />
+                  </Form.Item>
+                </Col>
+                <Col span={4}>
+                  <Form.Item name={['cursorConfig', 'cursorCompare']} label="比较方式">
+                    <Select options={[{ label: '>', value: '>' }]} />
+                  </Form.Item>
+                </Col>
+                <Col span={8}>
+                  <Form.Item
+                    name={['cursorConfig', 'initialCursor']}
+                    label="初始游标"
+                    rules={[{ required: true, message: '请输入初始游标' }]}
+                  >
+                    <Input placeholder="例如：1970-01-01 00:00:00" />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Card>
+          )}
         </Form>
 
-        <Divider orientation="left">选择对象</Divider>
+        <Divider orientation="left">
+          选择对象
+          <Text type="secondary" style={{ marginLeft: 8, fontSize: 12, fontWeight: 400 }}>
+            请在左侧勾选后移入右侧
+          </Text>
+        </Divider>
         <Spin spinning={objectLoading}>
           <Transfer
             dataSource={objectOptions}
             titles={['可选对象', '已选对象']}
             targetKeys={selectedObjectKeys}
-            onChange={(next) => {
-              setSelectedObjectKeys(next as string[]);
-              if (next.length && !next.includes(activeObjectKey)) {
-                loadFieldsForObject(String(next[next.length - 1]));
+            onChange={async (next) => {
+              const nextKeys = next as string[];
+              const addedKeys = nextKeys.filter((key) => !selectedObjectKeys.includes(key));
+              setSelectedObjectKeys(nextKeys);
+              setSelectedTargetObjectKeys((prev) => prev.filter((key) => nextKeys.includes(key)));
+              if (!nextKeys.length) {
+                setActiveObjectKey('');
+                setFieldOptions([]);
+                return;
+              }
+              for (const key of addedKeys) {
+                // New right-side objects get a full default configuration immediately.
+                // We keep the current active object unchanged while initializing siblings.
+                // This avoids the previous behavior where only one object got defaults.
+                // The first added object is activated if nothing is currently active.
+                // Later explicit user clicks can still switch to any object for edits.
+                // Default configuration means all fields selected and source PKs prefilled.
+                // Status starts as "default" until the user changes any object-level settings.
+                await loadFieldsForObject(key, true, !activeObjectKey && key === addedKeys[0]);
+              }
+              if (!activeObjectKey && nextKeys.length && !addedKeys.length) {
+                await loadFieldsForObject(String(nextKeys[0]), false, true);
               }
             }}
             onSelectChange={(sourceSelectedKeys, targetSelectedKeys) => {
-              const focused = [...targetSelectedKeys, ...sourceSelectedKeys][0];
-              if (focused) {
-                loadFieldsForObject(String(focused));
-              }
+              setSelectedTargetObjectKeys(targetSelectedKeys as string[]);
             }}
-            render={(item) => item.title}
-            listStyle={{ width: 360, height: 280 }}
+            render={(item) => {
+              const isTargetItem = selectedObjectKeys.includes(String(item.key));
+              const configStatus = objectConfigStatusMap[String(item.key)] || 'default';
+              return {
+                label: (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      width: '100%',
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.title}
+                    </span>
+                    {isTargetItem ? (
+                      configStatus === 'custom' ? (
+                        <Tag color="processing" style={{ marginInlineEnd: 0 }}>
+                          自定义配置
+                        </Tag>
+                      ) : (
+                        <Tag color="default" style={{ marginInlineEnd: 0 }}>
+                          默认配置
+                        </Tag>
+                      )
+                    ) : null}
+                  </div>
+                ),
+                value: item.title,
+              };
+            }}
+            style={{ width: '100%' }}
+            listStyle={{
+              width: 'calc(50% - 8px)',
+              height: 280,
+              flex: 1,
+            }}
             showSearch
             filterOption={(input, item) =>
               (item.title || '').toLowerCase().includes(input.toLowerCase())
@@ -1948,46 +2365,161 @@ export default function DataSourcePage() {
           />
         </Spin>
 
-        <Divider orientation="left">选择字段（当前：{activeObjectKey || '未选择'}）</Divider>
-        <Spin spinning={fieldLoading}>
-          <Checkbox.Group
-            style={{ width: '100%' }}
-            value={activeObjectKey ? selectedFieldsMap[activeObjectKey] || [] : []}
-            onChange={(checked) => {
-              if (!activeObjectKey) return;
-              setSelectedFieldsMap((prev) => ({ ...prev, [activeObjectKey]: checked as string[] }));
-            }}
-          >
-            <Row gutter={[8, 8]}>
-              {fieldOptions.map((field) => (
-                <Col span={8} key={field.value}>
-                  <Checkbox value={field.value}>{field.label}</Checkbox>
-                </Col>
-              ))}
-              {!fieldOptions.length && (
-                <Col span={24}>
-                  <Text type="secondary">请先在上方选择一个对象，系统将自动探查字段。</Text>
-                </Col>
-              )}
-            </Row>
-          </Checkbox.Group>
-          {!!fieldOptions.length && (
-            <div style={{ marginTop: 12 }}>
-              <Text type="secondary">主键字段（用于 UPSERT）：</Text>
-              <Select
-                mode="multiple"
-                style={{ width: '100%', marginTop: 8 }}
-                placeholder="可选，默认使用源主键或自动哈希"
-                value={activeObjectKey ? keyFieldsMap[activeObjectKey] || [] : []}
-                options={fieldOptions.map((f) => ({ label: f.value, value: f.value }))}
-                onChange={(vals) => {
+        {!!selectedObjectKeys.length && (
+          <>
+            <Divider orientation="left">选择字段（当前：{activeObjectKey || '未选择'}）</Divider>
+            <Card
+              size="small"
+              style={{ marginBottom: 12, background: '#fafcff' }}
+              bodyStyle={{ padding: 12 }}
+            >
+              <Space size={[8, 8]} wrap>
+                {selectedObjectKeys.map((objectName) => {
+                  const objectMeta = objectOptions.find((item) => item.key === objectName);
+                  const isActive = activeObjectKey === objectName;
+                  const configStatus = objectConfigStatusMap[objectName] || 'default';
+                  return (
+                    <Space
+                      key={objectName}
+                      size={6}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: 8,
+                        border: isActive ? '1px solid #91baff' : '1px solid #d9e7ff',
+                        background: isActive ? '#edf4ff' : '#ffffff',
+                      }}
+                    >
+                      <Button
+                        size="small"
+                        type="link"
+                        onClick={() => loadFieldsForObject(objectName, true)}
+                        style={{
+                          padding: 0,
+                          height: 'auto',
+                          color: '#315b96',
+                          fontWeight: isActive ? 600 : 400,
+                        }}
+                      >
+                        {objectMeta?.title || objectName}
+                      </Button>
+                      {configStatus === 'custom' ? (
+                        <Tag color="processing" style={{ marginInlineEnd: 0 }}>
+                          自定义配置
+                        </Tag>
+                      ) : (
+                        <Tag color="default" style={{ marginInlineEnd: 0 }}>
+                          默认配置
+                        </Tag>
+                      )}
+                    </Space>
+                  );
+                })}
+              </Space>
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  这里展示所有已选对象；移到右侧后会自动生成默认配置，点击对象名称可切换并改成自定义配置。
+                </Text>
+              </div>
+            </Card>
+            <Spin spinning={fieldLoading}>
+              <Checkbox.Group
+                style={{ width: '100%' }}
+                value={activeObjectKey ? selectedFieldsMap[activeObjectKey] || [] : []}
+                onChange={(checked) => {
                   if (!activeObjectKey) return;
-                  setKeyFieldsMap((prev) => ({ ...prev, [activeObjectKey]: vals }));
+                  setSelectedFieldsMap((prev) => ({
+                    ...prev,
+                    [activeObjectKey]: checked as string[],
+                  }));
+                  setObjectConfigStatusMap((prev) => ({ ...prev, [activeObjectKey]: 'custom' }));
                 }}
-              />
-            </div>
-          )}
-        </Spin>
+              >
+                <Row gutter={[8, 8]}>
+                  {fieldOptions.map((field) => (
+                    <Col span={8} key={field.value}>
+                      <Checkbox value={field.value}>{field.label}</Checkbox>
+                    </Col>
+                  ))}
+                  {!fieldOptions.length && (
+                    <Col span={24}>
+                      <Text type="secondary">请先在上方选择一个对象，系统将自动探查字段。</Text>
+                    </Col>
+                  )}
+                </Row>
+              </Checkbox.Group>
+              {!!fieldOptions.length && (
+                <Card
+                  size="small"
+                  style={{ marginTop: 12, background: '#fafcff' }}
+                  bodyStyle={{ paddingBottom: 8 }}
+                >
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Text type="secondary">主键字段（用于 UPSERT）：</Text>
+                      <Select
+                        mode="multiple"
+                        style={{ width: '100%', marginTop: 8 }}
+                        placeholder="可选，默认使用源主键或自动哈希"
+                        value={activeObjectKey ? keyFieldsMap[activeObjectKey] || [] : []}
+                        options={fieldOptions.map((f) => ({ label: f.value, value: f.value }))}
+                        onChange={(vals) => {
+                          if (!activeObjectKey) return;
+                          setKeyFieldsMap((prev) => ({ ...prev, [activeObjectKey]: vals }));
+                          setObjectConfigStatusMap((prev) => ({
+                            ...prev,
+                            [activeObjectKey]: 'custom',
+                          }));
+                        }}
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <Text type="secondary">过滤表达式</Text>
+                      <Input
+                        style={{ marginTop: 8 }}
+                        placeholder="例如：update_time > :cursor，可引用 :cursor"
+                        value={activeObjectKey ? filterExprMap[activeObjectKey] || '' : ''}
+                        onChange={(e) => {
+                          if (!activeObjectKey) return;
+                          setFilterExprMap((prev) => ({
+                            ...prev,
+                            [activeObjectKey]: e.target.value,
+                          }));
+                          setObjectConfigStatusMap((prev) => ({
+                            ...prev,
+                            [activeObjectKey]: 'custom',
+                          }));
+                        }}
+                      />
+                    </Col>
+                    <Col span={12} style={{ marginTop: 12 }}>
+                      <Text type="secondary">对象游标字段（选填）</Text>
+                      <Select
+                        allowClear
+                        style={{ width: '100%', marginTop: 8 }}
+                        placeholder="留空则使用增量配置中的游标字段"
+                        value={
+                          activeObjectKey ? cursorFieldMap[activeObjectKey] || undefined : undefined
+                        }
+                        options={fieldOptions.map((f) => ({ label: f.value, value: f.value }))}
+                        onChange={(value) => {
+                          if (!activeObjectKey) return;
+                          setCursorFieldMap((prev) => ({
+                            ...prev,
+                            [activeObjectKey]: value || '',
+                          }));
+                          setObjectConfigStatusMap((prev) => ({
+                            ...prev,
+                            [activeObjectKey]: 'custom',
+                          }));
+                        }}
+                      />
+                    </Col>
+                  </Row>
+                </Card>
+              )}
+            </Spin>
+          </>
+        )}
       </Modal>
 
       <Modal
@@ -2002,64 +2534,127 @@ export default function DataSourcePage() {
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Card bordered={false} size="small">
             <Space direction="vertical" size={18} style={{ width: '100%' }}>
-              <div>
-                <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
-                  配置
-                </Text>
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: '4px 14px',
-                    background: '#fafcff',
-                    border: '1px solid #edf2ff',
-                    borderRadius: 10,
-                  }}
-                >
-                  {[
-                    ['抽取方式', formatExtractMode(selectedImportTask?.extractMode)],
-                    ['调度方式', formatScheduleType(selectedImportTask?.scheduleType)],
-                    ['写入方式', formatWriteMode(selectedImportTask?.writeMode)],
-                    ['批次大小', selectedImportTask?.batchSize],
-                    ['限流条数', selectedImportTask?.maxRowsPerObject],
-                  ].map(([label, value]) => renderDetailLine(String(label), value))}
-                  {renderTagDetailLine(
-                    '启用状态',
-                    selectedImportTask?.enabled === 1 ? (
-                      <Tag color="success">启用</Tag>
-                    ) : (
-                      <Tag>停用</Tag>
-                    ),
-                  )}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: 16,
+                  alignItems: 'start',
+                }}
+              >
+                <div>
+                  <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
+                    基础配置
+                  </Text>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: '4px 14px',
+                      background: '#fafcff',
+                      border: '1px solid #edf2ff',
+                      borderRadius: 10,
+                    }}
+                  >
+                    {[
+                      ['抽取方式', formatExtractMode(selectedImportTask?.extractMode)],
+                      ['调度方式', formatScheduleType(selectedImportTask?.scheduleType)],
+                      ['写入方式', formatWriteMode(selectedImportTask?.writeMode)],
+                      ['批次大小', selectedImportTask?.batchSize],
+                      ['限流条数', selectedImportTask?.maxRowsPerObject],
+                      ['任务备注', selectedImportTask?.remark],
+                    ].map(([label, value]) => renderDetailLine(String(label), value))}
+                    {renderTagDetailLine(
+                      '启用状态',
+                      selectedImportTask?.enabled === 1 ? (
+                        <Tag color="success">启用</Tag>
+                      ) : (
+                        <Tag>停用</Tag>
+                      ),
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
+                    运行
+                  </Text>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: '4px 14px',
+                      background: '#fafcff',
+                      border: '1px solid #edf2ff',
+                      borderRadius: 10,
+                    }}
+                  >
+                    {[
+                      ['最近成功运行 ID', selectedImportTask?.lastSuccessRunId],
+                      ['最近运行时间', formatTaskDateTime(selectedImportTask?.lastRunTime)],
+                      ['最近触发时间', formatTaskDateTime(selectedImportTask?.lastTriggerTime)],
+                      ['下次触发时间', formatTaskDateTime(selectedImportTask?.nextTriggerTime)],
+                      ['创建时间', formatTaskDateTime(selectedImportTask?.createTime)],
+                      ['更新时间', formatTaskDateTime(selectedImportTask?.updateTime)],
+                    ].map(([label, value]) => renderDetailLine(String(label), value))}
+                    {renderTagDetailLine(
+                      '最近运行状态',
+                      getTaskStatusTag(selectedImportTask?.lastRunStatus),
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
-                  运行
-                </Text>
-                <div
-                  style={{
-                    marginTop: 10,
-                    padding: '4px 14px',
-                    background: '#fafcff',
-                    border: '1px solid #edf2ff',
-                    borderRadius: 10,
-                  }}
-                >
-                  {[
-                    ['最近成功运行 ID', selectedImportTask?.lastSuccessRunId],
-                    ['最近运行时间', formatTaskDateTime(selectedImportTask?.lastRunTime)],
-                    ['最近触发时间', formatTaskDateTime(selectedImportTask?.lastTriggerTime)],
-                    ['下次触发时间', formatTaskDateTime(selectedImportTask?.nextTriggerTime)],
-                    ['创建时间', formatTaskDateTime(selectedImportTask?.createTime)],
-                    ['更新时间', formatTaskDateTime(selectedImportTask?.updateTime)],
-                  ].map(([label, value]) => renderDetailLine(String(label), value))}
-                  {renderTagDetailLine(
-                    '最近运行状态',
-                    getTaskStatusTag(selectedImportTask?.lastRunStatus),
-                  )}
+              {selectedImportTask?.scheduleType === 'CRON' && (
+                <div>
+                  <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
+                    定时配置
+                  </Text>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: '4px 14px',
+                      background: '#fafcff',
+                      border: '1px solid #edf2ff',
+                      borderRadius: 10,
+                    }}
+                  >
+                    {[
+                      [
+                        '调度类型',
+                        formatScheduleSimpleType(selectedImportTask?.scheduleConfig?.simpleType),
+                      ],
+                      ['间隔分钟数', selectedImportTask?.scheduleConfig?.intervalMinutes],
+                      ['执行时间', selectedImportTask?.scheduleConfig?.dailyTime],
+                    ].map(([label, value]) => renderDetailLine(String(label), value))}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {selectedImportTask?.extractMode === 'INCREMENTAL' && (
+                <div>
+                  <Text strong style={{ fontSize: 15, color: '#1f1f1f' }}>
+                    增量配置
+                  </Text>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: '4px 14px',
+                      background: '#fafcff',
+                      border: '1px solid #edf2ff',
+                      borderRadius: 10,
+                    }}
+                  >
+                    {[
+                      [
+                        '增量模式',
+                        formatIncrementalMode(selectedImportTask?.cursorConfig?.incrementalMode),
+                      ],
+                      ['任务游标字段', selectedImportTask?.cursorConfig?.cursorField],
+                      ['游标比较方式', selectedImportTask?.cursorConfig?.cursorCompare],
+                      ['初始游标', selectedImportTask?.cursorConfig?.initialCursor],
+                    ].map(([label, value]) => renderDetailLine(String(label), value))}
+                  </div>
+                </div>
+              )}
             </Space>
           </Card>
 
@@ -2116,6 +2711,7 @@ export default function DataSourcePage() {
 
       <Modal
         open={importRunVisible}
+        width={1200}
         title={
           <div
             style={{
