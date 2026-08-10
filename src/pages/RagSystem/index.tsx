@@ -225,6 +225,21 @@ const formatDateTime = (value?: string | number) => {
 const getResponseMessage = (response: any, fallback: string) =>
   response?.msg || response?.message || response?.data?.msg || fallback;
 
+const getFetchResponseErrorMessage = async (response: Response, fallback: string) => {
+  try {
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const errorBody = await response.clone().json();
+      return getResponseMessage(errorBody, fallback);
+    }
+
+    const errorText = await response.clone().text();
+    return errorText || fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 const isSuccessResponse = (response: any) => {
   if (!response || typeof response !== 'object') return true;
   if (typeof response.code === 'number') return response.code === 200;
@@ -1133,10 +1148,13 @@ export default function RagSystemPage() {
             time: new Date().toLocaleString('zh-CN'),
             requestPayload,
           });
-          console.log('response headers:', Object.fromEntries(response.headers.entries()));
           console.groupEnd();
           if (!response.ok) {
-            throw new Error(`对话接口连接失败：${response.status}`);
+            const errorMessage = await getFetchResponseErrorMessage(
+              response,
+              `HTTP ${response.status} ${response.statusText || ''}`.trim(),
+            );
+            throw new Error(`对话接口连接失败：${errorMessage}`);
           }
         },
         onmessage(event) {
