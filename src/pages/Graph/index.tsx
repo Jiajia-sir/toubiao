@@ -164,6 +164,85 @@ function buildRelationConfidence(link: EntityGraphLink) {
   return score.toFixed(2);
 }
 
+function resolveGraphNodeDisplayName(node?: Partial<SearchGraphNode & EntityGraphNode> | null) {
+  if (!node) {
+    return "";
+  }
+  const candidates = [
+    (node as any).displayName,
+    (node as any).entityName,
+    (node as any).nodeName,
+    (node as any).label,
+    node.name,
+    (node as any).title,
+    (node as any).value,
+  ];
+  for (const candidate of candidates) {
+    const text = String(candidate ?? "").trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function resolveRelationEndpointName(
+  link: Partial<EntityGraphLink> & Record<string, any>,
+  selectedNodeId: string,
+  targetId: string,
+  nodeMaps: Array<Map<string, Partial<SearchGraphNode & EntityGraphNode>>>,
+) {
+  const isSourceTarget = String(link.source ?? "") === selectedNodeId;
+  const relationSideName = isSourceTarget
+    ? [
+        link.targetName,
+        link.tailName,
+        link.tail_entity_name,
+        link.targetLabel,
+      ]
+    : [
+        link.sourceName,
+        link.headName,
+        link.head_entity_name,
+        link.sourceLabel,
+      ];
+  for (const candidate of relationSideName) {
+    const text = String(candidate ?? "").trim();
+    if (text) {
+      return text;
+    }
+  }
+  for (const map of nodeMaps) {
+    const node = map.get(targetId);
+    const text = resolveGraphNodeDisplayName(node);
+    if (text) {
+      return text;
+    }
+  }
+  return targetId;
+}
+
+function buildGraphNodeLookupMap(nodes: Array<Partial<SearchGraphNode & EntityGraphNode> & Record<string, any>>) {
+  const map = new Map<string, Partial<SearchGraphNode & EntityGraphNode>>();
+  nodes.forEach((node) => {
+    const aliases = [
+      node.id,
+      (node as any).nodeId,
+      (node as any).graphNodeId,
+      (node as any).entity_id,
+      (node as any).entityId,
+    ]
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+    aliases.forEach((alias) => {
+      if (!map.has(alias)) {
+        map.set(alias, node);
+      }
+    });
+  });
+  return map;
+}
+
 function parseTagInput(value?: string) {
   return (value || "")
     .split(/[,，\s]+/)
@@ -322,7 +401,7 @@ function buildCommunityGraphData(
       const bridge = Boolean(node.is_bridge);
       return {
         id,
-        name: String(node.name ?? id).trim(),
+        name: resolveGraphNodeDisplayName(node as any) || id,
         type: id === centerId ? "center" : "entity",
         entityType: communityId ? `社区 ${communityId}` : "社区实体",
         desc: bridge ? "桥接节点" : "社区成员节点",
@@ -661,6 +740,14 @@ export default function GraphPage() {
       (link) => link.source === selectedNode.id || link.target === selectedNode.id,
     );
   }, [apiCommunityGraphData.links, graphData.links, graphViewMode, selectedNode]);
+  const selectedRelationNodeMap = useMemo(() => {
+    const allNodes = graphViewMode === "community" ? apiCommunityGraphData.nodes : graphData.nodes;
+    return buildGraphNodeLookupMap(allNodes as Array<Partial<SearchGraphNode & EntityGraphNode> & Record<string, any>>);
+  }, [apiCommunityGraphData.nodes, graphData.nodes, graphViewMode]);
+  const allGraphNodeMap = useMemo(() => {
+    const merged = [...graphData.nodes, ...apiCommunityGraphData.nodes];
+    return buildGraphNodeLookupMap(merged as Array<Partial<SearchGraphNode & EntityGraphNode> & Record<string, any>>);
+  }, [apiCommunityGraphData.nodes, graphData.nodes]);
 
   const selectedPropertyList = useMemo(() => {
     if (!selectedNode) {
@@ -802,8 +889,9 @@ export default function GraphPage() {
       });
       const result = extractResultData<GraphEntityResult>(response);
       const nodes: EntityGraphNode[] = (result?.list || []).map((item) => ({
+        ...(item as any),
         id: String(item.nodeId || item.graphNodeId || item.name || "").trim(),
-        name: item.name,
+        name: resolveGraphNodeDisplayName(item as any) || String(item.nodeId || item.graphNodeId || item.name || "").trim(),
         type: item.nodeKind === "entity" ? "entity" : "value",
         nodeKind: item.nodeKind,
         entityType: item.type || undefined,
@@ -886,8 +974,9 @@ export default function GraphPage() {
       const result = extractResultData<GraphEntityResult>(response);
       
       const nodes: EntityGraphNode[] = (result?.list || []).map((item) => ({
+        ...(item as any),
         id: String(item.nodeId || item.graphNodeId || item.name || "").trim(),
-        name: item.name,
+        name: resolveGraphNodeDisplayName(item as any) || String(item.nodeId || item.graphNodeId || item.name || "").trim(),
         type: item.nodeKind === "entity" ? "entity" : "value",
         nodeKind: item.nodeKind,
         entityType: item.type || undefined,
@@ -1020,7 +1109,7 @@ export default function GraphPage() {
           return {
             ...n,
             id: nid,
-            name: String(n.name ?? nid).trim(),
+            name: resolveGraphNodeDisplayName(n as any) || nid,
             type: nodeType,
             nodeKind: nodeKind || (nodeType === "value" ? "property" : "entity"),
             expandable: nodeType !== "value" && Boolean((n as any).expandable ?? true),
@@ -2335,10 +2424,16 @@ export default function GraphPage() {
                   }
                 >
                   {selectedRelations.length > 0 ? (
-                    selectedRelations.map((link) => {
+                    <div style={{ maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
+                      {selectedRelations.map((link) => {
                       if (!link || !link.source || !link.target) return null;
                       const targetId = link.source === selectedNode.id ? link.target : link.source;
-                      const targetNode = graphData.nodes.find((node) => node.id === targetId) || null;
+                      const targetName = resolveRelationEndpointName(
+                        link as any,
+                        String(selectedNode.id),
+                        String(targetId),
+                        [selectedRelationNodeMap, allGraphNodeMap],
+                      );
                       return (
                         <div
                           key={getRelationKey(link)}
@@ -2392,7 +2487,7 @@ export default function GraphPage() {
                               paddingTop: 12,
                             }}
                           >
-                            <span style={{ color: "#64748b", fontSize: 13 }}>{targetId}</span>
+                            <span style={{ color: "#64748b", fontSize: 13 }}>{targetName}</span>
                             <Space size={12}>
                               <a
                                 style={{ color: "#3b82f6", fontSize: 13, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}
@@ -2412,7 +2507,8 @@ export default function GraphPage() {
                           </div>
                         </div>
                       );
-                    })
+                      })}
+                    </div>
                   ) : (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前实体暂无关系" />
                   )}
