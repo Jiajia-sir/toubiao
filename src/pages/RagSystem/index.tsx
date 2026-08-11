@@ -1760,7 +1760,7 @@ export default function RagSystemPage() {
                                         )}
                                         <div className="message-reference-tooltip-section">
                                           <div className="message-reference-tooltip-label">
-                                            引用详情
+                                            命中分块
                                           </div>
                                           <div className="message-reference-tooltip-chunks">
                                             {doc.chunks.map((chunk, index) => (
@@ -1788,7 +1788,9 @@ export default function RagSystemPage() {
                                     <div
                                       className="message-reference-doc-item"
                                       onClick={() =>
-                                        doc.docId ? handleOpenReferenceDoc(doc.chunks[0]) : undefined
+                                        doc.docId
+                                          ? handleOpenReferenceDoc(doc.chunks[0])
+                                          : undefined
                                       }
                                     >
                                       <div className="message-reference-doc-icon">
