@@ -1251,10 +1251,10 @@ export default function DataDetailPage() {
               </div>
             </div>
 
-            <Space wrap size={[8, 8]}>
-              <Button disabled icon={<CloudDownloadOutlined />} style={actionButtonStyle}>
-                下载解析结果
-              </Button>
+              <Space wrap size={[8, 8]}>
+                <Button disabled icon={<CloudDownloadOutlined />} style={actionButtonStyle}>
+                  下载解析结果
+                </Button>
               <Button disabled icon={<ReloadOutlined />} style={actionButtonStyle}>
                 重新解析
               </Button>
@@ -1993,6 +1993,7 @@ export default function DataDetailPage() {
           )}
           <Divider style={{ margin: '16px 0 0' }} />
         </Modal>
+
       </div>
     </>
   );

@@ -22,6 +22,7 @@ import {
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import {
+  AppstoreOutlined,
   CheckCircleFilled,
   CloudUploadOutlined,
   DownOutlined,
@@ -67,12 +68,15 @@ import {
   type DocumentPageItem,
 } from './api';
 import DocumentPreviewModal from './DocumentPreviewModal';
+import KnowledgeExtractSnapshotView from '@/components/KnowledgeExtractSnapshotView';
 
 const { Dragger } = Upload;
 
 export interface DocumentRecord {
   id: string;
   name: string;
+  embedName: string;
+  extractSnapshot?: string | Record<string, any> | null;
   filePath: string;
   fileType: string;
   fileSizeBytes?: number | string;
@@ -483,7 +487,10 @@ function renderVectorStrategyDetail(
   );
 }
 
-function renderVectorStrategy(strategy?: DocumentRecord['vectorStrategy'] | string | null) {
+function renderVectorStrategy(
+  strategy?: DocumentRecord['vectorStrategy'] | string | null,
+  embedName?: string,
+) {
   const normalizedStrategy = parseVectorStrategy(strategy);
 
   if (!normalizedStrategy) {
@@ -520,7 +527,14 @@ function renderVectorStrategy(strategy?: DocumentRecord['vectorStrategy'] | stri
   );
 
   return (
-    <div style={{ display: 'grid', gap: 4 }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: 4,
+        justifyItems: 'center',
+        textAlign: 'center',
+      }}
+    >
       <Tag
         color={tagColorMap[normalizedStrategy.type]}
         style={{ width: 'fit-content', marginInlineEnd: 0, marginBottom: 0 }}
@@ -531,9 +545,15 @@ function renderVectorStrategy(strategy?: DocumentRecord['vectorStrategy'] | stri
         <Button
           type="link"
           size="small"
-          style={{ padding: 0, height: 'auto', width: 'fit-content' }}
+          style={{ padding: 0, height: 'auto', width: 'fit-content', fontWeight: 400 }}
+          onClick={() =>
+            history.push({
+              pathname: '/config-center/model-manage',
+              search: '?tab=embed',
+            })
+          }
         >
-          查看详情
+          <span style={{ fontWeight: 400 }}>{embedName || '未命名'}</span>
         </Button>
       </Tooltip>
     </div>
@@ -557,6 +577,8 @@ const normalizeDocumentRecord = (item: DocumentPageItem, index: number): Documen
   return {
     id: String(item.id ?? item.documentId ?? item.fileId ?? `${index}`),
     name: String(item.name ?? item.fileName ?? item.documentName ?? '-'),
+    embedName: String(item.embedName ?? ''),
+    extractSnapshot: item.extractSnapshot ?? null,
     filePath: String(item.filePath ?? ''),
     fileType: fileType || '-',
     fileSizeBytes: item.fileSizeBytes,
@@ -766,6 +788,8 @@ export default function DocumentImportPage() {
   const [batchImportSubmitting, setBatchImportSubmitting] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewRecord, setPreviewRecord] = useState<DocumentRecord | null>(null);
+  const [extractConfigVisible, setExtractConfigVisible] = useState(false);
+  const [extractConfigRecord, setExtractConfigRecord] = useState<DocumentRecord | null>(null);
   const [editVisible, setEditVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState<DocumentRecord | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -787,6 +811,16 @@ export default function DocumentImportPage() {
   const handlePreviewClose = () => {
     setPreviewVisible(false);
     setPreviewRecord(null);
+  };
+
+  const handleOpenExtractConfig = (record: DocumentRecord) => {
+    setExtractConfigRecord(record);
+    setExtractConfigVisible(true);
+  };
+
+  const handleCloseExtractConfig = () => {
+    setExtractConfigVisible(false);
+    setExtractConfigRecord(null);
   };
 
   const splitFileName = (name: string) => {
@@ -1480,8 +1514,9 @@ export default function DocumentImportPage() {
       title: '分句向量方式',
       dataIndex: 'vectorStrategy',
       key: 'vectorStrategy',
+      align: 'center' as const,
       width: 120,
-      render: (value) => renderVectorStrategy(value),
+      render: (value, record) => renderVectorStrategy(value, record.embedName),
     },
     {
       title: '渠道来源',
@@ -1660,6 +1695,13 @@ export default function DocumentImportPage() {
       render: (_, record) => {
         const completed = isStatusCompleted(record.status);
         const moreItems = [
+          {
+            key: 'extract-config',
+            icon: <AppstoreOutlined />,
+            label: completed ? '抽取配置详情' : '抽取配置详情（解析后可用）',
+            disabled: !completed || !record.extractSnapshot,
+            onClick: () => handleOpenExtractConfig(record),
+          },
           {
             key: 'edit',
             icon: <EditOutlined />,
@@ -2312,6 +2354,21 @@ export default function DocumentImportPage() {
         record={previewRecord}
         onClose={handlePreviewClose}
       />
+      <Modal
+        title={extractConfigRecord?.name ? `${extractConfigRecord.name} - 知识抽取配置详情` : '知识抽取配置详情'}
+        open={extractConfigVisible}
+        onCancel={handleCloseExtractConfig}
+        footer={null}
+        width={1100}
+        destroyOnClose
+        style={{ top: 24 }}
+        styles={{ body: { maxHeight: '78vh', overflowY: 'auto', padding: 16 } }}
+      >
+        <KnowledgeExtractSnapshotView
+          snapshot={extractConfigRecord?.extractSnapshot ?? null}
+          visible={extractConfigVisible}
+        />
+      </Modal>
     </Space>
   );
 }

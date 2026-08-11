@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { history, useLocation } from '@umijs/max';
 import dayjs from 'dayjs';
 import {
   Button,
@@ -413,6 +414,7 @@ function renderUnconfiguredTag() {
 }
 
 export default function ModelManagePage() {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<ActiveTab>('llm');
   const [list, setList] = useState<TableItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -655,6 +657,14 @@ export default function ModelManagePage() {
   useEffect(() => {
     void fetchList(1, undefined, activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search || '');
+    const tab = searchParams.get('tab');
+    if (tab === 'llm' || tab === 'embed') {
+      setActiveTab(tab);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     if (activeTab !== 'embed') {
@@ -986,6 +996,10 @@ export default function ModelManagePage() {
   const handleTabChange = (key: string) => {
     const nextTab = key as ActiveTab;
     setActiveTab(nextTab);
+    history.replace({
+      pathname: location.pathname,
+      search: `?tab=${nextTab}`,
+    });
     setSearchName('');
     setSearchProviderType(undefined);
     setSearchApiType(undefined);
