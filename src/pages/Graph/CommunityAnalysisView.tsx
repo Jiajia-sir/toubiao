@@ -1895,7 +1895,9 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
                     background: getCommunityColor(activeCommunity.id),
                   }}
                 />
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>{activeCommunity.name}</div>
+                {activeCommunity.name ? (
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>{activeCommunity.name}</div>
+                ) : null}
               </div>
               <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.7, color: "#64748b" }}>
                 {activeCommunity.description || activeCommunity.topic || "该社区由一组高关联实体构成。"}
@@ -1988,9 +1990,11 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
                     <div key={outboundKey} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center" }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", background: targetColor }} />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ color: "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {targetCommunity?.name || outboundKey}
-                        </div>
+                        {targetCommunity?.name ? (
+                          <div style={{ color: "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {targetCommunity.name}
+                          </div>
+                        ) : null}
                         <div style={{ marginTop: 2, color: "#94a3b8", fontSize: 11 }}>
                           {outbound.relations.join(" / ") || "跨社区关联"}
                         </div>
@@ -2058,9 +2062,9 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
                               flexShrink: 0,
                             }}
                           />
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
-                            社区 {index + 1} · {community.name}
-                          </div>
+                          {community.name ? (
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{community.name}</div>
+                          ) : null}
                         </div>
                         <div style={{ marginTop: 6, fontSize: 12, color: "#64748b", lineHeight: 1.6 }}>
                           {community.description || community.topic || "暂无主题描述"}

@@ -273,7 +273,7 @@ function buildCommunities(networkData?: CommunityNetworkData | null): GraphCommu
 
       return {
         id,
-        name: seedNodeName,
+        name: topic,
         seedNodeId,
         nodeIds,
         relationCount,
@@ -542,7 +542,7 @@ export default function GraphPage() {
 
       nextNodes.push({
         id: `comm_${community.id}`,
-        name: `${community.name} 社区`,
+        name: community.name ? `${community.name} 社区` : "",
         type: "entity",
         entityType: "社区",
         desc: `该社区共包含 ${community.nodeIds.length} 个实体，${community.relationCount} 条内部关联，${community.bridgeCount} 个桥接点，密度 ${community.density}。`,
@@ -577,7 +577,7 @@ export default function GraphPage() {
             ...origNode,
             type: "entity",
             entityType: origNode.entityType || "核心实体",
-            desc: origNode.desc || `社区 ${community.name} 核心成员`,
+            desc: origNode.desc || (community.name ? `社区 ${community.name} 核心成员` : "社区核心成员"),
             tag: ["核心成员", ...(origNode.tag || [])],
             branchId: community.id,
           });
