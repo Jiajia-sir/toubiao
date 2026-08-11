@@ -313,7 +313,7 @@ export default function KnowledgeExtractConfigPage() {
       Boolean(detail?.frequencyPenaltyEnabled ?? snapshot?.frequencyPenaltyEnabled ?? false),
     );
     setMaxTokensEnabled(Boolean(detail?.maxTokensEnabled ?? snapshot?.maxTokensEnabled ?? false));
-    setGeneratedPrompt('');
+    setGeneratedPrompt(String(detail?.generatedPrompt ?? snapshot?.generatedPrompt ?? ''));
     const firstTypeId = Object.keys(normalizedFineAttributeIdsByType)[0];
     if (firstTypeId) {
       setActiveFineEntityTypeId(firstTypeId);
