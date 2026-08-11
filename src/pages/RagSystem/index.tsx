@@ -8,6 +8,7 @@ import {
   ClearOutlined,
   DeleteOutlined,
   EditOutlined,
+  FileTextOutlined,
   MessageOutlined,
   PlusOutlined,
   SendOutlined,
@@ -99,6 +100,16 @@ type ModelFormValues = {
   enabled: boolean;
   sort?: number;
   remark?: string;
+};
+
+type ReferenceDocumentItem = {
+  key: string;
+  fileName: string;
+  docId?: number | string;
+  filePath?: string;
+  chunks: ReferenceChunkItem[];
+  knowledgeBaseIds: Array<number | string>;
+  bestScore?: number;
 };
 
 type AssistantFormValues = {
@@ -258,7 +269,10 @@ const extractReadableErrorMessage = (value: unknown) => {
       const nestedMessage =
         parsed?.message || parsed?.msg || parsed?.error?.message || parsed?.data?.message;
       if (typeof nestedMessage === 'string' && nestedMessage.trim()) {
-        const prefix = text.slice(0, jsonStartIndex).trim().replace(/[:：]\s*$/, '');
+        const prefix = text
+          .slice(0, jsonStartIndex)
+          .trim()
+          .replace(/[:：]\s*$/, '');
         return prefix ? `${prefix}：${nestedMessage.trim()}` : nestedMessage.trim();
       }
     } catch {
@@ -322,6 +336,45 @@ const getUniqueReferenceChunks = (reference?: ChatReference) => {
     seen.add(key);
     return true;
   });
+};
+
+const getReferenceDocuments = (reference?: ChatReference): ReferenceDocumentItem[] => {
+  const chunks = getReferenceChunks(reference);
+  const documentMap = new Map<string, ReferenceDocumentItem>();
+
+  chunks.forEach((chunk, index) => {
+    const key = String(chunk.docId ?? chunk.file_name ?? chunk.file_path ?? index);
+    const fileName = getReferenceChunkFileName(chunk);
+    const existing = documentMap.get(key);
+
+    if (!existing) {
+      documentMap.set(key, {
+        key,
+        fileName,
+        docId: chunk.docId,
+        filePath: chunk.file_path,
+        chunks: [chunk],
+        knowledgeBaseIds: Array.isArray(chunk.knowledge_base_id)
+          ? [...chunk.knowledge_base_id]
+          : [],
+        bestScore: typeof chunk.score === 'number' ? chunk.score : undefined,
+      });
+      return;
+    }
+
+    existing.chunks.push(chunk);
+    if (Array.isArray(chunk.knowledge_base_id)) {
+      existing.knowledgeBaseIds = Array.from(
+        new Set([...existing.knowledgeBaseIds, ...chunk.knowledge_base_id]),
+      );
+    }
+    if (typeof chunk.score === 'number') {
+      existing.bestScore =
+        existing.bestScore === undefined ? chunk.score : Math.max(existing.bestScore, chunk.score);
+    }
+  });
+
+  return Array.from(documentMap.values());
 };
 
 const formatReferenceValue = (value: unknown, fallback = '-') => {
@@ -1634,147 +1687,156 @@ export default function RagSystemPage() {
                           {msg.role === 'user' ? '我' : activeAssistant?.name}
                         </Text>
                       </div>
-                      <div
-                        className={`message-bubble ${msg.role}`}
-                        style={{
-                          padding: '14px 18px',
-                          borderRadius:
-                            msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                        }}
-                      >
-                        {msg.role === 'user' ? (
+                      {msg.role === 'assistant' ? (
+                        <div className="message-assistant-stack">
                           <div
-                            style={{ lineHeight: 1.7 }}
-                            dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
-                          />
-                        ) : (
-                          <div className="message-answer-section">
+                            className={`message-bubble ${msg.role}`}
+                            style={{
+                              padding: '14px 18px',
+                              borderRadius: '16px 16px 16px 4px',
+                            }}
+                          >
+                            <div className="message-answer-section">
+                              <div
+                                className="message-answer-body"
+                                style={{ lineHeight: 1.7 }}
+                                dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
+                              />
+                            </div>
                             <div
-                              className="message-answer-body"
-                              style={{ lineHeight: 1.7 }}
-                              dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
-                            />
+                              style={{
+                                fontSize: 11,
+                                color: '#94a3b8',
+                                marginTop: 8,
+                                textAlign: 'right',
+                              }}
+                            >
+                              {msg.timestamp}
+                            </div>
                           </div>
-                        )}
-                        {msg.role === 'assistant' && (
-                          <div className="message-tools">
-                            {Number(msg.reference?.total ?? 0) > 0 && (
-                              <div className="message-reference-panel">
-                                <div className="message-reference-panel-header">
-                                  <span className="message-reference-panel-title">引用来源</span>
-                                  <span className="message-reference-panel-subtitle">
-                                    共 {Number(msg.reference?.total ?? 0)} 条
-                                  </span>
-                                </div>
-                                <div className="message-reference-list">
-                                  {getReferenceChunks(msg.reference).map((chunk, index) => (
+                          {Number(msg.reference?.total ?? 0) > 0 && (
+                            <div className="message-reference-panel message-reference-panel-detached">
+                              <div className="message-reference-doc-list">
+                                {getReferenceDocuments(msg.reference).map((doc) => (
+                                  <Tooltip
+                                    key={doc.key}
+                                    placement="rightTop"
+                                    overlayClassName="message-reference-tooltip-overlay"
+                                    title={
+                                      <div className="message-reference-tooltip">
+                                        <div className="message-reference-tooltip-title">
+                                          {doc.fileName}
+                                        </div>
+                                        <div className="message-reference-tooltip-meta">
+                                          <span>命中分块：{doc.chunks.length}</span>
+                                          <span>
+                                            最高相似度：{formatReferenceScore(doc.bestScore)}
+                                          </span>
+                                        </div>
+                                        {doc.knowledgeBaseIds.length > 0 && (
+                                          <div className="message-reference-tooltip-section">
+                                            <div className="message-reference-tooltip-label">
+                                              知识库
+                                            </div>
+                                            <div className="message-reference-tooltip-links">
+                                              {doc.knowledgeBaseIds.map((knowledgeBaseId) => (
+                                                <Button
+                                                  key={String(knowledgeBaseId)}
+                                                  size="small"
+                                                  type="link"
+                                                  style={{ paddingInline: 0, height: 'auto' }}
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleOpenKnowledgeBase(knowledgeBaseId);
+                                                  }}
+                                                >
+                                                  {activeAssistantKnowledgeBaseMap[
+                                                    String(knowledgeBaseId)
+                                                  ] || `知识库 ${knowledgeBaseId}`}
+                                                </Button>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                        <div className="message-reference-tooltip-section">
+                                          <div className="message-reference-tooltip-label">
+                                            引用详情
+                                          </div>
+                                          <div className="message-reference-tooltip-chunks">
+                                            {doc.chunks.map((chunk, index) => (
+                                              <div
+                                                key={`${doc.key}-${chunk.chunk_index ?? index}`}
+                                                className="message-reference-tooltip-chunk"
+                                              >
+                                                <div className="message-reference-tooltip-chunk-meta">
+                                                  {` 第${formatReferenceValue(
+                                                    chunk.chunk_index,
+                                                  )}分块`}
+                                                  {typeof chunk.score === 'number' &&
+                                                    ` · 相似度 ${formatReferenceScore(chunk.score)}`}
+                                                </div>
+                                                <div className="message-reference-tooltip-chunk-text">
+                                                  {formatReferenceValue(chunk.text)}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    }
+                                  >
                                     <div
-                                      key={`${chunk.docId ?? chunk.file_name ?? index}-${chunk.chunk_index ?? index}`}
-                                      className="message-reference-card"
+                                      className="message-reference-doc-item"
+                                      onClick={() =>
+                                        doc.docId ? handleOpenReferenceDoc(doc.chunks[0]) : undefined
+                                      }
                                     >
-                                      <div className="message-reference-card-header">
-                                        <div className="message-reference-card-title">
-                                          {chunk.docId ? (
-                                            <Button
-                                              size="small"
-                                              type="link"
-                                              style={{ paddingInline: 0, height: 'auto' }}
-                                              onClick={() => handleOpenReferenceDoc(chunk)}
-                                            >
-                                              {getReferenceChunkFileName(chunk)}
-                                            </Button>
-                                          ) : (
-                                            getReferenceChunkFileName(chunk)
-                                          )}
-                                        </div>
-                                        <Space size={8} wrap>
-                                          <Tag color="geekblue">
-                                            相似度得分 {formatReferenceScore(chunk.score)}
-                                          </Tag>
-                                        </Space>
+                                      <div className="message-reference-doc-icon">
+                                        <FileTextOutlined />
                                       </div>
-                                      <div className="message-reference-text">
-                                        <div className="message-reference-text-body">
-                                          {formatReferenceValue(chunk.text)}
-                                        </div>
-                                      </div>
-                                      <div className="message-reference-grid">
-                                        <div className="message-reference-grid-item message-reference-grid-item-kb">
-                                          <span className="message-reference-meta-key">知识库</span>
-                                          <div className="message-reference-value">
-                                            {Array.isArray(chunk.knowledge_base_id) &&
-                                            chunk.knowledge_base_id.length > 0 ? (
-                                              <Space size={[6, 6]} wrap>
-                                                {chunk.knowledge_base_id.map((knowledgeBaseId) => (
-                                                  <Button
-                                                    key={String(knowledgeBaseId)}
-                                                    size="small"
-                                                    type="link"
-                                                    style={{ paddingInline: 0, height: 'auto' }}
-                                                    onClick={() =>
-                                                      handleOpenKnowledgeBase(knowledgeBaseId)
-                                                    }
-                                                  >
-                                                    {activeAssistantKnowledgeBaseMap[
-                                                      String(knowledgeBaseId)
-                                                    ] || `知识库 ${knowledgeBaseId}`}
-                                                  </Button>
-                                                ))}
-                                              </Space>
-                                            ) : (
-                                              '-'
-                                            )}
+                                      <div className="message-reference-doc-main">
+                                        <div className="message-reference-doc-line">
+                                          <div className="message-reference-doc-name">
+                                            {doc.fileName}
                                           </div>
-                                        </div>
-                                        {/* <div className="message-reference-grid-item message-reference-grid-item-path">
-                                          <span className="message-reference-meta-key">
-                                            文件地址
-                                          </span>
-                                          <div className="message-reference-value">
-                                            {formatReferenceValue(chunk.file_path)}
-                                          </div>
-                                        </div> */}
-                                        <div className="message-reference-grid-item message-reference-grid-item-location">
-                                          <span className="message-reference-meta-key">
-                                            所属文件位置
-                                          </span>
-                                          <div className="message-reference-value">
-                                            {`第${formatReferenceValue(chunk.page)}页 第${formatReferenceValue(
-                                              chunk.chunk_index,
-                                            )}分块`}
+                                          <div className="message-reference-doc-meta">
+                                            {`命中 ${doc.chunks.length} 个分块`}
+                                            {/* {doc.bestScore !== undefined &&
+                                              ` · 最高相似度 ${formatReferenceScore(doc.bestScore)}`} */}
                                           </div>
                                         </div>
                                       </div>
                                     </div>
-                                  ))}
-                                </div>
+                                  </Tooltip>
+                                ))}
                               </div>
-                            )}
-                            {msg.sources && msg.sources.length > 0 && (
-                              <div className="message-source-summary">
-                                <span className="message-source-summary-label">文档来源：</span>
-                                <div className="message-source-summary-list">
-                                  {msg.sources.map((source: string) => (
-                                    <span key={source} className="sidebar-mini-tag">
-                                      {source}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
                         <div
+                          className={`message-bubble ${msg.role}`}
                           style={{
-                            fontSize: 11,
-                            color: msg.role === 'user' ? 'rgba(255,255,255,0.75)' : '#94a3b8',
-                            marginTop: 8,
-                            textAlign: 'right',
+                            padding: '14px 18px',
+                            borderRadius: '16px 16px 4px 16px',
                           }}
                         >
-                          {msg.timestamp}
+                          <div
+                            style={{ lineHeight: 1.7 }}
+                            dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
+                          />
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: 'rgba(255,255,255,0.75)',
+                              marginTop: 8,
+                              textAlign: 'right',
+                            }}
+                          >
+                            {msg.timestamp}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                     {msg.role === 'user' && (
                       <div className="user-avatar">
