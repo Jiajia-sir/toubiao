@@ -2277,16 +2277,16 @@ export default function KnowledgeExtractConfigPage() {
                   生成提示词
                 </Button>
               </Space>
-              {generatedPrompt ? (
-                <pre style={styles.promptBox}>{generatedPrompt}</pre>
-              ) : (
-                <div style={styles.promptPlaceholder}>
-                  <div style={styles.promptPlaceholderTitle}>暂未生成提示词</div>
-                  <div style={styles.promptPlaceholderText}>
-                    请先完成实体类型或属性配置，然后点击“生成提示词”，系统会根据当前抽取粒度自动生成提示词。
-                  </div>
-                </div>
-              )}
+              <Input.TextArea
+                value={generatedPrompt}
+                onChange={(e) => setGeneratedPrompt(e.target.value)}
+                readOnly={isReadOnly}
+                autoSize={{ minRows: 10, maxRows: 20 }}
+                placeholder="请先完成实体类型或属性配置，然后点击“生成提示词”，系统会根据当前抽取粒度自动生成提示词。"
+                styles={{
+                  textarea: generatedPrompt ? styles.promptBox : styles.promptPlaceholderInput,
+                }}
+              />
             </div>
           </Card>
 
@@ -2820,6 +2820,18 @@ const styles: Record<string, React.CSSProperties> = {
     wordBreak: 'break-word' as const,
     overflow: 'auto',
     margin: 0,
+  },
+  promptPlaceholderInput: {
+    minHeight: 300,
+    maxHeight: 300,
+    padding: '24px 28px',
+    borderRadius: 12,
+    border: '1px dashed #c7d8ee',
+    background: 'linear-gradient(180deg, #fbfdff 0%, #f4f8fd 100%)',
+    fontSize: 14,
+    lineHeight: 1.8,
+    color: '#4b5563',
+    resize: 'none' as const,
   },
   promptPlaceholder: {
     minHeight: 300,
