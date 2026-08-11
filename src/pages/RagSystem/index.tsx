@@ -240,6 +240,51 @@ const getFetchResponseErrorMessage = async (response: Response, fallback: string
   }
 };
 
+const extractReadableErrorMessage = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  const text = value.trim();
+  if (!text) {
+    return '';
+  }
+
+  const jsonStartIndex = text.indexOf('{');
+  if (jsonStartIndex >= 0) {
+    const maybeJsonText = text.slice(jsonStartIndex);
+    try {
+      const parsed = JSON.parse(maybeJsonText);
+      const nestedMessage =
+        parsed?.message || parsed?.msg || parsed?.error?.message || parsed?.data?.message;
+      if (typeof nestedMessage === 'string' && nestedMessage.trim()) {
+        const prefix = text.slice(0, jsonStartIndex).trim().replace(/[:：]\s*$/, '');
+        return prefix ? `${prefix}：${nestedMessage.trim()}` : nestedMessage.trim();
+      }
+    } catch {
+      // ignore parse error and fall through to raw text
+    }
+  }
+
+  return text;
+};
+
+const getStreamChunkErrorMessage = (chunk: any, fallback: string) => {
+  if (!chunk || typeof chunk !== 'object') {
+    return fallback;
+  }
+
+  return extractReadableErrorMessage(
+    chunk?.msg ||
+      chunk?.message ||
+      chunk?.data?.msg ||
+      chunk?.data?.message ||
+      chunk?.data?.error?.message ||
+      chunk?.error?.message ||
+      fallback,
+  );
+};
+
 const isSuccessResponse = (response: any) => {
   if (!response || typeof response !== 'object') return true;
   if (typeof response.code === 'number') return response.code === 200;
@@ -1194,11 +1239,20 @@ export default function RagSystemPage() {
             return;
           }
 
+          const chunkData = chunk?.data;
           if (chunk?.code && chunk.code !== 200) {
-            throw new Error(chunk.msg || '对话接口返回失败');
+            throw new Error(getStreamChunkErrorMessage(chunk, '对话接口返回失败'));
           }
 
-          const chunkData = chunk?.data;
+          if (
+            chunkData &&
+            typeof chunkData === 'object' &&
+            typeof (chunkData as any).code === 'number' &&
+            (chunkData as any).code !== 200
+          ) {
+            throw new Error(getStreamChunkErrorMessage(chunk, '对话接口返回失败'));
+          }
+
           const streamedAnswer =
             chunkData?.answer ?? chunkData?.content ?? chunkData?.text ?? chunkData?.delta ?? '';
           const delta = chunkData?.delta ?? chunkData?.content ?? chunkData?.text ?? '';
@@ -1672,14 +1726,14 @@ export default function RagSystemPage() {
                                             )}
                                           </div>
                                         </div>
-                                        <div className="message-reference-grid-item message-reference-grid-item-path">
+                                        {/* <div className="message-reference-grid-item message-reference-grid-item-path">
                                           <span className="message-reference-meta-key">
                                             文件地址
                                           </span>
                                           <div className="message-reference-value">
                                             {formatReferenceValue(chunk.file_path)}
                                           </div>
-                                        </div>
+                                        </div> */}
                                         <div className="message-reference-grid-item message-reference-grid-item-location">
                                           <span className="message-reference-meta-key">
                                             所属文件位置
