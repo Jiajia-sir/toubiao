@@ -16,6 +16,8 @@ export interface DocumentPageItem {
   id?: number | string;
   documentId?: number | string;
   fileId?: number | string;
+  embedName?: string;
+  extractSnapshot?: string | Record<string, any> | null;
   name?: string;
   fileName?: string;
   documentName?: string;

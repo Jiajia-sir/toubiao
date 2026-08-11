@@ -22,6 +22,7 @@ import {
   extractEntityLlm,
   type ExtractEntityLlmResult,
 } from '@/services/biz/graph';
+import KnowledgeExtractSnapshotView from '@/components/KnowledgeExtractSnapshotView';
 import { getLlmModelConfigList, type LlmModelConfigItem } from '@/services/biz/llm-model-config';
 import {
   Card,
@@ -194,6 +195,8 @@ export default function KnowledgeExtractConfigPage() {
   const [searchParams] = useSearchParams();
   const templateId = searchParams.get('id');
   const mode = searchParams.get('mode');
+  const snapshotKey = searchParams.get('snapshotKey');
+  const snapshotPayload = snapshotKey ? window.sessionStorage.getItem(snapshotKey) : null;
   const isReadOnly = mode === 'view';
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -318,6 +321,60 @@ export default function KnowledgeExtractConfigPage() {
     if (firstTypeId) {
       setActiveFineEntityTypeId(firstTypeId);
     }
+  };
+
+  const hydrateSnapshotDetail = (snapshotPayload: any) => {
+    hydrateTemplateDetail({
+      data: {
+        ...snapshotPayload,
+        name:
+          snapshotPayload?.configSnapshot?.name ??
+          snapshotPayload?.template?.模板名称 ??
+          snapshotPayload?.name,
+        description:
+          snapshotPayload?.configSnapshot?.description ??
+          snapshotPayload?.template?.模板描述 ??
+          snapshotPayload?.description,
+        modelName:
+          snapshotPayload?.configSnapshot?.modelName ??
+          snapshotPayload?.template?.模型名称 ??
+          snapshotPayload?.modelName,
+        modelId:
+          snapshotPayload?.configSnapshot?.modelId ??
+          snapshotPayload?.template?.模型ID ??
+          snapshotPayload?.modelId,
+        tags: snapshotPayload?.tags ?? snapshotPayload?.configSnapshot?.tags ?? [],
+        generatedPrompt:
+          snapshotPayload?.configSnapshot?.generatedPrompt ?? snapshotPayload?.template?.提示词 ?? '',
+        temperature:
+          snapshotPayload?.configSnapshot?.temperature ?? snapshotPayload?.template?.temperature,
+        topP: snapshotPayload?.configSnapshot?.topP ?? snapshotPayload?.template?.topP,
+        presencePenalty:
+          snapshotPayload?.configSnapshot?.presencePenalty ??
+          snapshotPayload?.template?.presencePenalty,
+        frequencyPenalty:
+          snapshotPayload?.configSnapshot?.frequencyPenalty ??
+          snapshotPayload?.template?.frequencyPenalty,
+        maxTokens:
+          snapshotPayload?.configSnapshot?.maxTokens ?? snapshotPayload?.template?.maxTokens,
+        temperatureEnabled:
+          snapshotPayload?.configSnapshot?.temperatureEnabled ??
+          snapshotPayload?.template?.temperatureEnabled,
+        topPEnabled:
+          snapshotPayload?.configSnapshot?.topPEnabled ?? snapshotPayload?.template?.topPEnabled,
+        presencePenaltyEnabled:
+          snapshotPayload?.configSnapshot?.presencePenaltyEnabled ??
+          snapshotPayload?.template?.presencePenaltyEnabled,
+        frequencyPenaltyEnabled:
+          snapshotPayload?.configSnapshot?.frequencyPenaltyEnabled ??
+          snapshotPayload?.template?.frequencyPenaltyEnabled,
+        maxTokensEnabled:
+          snapshotPayload?.configSnapshot?.maxTokensEnabled ??
+          snapshotPayload?.template?.maxTokensEnabled,
+        extractSchema: snapshotPayload?.extractSchema,
+        configSnapshot: snapshotPayload?.configSnapshot,
+      },
+    });
   };
 
   const extractList = <T,>(response: any): T[] => {
@@ -521,8 +578,29 @@ export default function KnowledgeExtractConfigPage() {
   }, [activeFineEntityTypeId]);
 
   useEffect(() => {
+    if (!snapshotKey) {
+      return;
+    }
+
+    setDetailLoading(true);
+    try {
+      const rawSnapshot = window.sessionStorage.getItem(snapshotKey);
+      if (!rawSnapshot) {
+        message.error('未找到知识抽取配置快照');
+        return;
+      }
+      hydrateSnapshotDetail(JSON.parse(rawSnapshot));
+    } catch (error) {
+      console.error(error);
+      message.error('加载知识抽取配置快照失败');
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [snapshotKey]);
+
+  useEffect(() => {
     const fetchTemplateDetail = async () => {
-      if (!templateId) {
+      if (!templateId || snapshotKey) {
         return;
       }
       setDetailLoading(true);
@@ -537,7 +615,7 @@ export default function KnowledgeExtractConfigPage() {
       }
     };
     void fetchTemplateDetail();
-  }, [templateId]);
+  }, [snapshotKey, templateId]);
 
   const selectedCoarseEntityTypes = entityTypeOptions.filter((item) =>
     config.coarseEntityTypeIds.includes(String(item.id)),
@@ -1014,6 +1092,14 @@ export default function KnowledgeExtractConfigPage() {
   };
 
   const extractEntityRelationGraphData = buildEntityRelationGraphData(extractPreviewData);
+
+  if (snapshotKey && snapshotPayload) {
+    return (
+      <div style={{ padding: 24, background: '#f5f7fa', minHeight: '100vh' }}>
+        <KnowledgeExtractSnapshotView snapshot={snapshotPayload} visible />
+      </div>
+    );
+  }
 
   return (
     <>
