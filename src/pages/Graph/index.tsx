@@ -1134,7 +1134,35 @@ export default function GraphPage() {
         })
         .filter(Boolean) as SearchGraphLink[];
 
-      if (!validNodes.length && !validLinks.length) {
+      const enrichedNodes = validNodes.map((nextNode) => {
+        if (nextNode.id === node.id) {
+          return nextNode;
+        }
+
+        const directLink = validLinks.find(
+          (link) =>
+            (link.source === node.id && link.target === nextNode.id) ||
+            (link.target === node.id && link.source === nextNode.id),
+        );
+
+        if (!directLink) {
+          return nextNode;
+        }
+
+        const fallbackBranchId =
+          node.type === "center"
+            ? nextNode.id
+            : String(node.branchId || node.parentId || node.id);
+
+        return {
+          ...nextNode,
+          parentId: nextNode.parentId || node.id,
+          relationFromParent: nextNode.relationFromParent || directLink.relation,
+          depth: nextNode.depth ?? Number(node.depth ?? 0) + 1,
+          branchId: nextNode.branchId || fallbackBranchId,
+        };
+      });
+      if (!enrichedNodes.length && !validLinks.length) {
         message.info(mode === "replace" ? "暂无其他可展示的新关联关系" : "该节点暂无更多可展开关系");
         setNodeExpandMap((prev) => ({
           ...prev,
@@ -1152,7 +1180,7 @@ export default function GraphPage() {
         return;
       }
 
-      const newNodesIds = validNodes.map((n) => n.id);
+      const newNodesIds = enrichedNodes.map((n) => n.id);
       const newLinksKeys = validLinks.map((l) => `${l.source}-${l.target}-${l.relation}`);
 
       setGraphData((prev) => {
@@ -1172,11 +1200,22 @@ export default function GraphPage() {
           });
         }
 
-        validNodes.forEach((n) => {
+        enrichedNodes.forEach((n) => {
           const existingNode = nextNodesMap.get(n.id);
           nextNodesMap.set(n.id, {
             ...(existingNode || {}),
             ...(n as any),
+            type:
+              existingNode?.type === "center"
+                ? "center"
+                : ((n as any).type ?? existingNode?.type),
+            parentId: existingNode?.parentId || (n as any).parentId,
+            relationFromParent: existingNode?.relationFromParent || (n as any).relationFromParent,
+            branchId: existingNode?.branchId || (n as any).branchId,
+            depth:
+              existingNode?.depth !== undefined && existingNode?.depth !== null
+                ? Math.min(existingNode.depth, Number((n as any).depth ?? existingNode.depth))
+                : (n as any).depth,
             sourceDocuments: n.sourceDocuments ?? existingNode?.sourceDocuments ?? [],
           });
         });
