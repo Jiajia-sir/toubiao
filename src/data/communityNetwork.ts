@@ -14,6 +14,9 @@ export interface CommunityNetworkCommunity {
 export interface CommunityNetworkNode {
   id?: string | number;
   name?: string;
+  label?: string;
+  entity_name?: string;
+  display_name?: string;
   community_id?: string | number;
   x?: number;
   y?: number;

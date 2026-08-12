@@ -1444,10 +1444,13 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
   const rawNodeNameMap = useMemo(
     () =>
       new Map(
-        rawNetworkNodes.map((node) => [
-          String(node.id ?? "").trim(),
-          String(node.name ?? node.id ?? "").trim(),
-        ]),
+        rawNetworkNodes.map((node) => {
+          const id = String(node.id ?? "").trim();
+          const name = String(
+            node.name ?? node.label ?? node.entity_name ?? node.display_name ?? node.id ?? "",
+          ).trim();
+          return [id, name];
+        }),
       ),
     [rawNetworkNodes],
   );
@@ -1456,11 +1459,14 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
       new Map(
         rawNetworkNodes.map((node) => {
           const id = String(node.id ?? "").trim();
+          const label = String(
+            node.name ?? node.label ?? node.entity_name ?? node.display_name ?? node.id ?? "",
+          ).trim();
           return [
             id,
             {
               id,
-              label: String(node.name ?? node.id ?? "").trim(),
+              label,
               communityId: String(node.community_id ?? "").trim(),
               isBridge: Boolean(node.is_bridge),
             },
@@ -1473,7 +1479,9 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
     () =>
       new Map(
         rawNetworkNodes.map((node) => {
-          const name = String(node.name ?? "").trim();
+          const name = String(
+            node.name ?? node.label ?? node.entity_name ?? node.display_name ?? "",
+          ).trim();
           return [
             name,
             {
@@ -1533,7 +1541,9 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
       }
       const nextNode: CommunityNodeRecord = {
         id,
-        label: String(node.name ?? id).trim(),
+        label: String(
+          node.name ?? node.label ?? node.entity_name ?? node.display_name ?? id,
+        ).trim(),
         communityId,
         x: Number(node.x) || 0,
         y: Number(node.y) || 0,
@@ -1767,17 +1777,15 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
     rawNetworkEdges.forEach((edge) => {
       const sourceId = String(edge.source_id ?? edge.source ?? "").trim();
       const targetId = String(edge.target_id ?? edge.target ?? "").trim();
-      const sourceName = String(edge.source ?? "").trim();
-      const targetName = String(edge.target ?? "").trim();
       const sourceNode =
         rawNodeMap.get(sourceId) ||
         rawNodeByNameMap.get(sourceId) ||
-        rawNodeByNameMap.get(sourceName) ||
+        rawNodeByNameMap.get(String(edge.source ?? "").trim()) ||
         null;
       const targetNode =
         rawNodeMap.get(targetId) ||
         rawNodeByNameMap.get(targetId) ||
-        rawNodeByNameMap.get(targetName) ||
+        rawNodeByNameMap.get(String(edge.target ?? "").trim()) ||
         null;
       const sourceCommunityId = String(
         edge.source_community_id ??
@@ -1805,12 +1813,16 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
         return;
       }
 
-      const to = sourceInActiveCommunity
+      const toCommunityId = sourceInActiveCommunity
         ? String(targetCommunityId || targetNode?.communityId || "").trim()
         : String(sourceCommunityId || sourceNode?.communityId || "").trim();
-      if (!to) {
+      if (!toCommunityId) {
         return;
       }
+      // 优先显示对端实体名称，而非社区 ID
+      const toEntityName =
+        (sourceInActiveCommunity ? targetNode?.label : sourceNode?.label) || "";
+      const to = toEntityName || toCommunityId;
       const current = outboundMap.get(to) || { to, weight: 0, relations: [] };
       current.weight += Number(edge.weight ?? 1) || 1;
       const relation = String(edge.relation ?? "").trim();
@@ -1983,18 +1995,24 @@ export function CommunityRightSidebar(props: CommunityAnalysisViewProps) {
               <div style={{ display: "grid", gap: 10 }}>
                 {activeOutbound.map((outbound) => {
                   const outboundKey = String(outbound.to).trim();
-                  const targetCommunity = communities.find((item) => String(item.id).trim() === outboundKey);
-                  const targetColor = getCommunityColor(outboundKey);
+                  const targetCommunity = communities.find(
+                    (item) =>
+                      String(item.id).trim() === outboundKey ||
+                      String(item.name).trim() === outboundKey,
+                  );
+                  const targetColor = getCommunityColor(
+                    targetCommunity?.id ?? outboundKey,
+                  );
                   const maxWeight = activeOutbound[0]?.weight || 1;
+                  const displayName =
+                    targetCommunity?.name || outboundKey;
                   return (
                     <div key={outboundKey} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "center" }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", background: targetColor }} />
                       <div style={{ minWidth: 0 }}>
-                        {targetCommunity?.name ? (
-                          <div style={{ color: "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {targetCommunity.name}
-                          </div>
-                        ) : null}
+                        <div style={{ color: "#0f172a", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {displayName}
+                        </div>
                         <div style={{ marginTop: 2, color: "#94a3b8", fontSize: 11 }}>
                           {outbound.relations.join(" / ") || "跨社区关联"}
                         </div>
