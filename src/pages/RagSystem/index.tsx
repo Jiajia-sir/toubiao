@@ -316,24 +316,6 @@ const qaConsoleStyles = {
 const getReferenceChunkFileName = (chunk: ReferenceChunkItem) =>
   String(chunk.file_name ?? chunk.file_path ?? chunk.docId ?? '未命名文档');
 
-const isPptReferenceChunk = (chunk: ReferenceChunkItem) => {
-  const fileName = getReferenceChunkFileName(chunk).toLowerCase();
-  return fileName.endsWith('.ppt') || fileName.endsWith('.pptx');
-};
-
-const isDocumentReferenceChunk = (chunk: ReferenceChunkItem) => {
-  const fileName = getReferenceChunkFileName(chunk).toLowerCase();
-  return (
-    fileName.endsWith('.doc') ||
-    fileName.endsWith('.docx') ||
-    fileName.endsWith('.pdf') ||
-    fileName.endsWith('.txt') ||
-    fileName.endsWith('.md') ||
-    fileName.endsWith('.html') ||
-    fileName.endsWith('.eml')
-  );
-};
-
 const getReferenceSourceNames = (reference?: ChatReference) => {
   if (!reference || Number(reference.total ?? 0) <= 0) return [];
   const chunks = Array.isArray(reference.chunks) ? reference.chunks : [];
@@ -372,6 +354,13 @@ const extractSearchClause = (text?: string) => {
   }
 
   return clauses[0];
+};
+
+const extractPptSearchKeyword = (text?: string) => {
+  const normalized = stripClauseToPlainText(text);
+  if (!normalized) return '';
+  const withoutLeadingDigits = normalized.replace(/^\d+[\d\s.,，、:：\-+/()%]*/, '').trim();
+  return (withoutLeadingDigits || normalized).slice(0, 6);
 };
 
 const getUniqueReferenceChunks = (reference?: ChatReference) => {
@@ -1127,11 +1116,10 @@ export default function RagSystemPage() {
     }
 
     const query = new URLSearchParams();
-    const searchKeyword = isPptReferenceChunk(chunk)
-      ? extractSearchClause(chunk.text)
-      : isDocumentReferenceChunk(chunk)
-        ? stripClauseToPlainText(chunk.text)
-        : '';
+    const searchKeyword = getReferenceChunkFileName(chunk).toLowerCase().endsWith('.ppt') ||
+      getReferenceChunkFileName(chunk).toLowerCase().endsWith('.pptx')
+      ? extractPptSearchKeyword(chunk.text)
+      : extractSearchClause(chunk.text);
     if (searchKeyword) {
       query.set('keyword', searchKeyword);
       query.set('previewMode', 'original');
@@ -1826,6 +1814,7 @@ export default function RagSystemPage() {
                                               <div
                                                 key={`${doc.key}-${chunk.chunk_index ?? index}`}
                                                 className="message-reference-tooltip-chunk"
+                                                title="点击查看文档并定位到该命中内容"
                                                 onClick={(event) => {
                                                   event.stopPropagation();
                                                   handleOpenReferenceDoc(chunk);

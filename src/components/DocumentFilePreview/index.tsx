@@ -36,6 +36,11 @@ export const extractPreviewFileName = (filePath: string) => {
   return segments[segments.length - 1] || '';
 };
 
+const isWordPreviewFile = (fileName?: string | null, filePath?: string | null) => {
+  const target = String(fileName || extractPreviewFileName(String(filePath || '')) || '').toLowerCase();
+  return target.endsWith('.doc') || target.endsWith('.docx');
+};
+
 const applySearchKeyword = (scope: ParentNode, keyword: string) => {
   const searchInput = scope.querySelector<HTMLInputElement>('.ofv-toolbar-search input[type="search"]');
   if (!searchInput) {
@@ -82,6 +87,7 @@ const DocumentFilePreview: React.FC<DocumentFilePreviewProps> = ({
   const fileUrl = resolvePreviewFileUrl(String(filePath || ''));
   const resolvedFileName = fileName?.trim() || extractPreviewFileName(String(filePath || '')) || '预览';
   const normalizedSearchKeyword = String(searchKeyword || '').trim();
+  const isWordFile = isWordPreviewFile(resolvedFileName, filePath);
 
   useEffect(() => {
     if (!normalizedSearchKeyword || !containerRef.current) {
@@ -147,7 +153,7 @@ const DocumentFilePreview: React.FC<DocumentFilePreviewProps> = ({
         fileName={resolvedFileName}
         width="100%"
         height="100%"
-        fit="contain"
+        fit={isWordFile ? 'width' : 'contain'}
         toolbar
         theme="light"
         plugins={plugins}
