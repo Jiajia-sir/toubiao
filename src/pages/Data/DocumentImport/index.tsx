@@ -1205,7 +1205,34 @@ export default function DocumentImportPage() {
     }
   };
 
+  const ALLOWED_UPLOAD_EXTENSIONS = [
+    'docx',
+    'doc',
+    'xls',
+    'xlsx',
+    'pptx',
+    'ppt',
+    'md',
+    'txt',
+    'pdf',
+    'html',
+    'eml',
+  ];
+  const MAX_UPLOAD_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+
   const handleBeforeUpload = (file: any) => {
+    const fileName = String(file?.name ?? '');
+    const ext = fileName.slice(((fileName.lastIndexOf('.') || 0) + 1)).toLowerCase();
+    if (!ext || !ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
+      message.error(`不支持的文件格式：.${ext || '未知'}，仅支持 docx、doc、xls、xlsx、pptx、ppt、md、txt、pdf、html、eml`);
+      return Upload.LIST_IGNORE;
+    }
+    const fileSize = Number(file?.size ?? 0);
+    if (fileSize > MAX_UPLOAD_FILE_SIZE) {
+      message.error(`文件 ${fileName} 大小超过 100MB，无法上传`);
+      return Upload.LIST_IGNORE;
+    }
+
     const newFileItem: UploadFileItem = {
       uid: file.uid,
       name: file.name,
@@ -2054,6 +2081,7 @@ export default function DocumentImportPage() {
             showUploadList={false}
             beforeUpload={handleBeforeUpload}
             disabled={uploading}
+            accept=".docx,.doc,.xls,.xlsx,.pptx,.ppt,.md,.txt,.pdf,.html,.eml"
             style={{ padding: '20px 0' }}
           >
             <p className="ant-upload-drag-icon">
@@ -2061,7 +2089,7 @@ export default function DocumentImportPage() {
             </p>
             <p style={{ fontSize: 14, color: '#595959' }}>点击或拖拽文件到此处上传</p>
             <p style={{ fontSize: 12, color: '#8c8c8c' }}>
-              支持 docx、xlsx、pptx、md、txt、pdf、html、eml 等格式，单文件大小不超过 100MB
+              支持 docx、doc、xls、xlsx、pptx、ppt、md、txt、pdf、html、eml 等格式，单文件大小不超过 100MB
             </p>
           </Dragger>
         </div>

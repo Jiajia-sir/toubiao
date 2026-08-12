@@ -51,6 +51,21 @@ interface LabelBox {
   bottom: number;
 }
 
+interface LayoutPosition {
+  x: number;
+  y: number;
+  angle: number;
+  sectorStart: number;
+  sectorEnd: number;
+  radius: number;
+}
+
+interface SpreadLayoutPosition extends LayoutPosition {
+  idealX: number;
+  idealY: number;
+  minDistance: number;
+}
+
 const nodeBaseStyleMap: Record<
   EntityGraphNodeType,
   {
@@ -95,6 +110,18 @@ function stableHash(text: string) {
   return Math.abs(hash);
 }
 
+function getNodeFootprintRadius(node: EntityGraphNode, nodeScale: number) {
+  const baseRadius = getRadius(node, nodeScale);
+  const labelText = node.type === "value" ? getValueNodeFullText(node) : node.name;
+  const safeLabelLength = Math.max(2, Math.min(18, String(labelText || "").length));
+  const labelWidthEstimate =
+    node.type === "value"
+      ? safeLabelLength * 7 + 28
+      : baseRadius + safeLabelLength * 6 + 18;
+
+  return Math.max(baseRadius + 14, labelWidthEstimate * 0.55);
+}
+
 export function getEntityTypePalette(typeName: string) {
   if (typeName === "中心实体") return { strong: "#5D5CDE", medium: "#7F7EF0", stroke: "#4A49B2", text: "#ffffff" };
   if (typeName === "人物" || typeName === "角色") return { strong: "#12A2A8", medium: "#12A2A8", stroke: "#12A2A8", text: "#ffffff" };
@@ -126,14 +153,27 @@ function getBranchColor(node: EntityGraphNode, nodeMap?: Map<string, EntityGraph
   }
 
   let rootNode = node;
-  if (node.branchId && nodeMap?.has(node.branchId)) {
-    rootNode = nodeMap.get(node.branchId)!;
-  } else if (node.parentId && nodeMap?.has(node.parentId)) {
-    rootNode = nodeMap.get(node.parentId)!;
+  if (nodeMap) {
+    let cursor: EntityGraphNode | undefined = node;
+    while (cursor?.parentId && nodeMap.has(cursor.parentId)) {
+      const parentNode = nodeMap.get(cursor.parentId)!;
+      if (parentNode.type === "center") {
+        rootNode = cursor;
+        break;
+      }
+      rootNode = parentNode;
+      cursor = parentNode;
+    }
+
+    if (rootNode === node && node.branchId && nodeMap.has(node.branchId)) {
+      rootNode = nodeMap.get(node.branchId)!;
+    } else if (rootNode === node && node.parentId && nodeMap.has(node.parentId)) {
+      rootNode = nodeMap.get(node.parentId)!;
+    }
   }
 
   const tags = rootNode.tag || [];
-  const typeName = tags.length > 0 ? tags[0] : (node.branchId || node.id);
+  const typeName = tags.length > 0 ? tags[0] : (rootNode.name || node.branchId || node.id);
   const palette = getEntityTypePalette(typeName);
 
   return {
@@ -291,6 +331,12 @@ function fitGraphToViewport(sigma: Sigma | null, graph: Graph | null, duration =
   }
 
   const nodes = graph.nodes();
+  const xs = nodes.map((nodeId) => Number(graph.getNodeAttribute(nodeId, "x") ?? 0));
+  const ys = nodes.map((nodeId) => Number(graph.getNodeAttribute(nodeId, "y") ?? 0));
+  const minX = xs.length > 0 ? Math.min(...xs) : -1;
+  const maxX = xs.length > 0 ? Math.max(...xs) : 1;
+  const minY = ys.length > 0 ? Math.min(...ys) : -1;
+  const maxY = ys.length > 0 ? Math.max(...ys) : 1;
   const dimensions =
     (sigma as any).getDimensions?.() || {
       width: sigma.getContainer().clientWidth || 1,
@@ -397,10 +443,7 @@ function drawStableEdgeLabel(
 }
 
 function buildCommunityClustersLayout(nodes: EntityGraphNode[]) {
-  const positionMap = new Map<
-    string,
-    { x: number; y: number; angle: number; sectorStart: number; sectorEnd: number; radius: number }
-  >();
+  const positionMap = new Map<string, LayoutPosition>();
   const centerNode = nodes.find((node) => node.type === "center");
 
   const clusterCenters: Record<string, { x: number; y: number }> = {
@@ -486,6 +529,127 @@ function buildCommunityClustersLayout(nodes: EntityGraphNode[]) {
   return positionMap;
 }
 
+function spreadLayoutPositions(
+  nodes: EntityGraphNode[],
+  positionMap: Map<string, LayoutPosition>,
+  centerId: string,
+  nodeScale = 1,
+) {
+  const movableNodes = nodes.filter((node) => node.id !== centerId && node.type !== "center");
+  if (movableNodes.length <= 1) {
+    return positionMap;
+  }
+
+  const working = new Map<string, SpreadLayoutPosition>(
+    movableNodes.map((node) => {
+      const current = positionMap.get(node.id) || {
+        x: 0,
+        y: 0,
+        angle: 0,
+        sectorStart: -Math.PI,
+        sectorEnd: Math.PI,
+        radius: 0,
+      };
+      return [
+        node.id,
+        {
+          ...current,
+          idealX: current.x,
+          idealY: current.y,
+          minDistance: getNodeFootprintRadius(node, nodeScale) + 22,
+        },
+      ];
+    }),
+  );
+
+  const iterationCount = 140;
+  for (let iteration = 0; iteration < iterationCount; iteration += 1) {
+    let changed = false;
+
+    for (let i = 0; i < movableNodes.length; i += 1) {
+      const leftNode = movableNodes[i];
+      const left = working.get(leftNode.id);
+      if (!left) continue;
+
+      for (let j = i + 1; j < movableNodes.length; j += 1) {
+        const rightNode = movableNodes[j];
+        const right = working.get(rightNode.id);
+        if (!right) continue;
+
+        let dx = right.x - left.x;
+        let dy = right.y - left.y;
+        let distance = Math.hypot(dx, dy);
+        const minDistance = (left.minDistance + right.minDistance) / 2;
+
+        if (distance === 0) {
+          const seedAngle = ((stableHash(`${leftNode.id}_${rightNode.id}`) % 360) * Math.PI) / 180;
+          dx = Math.cos(seedAngle) * 0.01;
+          dy = Math.sin(seedAngle) * 0.01;
+          distance = 0.01;
+        }
+
+        if (distance >= minDistance) {
+          continue;
+        }
+
+        const overlap = minDistance - distance;
+        const push = overlap * 0.18;
+        const ux = dx / distance;
+        const uy = dy / distance;
+
+        left.x -= ux * push;
+        left.y -= uy * push;
+        right.x += ux * push;
+        right.y += uy * push;
+        changed = true;
+      }
+    }
+
+    movableNodes.forEach((node) => {
+      const current = working.get(node.id);
+      if (!current) return;
+
+      current.x += (current.idealX - current.x) * 0.028;
+      current.y += (current.idealY - current.y) * 0.028;
+
+      const distanceToCenter = Math.hypot(current.x, current.y);
+      const idealDistance = Math.max(160, Math.hypot(current.idealX, current.idealY));
+      const minRadius = Math.max(idealDistance * 0.82, 160);
+      const maxRadius = idealDistance + 260;
+
+      if (distanceToCenter > 0) {
+        const clampedRadius = clamp(distanceToCenter, minRadius, maxRadius);
+        if (Math.abs(clampedRadius - distanceToCenter) > 0.5) {
+          const ratio = clampedRadius / distanceToCenter;
+          current.x *= ratio;
+          current.y *= ratio;
+          changed = true;
+        }
+      }
+    });
+
+    if (!changed && iteration > 20) {
+      break;
+    }
+  }
+
+  movableNodes.forEach((node) => {
+    const next = working.get(node.id);
+    const prev = positionMap.get(node.id);
+    if (!next || !prev) return;
+
+    positionMap.set(node.id, {
+      ...prev,
+      x: next.x,
+      y: next.y,
+      angle: Math.atan2(next.y, next.x),
+      radius: Math.hypot(next.x, next.y),
+    });
+  });
+
+  return positionMap;
+}
+
 function buildGroupedLayout(
   nodes: EntityGraphNode[],
   links: EntityGraphLink[],
@@ -498,10 +662,7 @@ function buildGroupedLayout(
   if (isCommunityGraph) {
     return buildCommunityClustersLayout(nodes);
   }
-  const positionMap = new Map<
-    string,
-    { x: number; y: number; angle: number; sectorStart: number; sectorEnd: number; radius: number }
-  >();
+  const positionMap = new Map<string, LayoutPosition>();
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const rootId =
     (focusNodeId && nodeMap.has(focusNodeId) ? focusNodeId : null) ||
@@ -538,10 +699,57 @@ function buildGroupedLayout(
   const childrenByParent = new Map<string, EntityGraphNode[]>();
   const depthMap = new Map<string, number>([[rootId, 0]]);
   const visited = new Set<string>([rootId]);
-  const queue = [rootId];
 
+  const appendChild = (parentId: string, childNode: EntityGraphNode, nextDepth: number) => {
+    const current = childrenByParent.get(parentId) || [];
+    if (!current.some((item) => item.id === childNode.id)) {
+      current.push(childNode);
+      current.sort((left, right) => {
+        const relationCompare = (left.relationFromParent || "").localeCompare(
+          right.relationFromParent || "",
+          "zh-CN",
+        );
+        if (relationCompare !== 0) return relationCompare;
+        return left.name.localeCompare(right.name, "zh-CN");
+      });
+      childrenByParent.set(parentId, current);
+    }
+    depthMap.set(childNode.id, Math.min(depthMap.get(childNode.id) ?? nextDepth, nextDepth));
+    visited.add(childNode.id);
+  };
+
+  nodes.forEach((node) => {
+    if (node.id === rootId || !node.parentId || !nodeMap.has(node.parentId)) {
+      return;
+    }
+
+    const parentNode = nodeMap.get(node.parentId)!;
+    const parentDepth = depthMap.get(parentNode.id);
+    const nextDepth = (parentDepth ?? (parentNode.depth ?? 0)) + 1;
+    appendChild(parentNode.id, node, nextDepth);
+  });
+
+  const queue = [rootId];
+  const processedTreeNodes = new Set<string>();
   while (queue.length > 0) {
     const currentId = queue.shift()!;
+    if (processedTreeNodes.has(currentId)) {
+      continue;
+    }
+    processedTreeNodes.add(currentId);
+    const explicitChildren = childrenByParent.get(currentId) || [];
+    explicitChildren.forEach((child) => {
+      if (!processedTreeNodes.has(child.id)) {
+        queue.push(child.id);
+      }
+    });
+  }
+
+  const bfsQueue = [rootId];
+  const bfsVisited = new Set<string>([rootId, ...visited]);
+
+  while (bfsQueue.length > 0) {
+    const currentId = bfsQueue.shift()!;
     const neighbors = [...(adjacencyMap.get(currentId) || [])].sort((left, right) => {
       const relationCompare = (left.relation || "").localeCompare(
         right.relation || "",
@@ -552,27 +760,31 @@ function buildGroupedLayout(
     });
 
     neighbors.forEach(({ node }) => {
-      if (visited.has(node.id)) return;
-      visited.add(node.id);
-      depthMap.set(node.id, (depthMap.get(currentId) || 0) + 1);
-      const current = childrenByParent.get(currentId) || [];
-      current.push(node);
-      childrenByParent.set(currentId, current);
-      queue.push(node.id);
+      if (!bfsVisited.has(node.id)) {
+        bfsVisited.add(node.id);
+        const nextDepth = (depthMap.get(currentId) || 0) + 1;
+        appendChild(currentId, node, nextDepth);
+        bfsQueue.push(node.id);
+      }
     });
   }
 
   const weightCache = new Map<string, number>();
 
-  function getSubtreeWeight(nodeId: string): number {
+  function getSubtreeWeight(nodeId: string, path = new Set<string>()): number {
     if (weightCache.has(nodeId)) return weightCache.get(nodeId)!;
+    if (path.has(nodeId)) {
+      return 1;
+    }
+    const nextPath = new Set(path);
+    nextPath.add(nodeId);
     const children = childrenByParent.get(nodeId) || [];
     if (children.length === 0) {
       weightCache.set(nodeId, 1);
       return 1;
     }
 
-    const total = children.reduce((sum, child) => sum + getSubtreeWeight(child.id), 0);
+    const total = children.reduce((sum, child) => sum + getSubtreeWeight(child.id, nextPath), 0);
     const weight = Math.max(1, total);
     weightCache.set(nodeId, weight);
     return weight;
@@ -598,7 +810,11 @@ function buildGroupedLayout(
     sectorStart: number,
     sectorEnd: number,
     depth: number,
+    path = new Set<string>(),
   ) {
+    if (path.has(parentId)) return;
+    const nextPath = new Set(path);
+    nextPath.add(parentId);
     const children = childrenByParent.get(parentId) || [];
     if (children.length === 0) return;
 
@@ -632,7 +848,7 @@ function buildGroupedLayout(
         radius,
       });
 
-      placeChildren(child.id, childStart, childEnd, depth + 1);
+      placeChildren(child.id, childStart, childEnd, depth + 1, nextPath);
       localCursor = childEnd + gap;
     });
   }
@@ -674,7 +890,7 @@ function buildGroupedLayout(
     }
   });
 
-  return positionMap;
+  return spreadLayoutPositions(nodes, positionMap, centerId, 1);
 }
 
 const EntityRelationGraph = forwardRef<
@@ -787,9 +1003,15 @@ const EntityRelationGraph = forwardRef<
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph || data.nodes.length === 0) return;
-
     const targetPositions = buildGroupedLayout(data.nodes, data.links, data.centerId, selectedNodeId);
     const nodeMap = new Map(data.nodes.map(n => [n.id, n]));
+    const childCountByParent = new Map<string, number>();
+    if (!isCommunityGraphData) {
+      data.nodes.forEach((node) => {
+        if (!node.parentId) return;
+        childCountByParent.set(node.parentId, (childCountByParent.get(node.parentId) || 0) + 1);
+      });
+    }
 
     const existingNodes = new Set(graph.nodes());
     const newNodes = new Set(data.nodes.map(n => n.id));
@@ -841,6 +1063,7 @@ const EntityRelationGraph = forwardRef<
       const colors = getBranchColor(node, nodeMap);
       const isSelected = node.id === selectedNodeId;
       const isValueNode = node.type === "value";
+      const hasExpandedChildren = !isCommunityGraphData && (childCountByParent.get(node.id) || 0) > 0;
       const maxLength = labelMaxLength || (node.type === "center" ? 6 : node.type === "entity" ? 5 : 4);
       const label = resolveNodeLabel(node, maxLength);
       const visibleNodeSize = isValueNode ? Math.max(12, radius * 0.9) : radius;
@@ -857,16 +1080,21 @@ const EntityRelationGraph = forwardRef<
           ? (
               isValueNode
                 ? "rgba(0, 0, 0, 0)"
-                : (isSelected ? "#d8b15d" : (node.expandable ? colors.stroke : "rgba(148, 163, 184, 0.55)"))
+                : (
+                    isSelected
+                      ? "#d8b15d"
+                      : (hasExpandedChildren ? colors.medium : (node.expandable ? colors.stroke : "rgba(148, 163, 184, 0.55)"))
+                  )
             )
           : "rgba(0, 0, 0, 0)",
         borderSize: isValueNode
           ? 0
-          : (isSelected ? 4 : (node.expandable ? (node.type === "center" ? 2.6 : 1.8) : 0.9)),
+          : (isSelected ? 4 : (hasExpandedChildren ? 3.2 : (node.expandable ? (node.type === "center" ? 2.6 : 1.8) : 0.9))),
         hidden: !showNodes,
         customColor: colors.fill,
         customLabelSize: visibleNodeSize,
         isBridgeNode: (node as any).isBridgeNode,
+        hasExpandedChildren,
         originalData: node
       };
 
@@ -1306,7 +1534,6 @@ const EntityRelationGraph = forwardRef<
 
     let draggedNode: string | null = null;
     let movedDuringDrag = false;
-
     sigma.on("enterNode", (e) => {
       if (movedDuringDrag) return;
       hoveredNodeRef.current = e.node;
