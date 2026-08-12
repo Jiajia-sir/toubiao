@@ -726,11 +726,12 @@ export default function DataDetailPage() {
   const params = useParams<{ id: string }>();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
+  const initialPreviewMode = searchParams.get('previewMode') === 'original' ? 'original' : 'parsed';
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphData, setGraphData] = useState<DocumentKnowledgeGraphResult | null>(null);
   const [previewKeyword, setPreviewKeyword] = useState(searchParams.get('keyword') || '');
-  const [previewMode, setPreviewMode] = useState<'parsed' | 'original'>('parsed');
+  const [previewMode, setPreviewMode] = useState<'parsed' | 'original'>(initialPreviewMode);
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [detailData, setDetailData] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -755,6 +756,12 @@ export default function DataDetailPage() {
   const fromEntity = searchParams.get('fromEntity');
   const sourceEsId = searchParams.get('esId');
   const sourceKeyword = searchParams.get('keyword');
+  const sourcePreviewMode = searchParams.get('previewMode');
+
+  useEffect(() => {
+    setPreviewKeyword(sourceKeyword || '');
+    setPreviewMode(sourcePreviewMode === 'original' ? 'original' : 'parsed');
+  }, [sourceKeyword, sourcePreviewMode, params.id]);
 
   useEffect(() => {
     let active = true;
