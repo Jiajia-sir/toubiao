@@ -316,6 +316,24 @@ const qaConsoleStyles = {
 const getReferenceChunkFileName = (chunk: ReferenceChunkItem) =>
   String(chunk.file_name ?? chunk.file_path ?? chunk.docId ?? '未命名文档');
 
+const isPptReferenceChunk = (chunk: ReferenceChunkItem) => {
+  const fileName = getReferenceChunkFileName(chunk).toLowerCase();
+  return fileName.endsWith('.ppt') || fileName.endsWith('.pptx');
+};
+
+const isDocumentReferenceChunk = (chunk: ReferenceChunkItem) => {
+  const fileName = getReferenceChunkFileName(chunk).toLowerCase();
+  return (
+    fileName.endsWith('.doc') ||
+    fileName.endsWith('.docx') ||
+    fileName.endsWith('.pdf') ||
+    fileName.endsWith('.txt') ||
+    fileName.endsWith('.md') ||
+    fileName.endsWith('.html') ||
+    fileName.endsWith('.eml')
+  );
+};
+
 const getReferenceSourceNames = (reference?: ChatReference) => {
   if (!reference || Number(reference.total ?? 0) <= 0) return [];
   const chunks = Array.isArray(reference.chunks) ? reference.chunks : [];
@@ -325,6 +343,35 @@ const getReferenceSourceNames = (reference?: ChatReference) => {
 const getReferenceChunks = (reference?: ChatReference) => {
   if (!reference || Number(reference.total ?? 0) <= 0) return [];
   return Array.isArray(reference.chunks) ? reference.chunks : [];
+};
+
+const stripClauseToPlainText = (text?: string) =>
+  String(text || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isNumericClause = (text: string) => /^[\d\s.,，、:：\-+/()%]+$/.test(text);
+
+const extractSearchClause = (text?: string) => {
+  const normalized = stripClauseToPlainText(text);
+  if (!normalized) return '';
+
+  const clauses = normalized
+    .split(/[，、,：:；;。！？!?\s]+/g)
+    .map((item) => stripClauseToPlainText(item))
+    .filter(Boolean);
+
+  if (clauses.length === 0) {
+    return normalized;
+  }
+
+  if (clauses.length > 1 && isNumericClause(clauses[0])) {
+    return clauses[1];
+  }
+
+  return clauses[0];
 };
 
 const getUniqueReferenceChunks = (reference?: ChatReference) => {
@@ -1078,7 +1125,19 @@ export default function RagSystemPage() {
       message.warning('未获取到文档ID');
       return;
     }
-    history.push(`/data/document/${chunk.docId}`);
+
+    const query = new URLSearchParams();
+    const searchKeyword = isPptReferenceChunk(chunk)
+      ? extractSearchClause(chunk.text)
+      : isDocumentReferenceChunk(chunk)
+        ? stripClauseToPlainText(chunk.text)
+        : '';
+    if (searchKeyword) {
+      query.set('keyword', searchKeyword);
+      query.set('previewMode', 'original');
+    }
+
+    history.push(`/data/document/${chunk.docId}${query.toString() ? `?${query.toString()}` : ''}`);
   };
 
   const handleOpenKnowledgeBase = (knowledgeBaseId: number | string) => {
@@ -1767,6 +1826,10 @@ export default function RagSystemPage() {
                                               <div
                                                 key={`${doc.key}-${chunk.chunk_index ?? index}`}
                                                 className="message-reference-tooltip-chunk"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  handleOpenReferenceDoc(chunk);
+                                                }}
                                               >
                                                 <div className="message-reference-tooltip-chunk-meta">
                                                   {` 第${formatReferenceValue(

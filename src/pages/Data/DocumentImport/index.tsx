@@ -187,6 +187,8 @@ const intelligentStatusMap: Record<string, { text: string; color: string; bgColo
 const getIntelligentStatusInfo = (status: string) =>
   intelligentStatusMap[String(status)] || intelligentStatusMap['0'];
 
+const isIntelligentStatusCompleted = (status: string) => String(status) === '2';
+
 const INTELLIGENT_STEPS = ['关键词提取', '实体抽取', '标签分类'];
 
 const INTELLIGENT_STEP_HEIGHT = 20;
@@ -697,10 +699,16 @@ const tagTooltipOverlayStyle: React.CSSProperties = {
   gap: 4,
 };
 
+const ENTITY_NAME_MAX_VISIBLE = 3;
+const ENTITY_NAME_MAX_LENGTH = 5;
+
+const truncateEntityName = (value: string) =>
+  value.length > ENTITY_NAME_MAX_LENGTH ? `${value.slice(0, ENTITY_NAME_MAX_LENGTH)}...` : value;
+
 const renderDocumentStats = (record: DocumentRecord) => {
   const entities = Array.isArray(record.entities) ? record.entities : [];
-  const visibleEntities = entities.slice(0, 3);
-  const hasMore = entities.length > 3;
+  const visibleEntities = entities.slice(0, ENTITY_NAME_MAX_VISIBLE);
+  const hasMore = entities.length > ENTITY_NAME_MAX_VISIBLE;
 
   return (
     <div
@@ -733,17 +741,17 @@ const renderDocumentStats = (record: DocumentRecord) => {
               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 {visibleEntities.map((entity, idx) => (
                   <span key={idx} style={miniTagStyle}>
-                    {entity}
+                    {truncateEntityName(entity)}
                   </span>
                 ))}
-                <span style={{ color: '#bfbfbf' }}>+{entities.length - 3}</span>
+                <span style={{ color: '#bfbfbf' }}>+{entities.length - ENTITY_NAME_MAX_VISIBLE}</span>
               </span>
             </Tooltip>
           ) : (
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {visibleEntities.map((entity, idx) => (
                 <span key={idx} style={miniTagStyle}>
-                  {entity}
+                  {truncateEntityName(entity)}
                 </span>
               ))}
             </span>
@@ -814,6 +822,14 @@ export default function DocumentImportPage() {
   };
 
   const handleOpenExtractConfig = (record: DocumentRecord) => {
+    if (!isIntelligentStatusCompleted(record.intelligentStatus)) {
+      message.warning('智能化完成后才可查看知识抽取配置');
+      return;
+    }
+    if (!record.extractSnapshot) {
+      message.warning('暂无知识抽取配置数据');
+      return;
+    }
     setExtractConfigRecord(record);
     setExtractConfigVisible(true);
   };
@@ -1694,12 +1710,13 @@ export default function DocumentImportPage() {
       width: 170,
       render: (_, record) => {
         const completed = isStatusCompleted(record.status);
+        const intelligentCompleted = isIntelligentStatusCompleted(record.intelligentStatus);
         const moreItems = [
           {
             key: 'extract-config',
             icon: <AppstoreOutlined />,
-            label: completed ? '抽取配置详情' : '抽取配置详情（解析后可用）',
-            disabled: !completed || !record.extractSnapshot,
+            label: intelligentCompleted ? '抽取配置详情' : '抽取配置详情（智能化完成后可用）',
+            disabled: !intelligentCompleted || !record.extractSnapshot,
             onClick: () => handleOpenExtractConfig(record),
           },
           {
