@@ -1118,22 +1118,36 @@ export default function DocumentImportPage() {
     setPageSize(pagination.pageSize || 10);
   };
 
-  const handleDownload = (record: DocumentRecord) => {
+  const handleDownload = async (record: DocumentRecord) => {
     const filePath = record.filePath?.trim();
-    console.log(filePath);
     if (!filePath) {
       message.warning('文件路径不存在，无法下载');
       return;
     }
 
-    const link = document.createElement('a');
-    const isFullUrl = /^(https?:)?\/\//i.test(filePath) || /^(blob|data):/i.test(filePath);
-    link.href = isFullUrl || filePath.startsWith('/') ? filePath : `/${filePath}`;
-    link.download = record.name && record.name !== '-' ? record.name : '';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const isFullUrl = /^(https?:)?\/\//i.test(filePath) || /^(blob|data):/i.test(filePath);
+      const downloadUrl = isFullUrl || filePath.startsWith('/') ? filePath : `/${filePath}`;
+      const response = await fetch(downloadUrl, { credentials: 'include' });
+
+      if (!response.ok) {
+        throw new Error(`下载失败：${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = record.name && record.name !== '-' ? record.name : '';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error(error);
+      message.error('下载失败，请稍后重试');
+    }
   };
 
   const handleRetry = async (record: DocumentRecord) => {
