@@ -156,7 +156,7 @@ function getBranchColor(node: EntityGraphNode, nodeMap?: Map<string, EntityGraph
   if (nodeMap) {
     let cursor: EntityGraphNode | undefined = node;
     while (cursor?.parentId && nodeMap.has(cursor.parentId)) {
-      const parentNode = nodeMap.get(cursor.parentId)!;
+      const parentNode: EntityGraphNode = nodeMap.get(cursor.parentId)!;
       if (parentNode.type === "center") {
         rootNode = cursor;
         break;
@@ -1003,7 +1003,8 @@ const EntityRelationGraph = forwardRef<
   useEffect(() => {
     const graph = graphRef.current;
     if (!graph || data.nodes.length === 0) return;
-    const targetPositions = buildGroupedLayout(data.nodes, data.links, data.centerId, selectedNodeId);
+    const layoutFocusNodeId = isCommunityGraphData ? selectedNodeId : data.centerId;
+    const targetPositions = buildGroupedLayout(data.nodes, data.links, data.centerId, layoutFocusNodeId);
     const nodeMap = new Map(data.nodes.map(n => [n.id, n]));
     const childCountByParent = new Map<string, number>();
     if (!isCommunityGraphData) {
@@ -1023,7 +1024,7 @@ const EntityRelationGraph = forwardRef<
     });
 
     const anchorNodeId =
-      (selectedNodeId && targetPositions.has(selectedNodeId) ? selectedNodeId : null) ||
+      (isCommunityGraphData && selectedNodeId && targetPositions.has(selectedNodeId) ? selectedNodeId : null) ||
       (targetPositions.has(data.centerId) ? data.centerId : null) ||
       data.nodes[0]?.id;
     const anchorTargetPosition = anchorNodeId ? targetPositions.get(anchorNodeId) : null;
@@ -1061,7 +1062,6 @@ const EntityRelationGraph = forwardRef<
           };
       const radius = getRadius(node, nodeScale);
       const colors = getBranchColor(node, nodeMap);
-      const isSelected = node.id === selectedNodeId;
       const isValueNode = node.type === "value";
       const hasExpandedChildren = !isCommunityGraphData && (childCountByParent.get(node.id) || 0) > 0;
       const maxLength = labelMaxLength || (node.type === "center" ? 6 : node.type === "entity" ? 5 : 4);
@@ -1074,22 +1074,20 @@ const EntityRelationGraph = forwardRef<
         size: visibleNodeSize,
         label: (showNodes && showLabels !== false) ? label : "",
         forceLabel: showNodes && showLabels !== false,
-        zIndex: isSelected ? 3 : 1,
+        zIndex: 1,
         color: showNodes ? (isValueNode ? "rgba(0, 0, 0, 0)" : colors.fill) : "rgba(0, 0, 0, 0)",
         borderColor: showNodes
           ? (
               isValueNode
                 ? "rgba(0, 0, 0, 0)"
                 : (
-                    isSelected
-                      ? "#d8b15d"
-                      : (hasExpandedChildren ? colors.medium : (node.expandable ? colors.stroke : "rgba(148, 163, 184, 0.55)"))
+                    hasExpandedChildren ? colors.medium : (node.expandable ? colors.stroke : "rgba(148, 163, 184, 0.55)")
                   )
             )
           : "rgba(0, 0, 0, 0)",
         borderSize: isValueNode
           ? 0
-          : (isSelected ? 4 : (hasExpandedChildren ? 3.2 : (node.expandable ? (node.type === "center" ? 2.6 : 1.8) : 0.9))),
+          : (hasExpandedChildren ? 3.2 : (node.expandable ? (node.type === "center" ? 2.6 : 1.8) : 0.9)),
         hidden: !showNodes,
         customColor: colors.fill,
         customLabelSize: visibleNodeSize,
@@ -1174,7 +1172,7 @@ const EntityRelationGraph = forwardRef<
       refreshVisibleLabelsRef.current();
       scheduleCommunityFit();
     }
-  }, [data, nodeScale, linkWidth, showNodes, showLinks, showLabels, selectedNodeId, labelMaxLength]);
+  }, [data, nodeScale, linkWidth, showNodes, showLinks, showLabels, labelMaxLength]);
 
   const onNodeClickRef = useRef(onNodeClick);
   const onNodeDoubleClickRef = useRef(onNodeDoubleClick);
@@ -1336,6 +1334,7 @@ const EntityRelationGraph = forwardRef<
         const sel = selectedNodeIdRef.current;
         const visibleLabelNodeIds = visibleLabelNodeIdsRef.current;
         const isSelectedCommunityNode = Boolean(isCommunityGraphData && sel && node === sel && sel.startsWith("comm_"));
+        const isSelectedOriginalNode = Boolean(!isCommunityGraphData && sel && node === sel);
 
         const isNodeHoverHighlighted = (n: string, h: string): boolean =>
           n === h || graph.areNeighbors(n, h);
@@ -1344,6 +1343,12 @@ const EntityRelationGraph = forwardRef<
           !isCommunityGraphData || visibleLabelNodeIds.has(node) || node === hovered || node === sel;
         if (!shouldRenderLabel) {
           res.label = "";
+        }
+
+        if (isSelectedOriginalNode) {
+          res.borderColor = "#d8b15d";
+          res.borderSize = Math.max(Number(data.borderSize || 0), 4);
+          res.zIndex = 3;
         }
 
         if (hovered && isCommunityGraphData) {
@@ -1534,6 +1539,159 @@ const EntityRelationGraph = forwardRef<
 
     let draggedNode: string | null = null;
     let movedDuringDrag = false;
+    let dragStartGraphPosition: { x: number; y: number } | null = null;
+    let dragSnapshotPositions = new Map<string, { x: number; y: number }>();
+    let dragSubtreeNodeIds = new Set<string>();
+    let dragFrameId: number | null = null;
+    let pendingDragPosition: { x: number; y: number } | null = null;
+    let restoreHideLabelsOnMoveAfterDrag: boolean | null = null;
+    let restoreHideEdgesOnMoveAfterDrag: boolean | null = null;
+    let restoreRenderEdgeLabelsAfterDrag: boolean | null = null;
+    let dragReleased = false;
+
+    const getOriginalNodeData = (nodeId: string) => {
+      return graph.getNodeAttribute(nodeId, "originalData") as EntityGraphNode | undefined;
+    };
+
+    const resolveDragBranchRootId = (nodeId: string) => {
+      const startNode = getOriginalNodeData(nodeId);
+      if (!startNode || startNode.type === "center") {
+        return nodeId;
+      }
+
+      if (startNode.branchId && graph.hasNode(String(startNode.branchId))) {
+        return String(startNode.branchId);
+      }
+
+      let currentId = nodeId;
+      let currentNode: EntityGraphNode | undefined = startNode;
+      const visited = new Set<string>([nodeId]);
+
+      while (currentNode?.parentId && graph.hasNode(String(currentNode.parentId))) {
+        const parentId = String(currentNode.parentId);
+        if (visited.has(parentId)) {
+          break;
+        }
+        const parentNode = getOriginalNodeData(parentId);
+        if (!parentNode) {
+          break;
+        }
+        if (parentNode.type === "center") {
+          return currentId;
+        }
+        visited.add(parentId);
+        currentId = parentId;
+        currentNode = parentNode;
+      }
+
+      return currentId;
+    };
+
+    const collectBranchNodeIds = (nodeId: string) => {
+      if (isCommunityGraphData) {
+        return new Set<string>([nodeId]);
+      }
+
+      const branchRootId = resolveDragBranchRootId(nodeId);
+      const result = new Set<string>([branchRootId]);
+
+      graph.nodes().forEach((candidateNodeId) => {
+        const candidateData = getOriginalNodeData(candidateNodeId);
+        if (!candidateData) {
+          return;
+        }
+
+        const candidateBranchRootId =
+          candidateData.type === "center"
+            ? candidateNodeId
+            : candidateData.branchId && graph.hasNode(String(candidateData.branchId))
+              ? String(candidateData.branchId)
+              : resolveDragBranchRootId(candidateNodeId);
+
+        if (candidateBranchRootId === branchRootId) {
+          result.add(candidateNodeId);
+        }
+      });
+
+      return result;
+    };
+
+    const shouldMoveLinkedChildren = (nodeId: string) => {
+      if (isCommunityGraphData) {
+        return false;
+      }
+      return collectBranchNodeIds(nodeId).size > 1;
+    };
+
+    const applyDragPosition = (nextPos: { x: number; y: number }) => {
+      if (!draggedNode) {
+        return;
+      }
+
+      if (shouldMoveLinkedChildren(draggedNode)) {
+        if (!dragStartGraphPosition || dragSnapshotPositions.size === 0) {
+          dragStartGraphPosition = nextPos;
+          dragSubtreeNodeIds = collectBranchNodeIds(draggedNode);
+          dragSnapshotPositions = new Map(
+            Array.from(dragSubtreeNodeIds).map((nodeId) => [
+              nodeId,
+              {
+                x: Number(graph.getNodeAttribute(nodeId, "x") ?? 0),
+                y: Number(graph.getNodeAttribute(nodeId, "y") ?? 0),
+              },
+            ]),
+          );
+        }
+
+        const deltaX = nextPos.x - dragStartGraphPosition.x;
+        const deltaY = nextPos.y - dragStartGraphPosition.y;
+
+        dragSnapshotPositions.forEach((nodePos, nodeId) => {
+          graph.setNodeAttribute(nodeId, "x", nodePos.x + deltaX);
+          graph.setNodeAttribute(nodeId, "y", nodePos.y + deltaY);
+        });
+      } else {
+        graph.setNodeAttribute(draggedNode, "x", nextPos.x);
+        graph.setNodeAttribute(draggedNode, "y", nextPos.y);
+      }
+
+      if (isCommunityGraphData) {
+        refreshVisibleLabelsRef.current();
+      }
+      sigma.refresh();
+    };
+
+    const scheduleDragUpdate = (nextPos: { x: number; y: number }) => {
+      pendingDragPosition = nextPos;
+      if (dragFrameId !== null) {
+        return;
+      }
+      dragFrameId = requestAnimationFrame(() => {
+        dragFrameId = null;
+        const position = pendingDragPosition;
+        pendingDragPosition = null;
+        if (position) {
+          applyDragPosition(position);
+        }
+      });
+    };
+
+    const restoreDragRenderSettings = () => {
+      if (!isCommunityGraphData && restoreHideLabelsOnMoveAfterDrag !== null) {
+        sigma.setSetting("hideLabelsOnMove", restoreHideLabelsOnMoveAfterDrag);
+      }
+      if (!isCommunityGraphData && restoreHideEdgesOnMoveAfterDrag !== null) {
+        sigma.setSetting("hideEdgesOnMove", restoreHideEdgesOnMoveAfterDrag);
+      }
+      if (!isCommunityGraphData && restoreRenderEdgeLabelsAfterDrag !== null) {
+        sigma.setSetting("renderEdgeLabels", restoreRenderEdgeLabelsAfterDrag);
+      }
+      restoreHideLabelsOnMoveAfterDrag = null;
+      restoreHideEdgesOnMoveAfterDrag = null;
+      restoreRenderEdgeLabelsAfterDrag = null;
+      sigma.refresh();
+    };
+
     sigma.on("enterNode", (e) => {
       if (movedDuringDrag) return;
       hoveredNodeRef.current = e.node;
@@ -1581,6 +1739,36 @@ const EntityRelationGraph = forwardRef<
     sigma.on("downNode", (e) => {
       draggedNode = e.node;
       movedDuringDrag = false;
+      dragStartGraphPosition = null;
+      dragSnapshotPositions = new Map();
+      dragSubtreeNodeIds = new Set();
+      pendingDragPosition = null;
+      dragReleased = false;
+      if (!isCommunityGraphData) {
+        restoreHideLabelsOnMoveAfterDrag = Boolean((sigma as any).getSetting?.("hideLabelsOnMove"));
+        restoreHideEdgesOnMoveAfterDrag = Boolean((sigma as any).getSetting?.("hideEdgesOnMove"));
+        restoreRenderEdgeLabelsAfterDrag = Boolean((sigma as any).getSetting?.("renderEdgeLabels"));
+        sigma.setSetting("hideLabelsOnMove", true);
+        sigma.setSetting("hideEdgesOnMove", true);
+        sigma.setSetting("renderEdgeLabels", false);
+      } else {
+        restoreHideLabelsOnMoveAfterDrag = null;
+        restoreHideEdgesOnMoveAfterDrag = null;
+        restoreRenderEdgeLabelsAfterDrag = null;
+      }
+      if (shouldMoveLinkedChildren(e.node)) {
+        dragStartGraphPosition = sigma.viewportToGraph((e as any).event || e);
+        dragSubtreeNodeIds = collectBranchNodeIds(e.node);
+        dragSnapshotPositions = new Map(
+          Array.from(dragSubtreeNodeIds).map((nodeId) => [
+            nodeId,
+            {
+              x: Number(graph.getNodeAttribute(nodeId, "x") ?? 0),
+              y: Number(graph.getNodeAttribute(nodeId, "y") ?? 0),
+            },
+          ]),
+        );
+      }
       sigma.getCamera().disable();
     });
     
@@ -1588,22 +1776,33 @@ const EntityRelationGraph = forwardRef<
       if (!draggedNode) return;
       movedDuringDrag = true;
       const pos = sigma.viewportToGraph(e);
-      graph.setNodeAttribute(draggedNode, "x", pos.x);
-      graph.setNodeAttribute(draggedNode, "y", pos.y);
-      if (isCommunityGraphData) {
-        refreshVisibleLabelsRef.current();
-      }
+      scheduleDragUpdate(pos);
       e.preventSigmaDefault();
       if (e.original) {
         e.original.preventDefault();
         e.original.stopPropagation();
       }
-      sigma.refresh();
     });
     
     const handleUp = () => {
+      if (dragReleased) {
+        return;
+      }
+      dragReleased = true;
       if (draggedNode) {
+        if (dragFrameId !== null) {
+          cancelAnimationFrame(dragFrameId);
+          dragFrameId = null;
+        }
+        if (pendingDragPosition) {
+          applyDragPosition(pendingDragPosition);
+          pendingDragPosition = null;
+        }
         draggedNode = null;
+        dragStartGraphPosition = null;
+        dragSnapshotPositions = new Map();
+        dragSubtreeNodeIds = new Set();
+        restoreDragRenderSettings();
         sigma.getCamera().enable();
         setHoveredNodeData(null);
         if (containerRef.current) {
@@ -1612,10 +1811,17 @@ const EntityRelationGraph = forwardRef<
         window.setTimeout(() => {
           movedDuringDrag = false;
         }, 0);
+      } else {
+        restoreDragRenderSettings();
       }
     };
     
     sigma.getMouseCaptor().on("mouseup", handleUp);
+    (sigma.getMouseCaptor() as any).on("mouseupoutside", handleUp);
+    sigma.getMouseCaptor().on("mouseleave", handleUp);
+    (sigma.getMouseCaptor() as any).on("touchup", handleUp);
+    window.addEventListener("mouseup", handleUp);
+    window.addEventListener("blur", handleUp);
     sigma.getCamera().on("updated", () => {
       if (isCommunityGraphData) {
         refreshVisibleLabelsRef.current();
@@ -1623,10 +1829,16 @@ const EntityRelationGraph = forwardRef<
     });
     
     return () => {
+      if (dragFrameId !== null) {
+        cancelAnimationFrame(dragFrameId);
+        dragFrameId = null;
+      }
       if (communityInitialFitRafRef.current !== null) {
         cancelAnimationFrame(communityInitialFitRafRef.current);
         communityInitialFitRafRef.current = null;
       }
+      window.removeEventListener("mouseup", handleUp);
+      window.removeEventListener("blur", handleUp);
       sigma.kill();
       sigmaRef.current = null;
     };
