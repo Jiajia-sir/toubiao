@@ -28,6 +28,8 @@ export interface EntityGraphNode {
   parentId?: string;
   relationFromParent?: string;
   depth?: number;
+  dragParentId?: string;
+  dragDepth?: number;
   branchId?: string;
   entityType?: string;
   nodeKind?: string;

@@ -1159,6 +1159,8 @@ export default function GraphPage() {
           parentId: nextNode.parentId || node.id,
           relationFromParent: nextNode.relationFromParent || directLink.relation,
           depth: nextNode.depth ?? Number(node.depth ?? 0) + 1,
+          dragParentId: node.id,
+          dragDepth: Number(node.dragDepth ?? node.depth ?? 0) + 1,
           branchId: nextNode.branchId || fallbackBranchId,
         };
       });
@@ -1216,6 +1218,8 @@ export default function GraphPage() {
               existingNode?.depth !== undefined && existingNode?.depth !== null
                 ? Math.min(existingNode.depth, Number((n as any).depth ?? existingNode.depth))
                 : (n as any).depth,
+            dragParentId: (n as any).dragParentId ?? existingNode?.dragParentId,
+            dragDepth: (n as any).dragDepth ?? existingNode?.dragDepth,
             sourceDocuments: n.sourceDocuments ?? existingNode?.sourceDocuments ?? [],
           });
         });
@@ -1407,6 +1411,8 @@ export default function GraphPage() {
             parentId: parentNode.id,
             relationFromParent: nextAttrKey,
             depth: (parentNode.depth ?? 0) + 1,
+            dragParentId: parentNode.id,
+            dragDepth: Number(parentNode.dragDepth ?? parentNode.depth ?? 0) + 1,
           };
           setGraphData((prev) => ({
             ...prev,
@@ -1463,6 +1469,7 @@ export default function GraphPage() {
           expandable: true,
           relationCount: 0,
           depth: 1,
+          dragDepth: 1,
           branchId: createdId,
         };
 

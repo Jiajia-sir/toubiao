@@ -1539,121 +1539,21 @@ const EntityRelationGraph = forwardRef<
 
     let draggedNode: string | null = null;
     let movedDuringDrag = false;
-    let dragStartGraphPosition: { x: number; y: number } | null = null;
-    let dragSnapshotPositions = new Map<string, { x: number; y: number }>();
-    let dragSubtreeNodeIds = new Set<string>();
     let dragFrameId: number | null = null;
     let pendingDragPosition: { x: number; y: number } | null = null;
     let restoreHideLabelsOnMoveAfterDrag: boolean | null = null;
     let restoreHideEdgesOnMoveAfterDrag: boolean | null = null;
     let restoreRenderEdgeLabelsAfterDrag: boolean | null = null;
     let dragReleased = false;
-
-    const getOriginalNodeData = (nodeId: string) => {
-      return graph.getNodeAttribute(nodeId, "originalData") as EntityGraphNode | undefined;
-    };
-
-    const resolveDragBranchRootId = (nodeId: string) => {
-      const startNode = getOriginalNodeData(nodeId);
-      if (!startNode || startNode.type === "center") {
-        return nodeId;
-      }
-
-      if (startNode.branchId && graph.hasNode(String(startNode.branchId))) {
-        return String(startNode.branchId);
-      }
-
-      let currentId = nodeId;
-      let currentNode: EntityGraphNode | undefined = startNode;
-      const visited = new Set<string>([nodeId]);
-
-      while (currentNode?.parentId && graph.hasNode(String(currentNode.parentId))) {
-        const parentId = String(currentNode.parentId);
-        if (visited.has(parentId)) {
-          break;
-        }
-        const parentNode = getOriginalNodeData(parentId);
-        if (!parentNode) {
-          break;
-        }
-        if (parentNode.type === "center") {
-          return currentId;
-        }
-        visited.add(parentId);
-        currentId = parentId;
-        currentNode = parentNode;
-      }
-
-      return currentId;
-    };
-
-    const collectBranchNodeIds = (nodeId: string) => {
-      if (isCommunityGraphData) {
-        return new Set<string>([nodeId]);
-      }
-
-      const branchRootId = resolveDragBranchRootId(nodeId);
-      const result = new Set<string>([branchRootId]);
-
-      graph.nodes().forEach((candidateNodeId) => {
-        const candidateData = getOriginalNodeData(candidateNodeId);
-        if (!candidateData) {
-          return;
-        }
-
-        const candidateBranchRootId =
-          candidateData.type === "center"
-            ? candidateNodeId
-            : candidateData.branchId && graph.hasNode(String(candidateData.branchId))
-              ? String(candidateData.branchId)
-              : resolveDragBranchRootId(candidateNodeId);
-
-        if (candidateBranchRootId === branchRootId) {
-          result.add(candidateNodeId);
-        }
-      });
-
-      return result;
-    };
-
-    const shouldMoveLinkedChildren = (nodeId: string) => {
-      if (isCommunityGraphData) {
-        return false;
-      }
-      return collectBranchNodeIds(nodeId).size > 1;
-    };
+    let suppressNodeClickUntil = 0;
 
     const applyDragPosition = (nextPos: { x: number; y: number }) => {
       if (!draggedNode) {
         return;
       }
 
-      if (shouldMoveLinkedChildren(draggedNode)) {
-        if (!dragStartGraphPosition || dragSnapshotPositions.size === 0) {
-          dragStartGraphPosition = nextPos;
-          dragSubtreeNodeIds = collectBranchNodeIds(draggedNode);
-          dragSnapshotPositions = new Map(
-            Array.from(dragSubtreeNodeIds).map((nodeId) => [
-              nodeId,
-              {
-                x: Number(graph.getNodeAttribute(nodeId, "x") ?? 0),
-                y: Number(graph.getNodeAttribute(nodeId, "y") ?? 0),
-              },
-            ]),
-          );
-        }
-
-        const deltaX = nextPos.x - dragStartGraphPosition.x;
-        const deltaY = nextPos.y - dragStartGraphPosition.y;
-
-        dragSnapshotPositions.forEach((nodePos, nodeId) => {
-          graph.setNodeAttribute(nodeId, "x", nodePos.x + deltaX);
-          graph.setNodeAttribute(nodeId, "y", nodePos.y + deltaY);
-        });
-      } else {
-        graph.setNodeAttribute(draggedNode, "x", nextPos.x);
-        graph.setNodeAttribute(draggedNode, "y", nextPos.y);
-      }
+      graph.setNodeAttribute(draggedNode, "x", nextPos.x);
+      graph.setNodeAttribute(draggedNode, "y", nextPos.y);
 
       if (isCommunityGraphData) {
         refreshVisibleLabelsRef.current();
@@ -1720,7 +1620,7 @@ const EntityRelationGraph = forwardRef<
     });
 
     sigma.on("clickNode", (e) => {
-      if (movedDuringDrag) return;
+      if (movedDuringDrag || Date.now() < suppressNodeClickUntil) return;
       const originalData = graph.getNodeAttribute(e.node, "originalData");
       if (originalData && onNodeClickRef.current) {
         onNodeClickRef.current(originalData);
@@ -1728,7 +1628,7 @@ const EntityRelationGraph = forwardRef<
     });
 
     sigma.on("doubleClickNode", (e) => {
-      if (movedDuringDrag) return;
+      if (movedDuringDrag || Date.now() < suppressNodeClickUntil) return;
       const originalData = graph.getNodeAttribute(e.node, "originalData");
       if (originalData && onNodeDoubleClickRef.current) {
         onNodeDoubleClickRef.current(originalData);
@@ -1739,9 +1639,6 @@ const EntityRelationGraph = forwardRef<
     sigma.on("downNode", (e) => {
       draggedNode = e.node;
       movedDuringDrag = false;
-      dragStartGraphPosition = null;
-      dragSnapshotPositions = new Map();
-      dragSubtreeNodeIds = new Set();
       pendingDragPosition = null;
       dragReleased = false;
       if (!isCommunityGraphData) {
@@ -1755,19 +1652,6 @@ const EntityRelationGraph = forwardRef<
         restoreHideLabelsOnMoveAfterDrag = null;
         restoreHideEdgesOnMoveAfterDrag = null;
         restoreRenderEdgeLabelsAfterDrag = null;
-      }
-      if (shouldMoveLinkedChildren(e.node)) {
-        dragStartGraphPosition = sigma.viewportToGraph((e as any).event || e);
-        dragSubtreeNodeIds = collectBranchNodeIds(e.node);
-        dragSnapshotPositions = new Map(
-          Array.from(dragSubtreeNodeIds).map((nodeId) => [
-            nodeId,
-            {
-              x: Number(graph.getNodeAttribute(nodeId, "x") ?? 0),
-              y: Number(graph.getNodeAttribute(nodeId, "y") ?? 0),
-            },
-          ]),
-        );
       }
       sigma.getCamera().disable();
     });
@@ -1799,9 +1683,11 @@ const EntityRelationGraph = forwardRef<
           pendingDragPosition = null;
         }
         draggedNode = null;
-        dragStartGraphPosition = null;
-        dragSnapshotPositions = new Map();
-        dragSubtreeNodeIds = new Set();
+        if (movedDuringDrag) {
+          // Ignore the synthetic click/double-click sequence that browsers
+          // may emit immediately after a drag gesture ends on the same node.
+          suppressNodeClickUntil = Date.now() + 220;
+        }
         restoreDragRenderSettings();
         sigma.getCamera().enable();
         setHoveredNodeData(null);
