@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -245,7 +245,7 @@ function buildGraphNodeLookupMap(nodes: Array<Partial<SearchGraphNode & EntityGr
 
 function parseTagInput(value?: string) {
   return (value || "")
-    .split(/[,，\s]+/)
+    .split(/[,\s，、]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -624,7 +624,7 @@ export default function GraphPage() {
         name: community.name ? `${community.name} 社区` : "",
         type: "entity",
         entityType: "社区",
-        desc: `该社区共包含 ${community.nodeIds.length} 个实体，${community.relationCount} 条内部关联，${community.bridgeCount} 个桥接点，密度 ${community.density}。`,
+        desc: `该社区共包含 ${community.nodeIds.length} 个实体，${community.relationCount} 条内部关系，${community.bridgeCount} 个桥接节点，密度 ${community.density}。`,
         tag: ["社区聚类", `${community.nodeIds.length}节点`],
         expandable: false,
         relationCount: community.relationCount,
@@ -758,10 +758,10 @@ export default function GraphPage() {
 
     const graphAvp =
       selectedNode.type === "value"
-        ? [[selectedNode.relationFromParent || selectedNode.desc || "属性", selectedNode.name] as [string, string]]
+        ? [[selectedNode.relationFromParent || selectedNode.desc || "属性值", selectedNode.name] as [string, string]]
         : graphData.nodes
             .filter((node) => node.type === "value" && node.parentId === selectedNode.id)
-            .map((node) => [node.relationFromParent || node.desc || "属性", node.name] as [string, string]);
+            .map((node) => [node.relationFromParent || node.desc || "属性值", node.name] as [string, string]);
 
     return [...overrideAvp, ...graphAvp].filter(
       ([label, value], index, array) =>
@@ -822,7 +822,7 @@ export default function GraphPage() {
         return null;
       });
       if ((result?.nodes || []).length === 0) {
-        message.info("当前实体暂无社区网络图数据");
+          message.info("当前实体暂无社区网络图数据");
       }
     } catch (error: any) {
       console.error(error);
@@ -1159,6 +1159,8 @@ export default function GraphPage() {
           parentId: nextNode.parentId || node.id,
           relationFromParent: nextNode.relationFromParent || directLink.relation,
           depth: nextNode.depth ?? Number(node.depth ?? 0) + 1,
+          dragParentId: node.id,
+          dragDepth: Number(node.dragDepth ?? node.depth ?? 0) + 1,
           branchId: nextNode.branchId || fallbackBranchId,
         };
       });
@@ -1216,6 +1218,8 @@ export default function GraphPage() {
               existingNode?.depth !== undefined && existingNode?.depth !== null
                 ? Math.min(existingNode.depth, Number((n as any).depth ?? existingNode.depth))
                 : (n as any).depth,
+            dragParentId: (n as any).dragParentId ?? existingNode?.dragParentId,
+            dragDepth: (n as any).dragDepth ?? existingNode?.dragDepth,
             sourceDocuments: n.sourceDocuments ?? existingNode?.sourceDocuments ?? [],
           });
         });
@@ -1263,7 +1267,7 @@ export default function GraphPage() {
       });
     } catch (error) {
       console.error(error);
-      message.error("节点拓展失败");
+      message.error("节点扩展失败");
       setNodeExpandMap((prev) => {
         if (!prev[node.id]) return prev;
         return {
@@ -1279,9 +1283,6 @@ export default function GraphPage() {
 
   function handleNodeClick(node: EntityGraphNode) {
     setSelectedNodeId(node.id);
-    if (node.type !== "value" && node.expandable && !expandedNodeIds.has(node.id)) {
-      handleNodeExpand(node);
-    }
   }
 
   function handleEntityTypeChange(typeName: string | null) {
@@ -1410,6 +1411,8 @@ export default function GraphPage() {
             parentId: parentNode.id,
             relationFromParent: nextAttrKey,
             depth: (parentNode.depth ?? 0) + 1,
+            dragParentId: parentNode.id,
+            dragDepth: Number(parentNode.dragDepth ?? parentNode.depth ?? 0) + 1,
           };
           setGraphData((prev) => ({
             ...prev,
@@ -1434,7 +1437,7 @@ export default function GraphPage() {
               },
             };
           });
-          message.success("属性已成功新建并在图谱和属性列表中显示");
+          message.success("属性已成功新建，并在图谱和属性列表中显示");
           setEntityModalOpen(false);
           return;
         }
@@ -1466,6 +1469,7 @@ export default function GraphPage() {
           expandable: true,
           relationCount: 0,
           depth: 1,
+          dragDepth: 1,
           branchId: createdId,
         };
 
@@ -1488,7 +1492,7 @@ export default function GraphPage() {
           },
         }));
         setSelectedNodeId(createdId);
-        message.success("实体已成功新建并在画布中显示");
+        message.success("实体已成功新建，并在画布中显示");
         setEntityModalOpen(false);
         return;
       }
@@ -1601,8 +1605,8 @@ export default function GraphPage() {
     const nodeName = selectedNode.name || selectedNode.id;
     Modal.confirm({
       title: "确认删除节点",
-      content: `确定要删除「${nodeName}」吗？删除后在图谱中将不可恢复。`,
-      okText: "确定删除",
+      content: `确定要删除“${nodeName}”吗？删除后在图谱中将不可恢复。`,
+      okText: "确认删除",
       okType: "danger",
       cancelText: "取消",
       onOk: async () => {
@@ -1804,7 +1808,7 @@ export default function GraphPage() {
             </Button>
           </div>
 
-          <SectionBlock title="文档类型">
+          <SectionBlock title="来源类型">
             <div style={{ display: "grid", gap: 10 }}>
               <ModeSelectCard
                 title="自动上传"
@@ -2060,7 +2064,7 @@ export default function GraphPage() {
             height: "100%",
           }}
         >
-          {/* 视图模式双向切换 Tab 按钮 - 全局顶置显示 */}
+          {/* 视图模式切换 Tab */}
           <div
             style={{
               position: "absolute",
@@ -2184,11 +2188,11 @@ export default function GraphPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 14, height: 14, borderRadius: "50%", backgroundColor: "#94a3b8" }}></div>
-                <span style={{ fontSize: 12, color: "#475569" }}>实体 (实心圆)</span>
+                 <span style={{ fontSize: 12, color: "#475569" }}>实体（实心圆）</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 32, height: 16, borderRadius: 8, border: "1px dashed #94a3b8", display: "flex", alignItems: "center", justifyContent: "center" }}></div>
-                <span style={{ fontSize: 12, color: "#475569" }}>属性 (虚线胶囊)</span>
+                 <span style={{ fontSize: 12, color: "#475569" }}>属性（虚线胶囊）</span>
               </div>
             </div>
             
@@ -2230,7 +2234,7 @@ export default function GraphPage() {
                 重置
               </Button>
               {/* <Button type="text" icon={<ReloadOutlined />} onClick={() => void handleLoadGraphEntities()}>
-                换一批
+                 换一批
               </Button> */}
               <Button type="text" icon={<DownloadOutlined />} onClick={handleExport}>
                 导出
@@ -2243,7 +2247,7 @@ export default function GraphPage() {
 
           {graphLoading ? (
             <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
-              <Spin size="large" tip="图谱检索中..." />
+              <Spin size="large" tip="图谱加载中..." />
             </div>
           ) : currentDisplayGraphData.nodes.length > 0 ? (
             <EntityRelationGraph
@@ -2413,7 +2417,7 @@ export default function GraphPage() {
                       label="展开来源"
                       value={
                         selectedNode.parentId
-                          ? `${selectedNode.parentId} / ${selectedNode.relationFromParent || "关联"}`
+                          ? `${graphData.nodes.find((node) => node.id === selectedNode.parentId)?.name || apiCommunityGraphData.nodes.find((node) => node.id === selectedNode.parentId)?.name || selectedNode.parentId} / ${selectedNode.relationFromParent || "关联"}`
                           : "检索中心节点"
                       }
                       bordered={false}
@@ -2585,57 +2589,69 @@ export default function GraphPage() {
                   title="来源文档"
                   icon={<FileTextOutlined style={{ color: "#3b82f6" }} />}
                 >
-                  {selectedDetail.sourceDocuments.length > 0 ? selectedDetail.sourceDocuments.map((doc) => (
-                    <div
-                      key={doc.id}
-                      onClick={() => handleOpenDocument(doc)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        border: "1px solid #eef2f7",
-                        borderRadius: 12,
-                        padding: 12,
-                        marginBottom: 10,
-                        cursor: "pointer",
-                      }}
-                    >
+                  {selectedDetail.sourceDocuments.length > 0 ? (
+                    selectedDetail.sourceDocuments.map((doc) => (
                       <div
+                        key={doc.id}
+                        onClick={() => handleOpenDocument(doc)}
                         style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 10,
-                          background: doc.type === "pdf" ? "#fef2f2" : "#ecfdf5",
-                          color: doc.type === "pdf" ? "#ef4444" : "#10b981",
-                          display: "grid",
-                          placeItems: "center",
-                          flexShrink: 0,
-                          fontSize: 20,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          border: "1px solid #eef2f7",
+                          borderRadius: 12,
+                          padding: 12,
+                          marginBottom: 10,
+                          cursor: "pointer",
                         }}
                       >
-                        {doc.type === "pdf" ? <FilePdfOutlined /> : <FileTextOutlined />}
-                      </div>
-                      <div style={{ minWidth: 0, flex: 1 }}>
                         <div
                           style={{
-                            color: "#1f2937",
-                            fontWeight: 600,
-                            fontSize: 14,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            marginBottom: 4,
+                            width: 40,
+                            height: 40,
+                            borderRadius: 10,
+                            background: doc.type === "pdf" ? "#fef2f2" : "#ecfdf5",
+                            color: doc.type === "pdf" ? "#ef4444" : "#10b981",
+                            display: "grid",
+                            placeItems: "center",
+                            flexShrink: 0,
+                            fontSize: 20,
                           }}
                         >
-                          {doc.title}
+                          {doc.type === "pdf" ? <FilePdfOutlined /> : <FileTextOutlined />}
                         </div>
-                        <div style={{ color: "#64748b", fontSize: 12 }}>{doc.location}</div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div
+                            style={{
+                              color: "#1f2937",
+                              fontWeight: 600,
+                              fontSize: 14,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              marginBottom: 4,
+                            }}
+                          >
+                            {doc.title}
+                          </div>
+                          <div style={{ color: "#64748b", fontSize: 12 }}>{doc.location}</div>
+                        </div>
+                        <div
+                          style={{
+                            color: "#3b82f6",
+                            fontSize: 13,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          查看详情 <span style={{ fontSize: 12, fontWeight: 700 }}>-&gt;</span>
+                        </div>
                       </div>
-                      <div style={{ color: "#3b82f6", fontSize: 13, display: "flex", alignItems: "center", gap: 4 }}>
-                        查看详情 <span style={{ fontSize: 12, fontWeight: 700 }}>↗</span>
-                      </div>
-                    </div>
-                  )) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前实体暂无来源文档" />}
+                    ))
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前实体暂无来源文档。" />
+                  )}
                 </PanelSection>
               </>
             ) : (
@@ -2706,7 +2722,7 @@ export default function GraphPage() {
         <Form form={entityForm} layout="vertical" initialValues={{ nodeKind: "entity" }}>
           {entityModalMode === "add" && (!selectedNode || selectedNode.type === "value") && (
             <Alert
-              message="新建属性需绑定已存在的目标实体；当前未选定实体，仅支持新建实体。"
+              message="新建属性需要绑定已存在的目标实体；当前未选定实体，仅支持新建实体。"
               type="info"
               showIcon
               style={{ marginBottom: 16 }}

@@ -338,24 +338,24 @@ const renderHighlightedText = (text: string, keyword: string) => {
 
 const mapEntityType = (value: any): EntityType => {
   const text = String(value ?? '').toLowerCase();
-  if (text.includes('person') || text.includes('浜虹墿') || text.includes('浜哄悕')) {
+  if (text.includes('person') || text.includes('人物') || text.includes('人名')) {
     return 'person';
   }
   if (
     text.includes('organization') ||
     text.includes('company') ||
-    text.includes('缁勭粐') ||
-    text.includes('鍏徃')
+    text.includes('组织') ||
+    text.includes('公司')
   ) {
     return 'organization';
   }
-  if (text.includes('time') || text.includes('date') || text.includes('鏃堕棿')) {
+  if (text.includes('time') || text.includes('date') || text.includes('时间')) {
     return 'time';
   }
-  if (text.includes('product') || text.includes('浜у搧')) {
+  if (text.includes('product') || text.includes('产品')) {
     return 'product';
   }
-  if (text.includes('project') || text.includes('椤圭洰')) {
+  if (text.includes('project') || text.includes('项目')) {
     return 'project';
   }
   return 'term';
