@@ -69,6 +69,7 @@ import {
 } from './api';
 import DocumentPreviewModal from './DocumentPreviewModal';
 import KnowledgeExtractSnapshotView from '@/components/KnowledgeExtractSnapshotView';
+import { formatDateTime as formatDateTimeUtil } from '@/utils/date';
 
 const { Dragger } = Upload;
 
@@ -277,26 +278,7 @@ const extractIdList = (value: any): Array<number | string> => {
   return value.filter((item) => item !== undefined && item !== null && item !== '');
 };
 
-const formatDateTime = (value: any) => {
-  if (value === undefined || value === null || value === '') {
-    return '-';
-  }
-
-  if (typeof value === 'number' || /^\d+$/.test(String(value))) {
-    const date = new Date(Number(value));
-    if (!Number.isNaN(date.getTime())) {
-      const year = date.getFullYear();
-      const month = `${date.getMonth() + 1}`.padStart(2, '0');
-      const day = `${date.getDate()}`.padStart(2, '0');
-      const hours = `${date.getHours()}`.padStart(2, '0');
-      const minutes = `${date.getMinutes()}`.padStart(2, '0');
-      const seconds = `${date.getSeconds()}`.padStart(2, '0');
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    }
-  }
-
-  return String(value);
-};
+const formatDateTime = (value: any) => formatDateTimeUtil(value, '-');
 
 const formatDocumentFileSize = (value: any) => {
   if (value === undefined || value === null || value === '') {

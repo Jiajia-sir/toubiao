@@ -5,8 +5,10 @@ import {
   Card,
   Col,
   Descriptions,
+  Divider,
   Input,
   message,
+  Modal,
   Popconfirm,
   Row,
   Select,
@@ -25,6 +27,7 @@ import {
   physicalDeleteImportRecordBatch,
   type ImportTaskResult,
 } from '@/services/biz/structured-import';
+import { formatDateTime } from '@/utils/date';
 
 const { Text, Paragraph } = Typography;
 const PAGE_SIZE = 20;
@@ -47,6 +50,32 @@ function formatBytes(bytes?: number) {
   return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
+function parsePayload(payload?: string) {
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(payload);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatPayloadValue(value: any) {
+  if (value === undefined || value === null || value === '') return '-';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function buildPayloadSummary(payload?: string) {
+  const parsed = parsePayload(payload);
+  if (!parsed) return payload || '-';
+
+  return Object.entries(parsed)
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${formatPayloadValue(value)}`)
+    .join(' | ');
+}
+
 /**
  * 导入结果工作台（独立页面）。
  * 用于核对 Bronze 落地明细，并支持单条/批量物理删除纠错。
@@ -67,6 +96,7 @@ export default function ImportResultPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [payloadPreviewRecord, setPayloadPreviewRecord] = useState<any | null>(null);
 
   const loadTasks = async () => {
     const res: any = await getImportTaskPage({
@@ -180,11 +210,43 @@ export default function ImportResultPage() {
       title: 'Payload',
       dataIndex: 'payloadJson',
       ellipsis: true,
-      render: (v: string) => (
-        <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</Text>
-      ),
+      width: 320,
+      render: (value: string, record) => {
+        const parsed = parsePayload(value);
+        const entries = parsed ? Object.entries(parsed).slice(0, 3) : [];
+        return (
+          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+            {parsed ? (
+              <>
+                <Space size={[4, 4]} wrap>
+                  {entries.map(([key, itemValue]) => (
+                    <Tag key={key} style={{ marginInlineEnd: 0 }}>
+                      {key}: {formatPayloadValue(itemValue)}
+                    </Tag>
+                  ))}
+                  {Object.keys(parsed).length > 3 ? (
+                    <Tag style={{ marginInlineEnd: 0 }}>+{Object.keys(parsed).length - 3}</Tag>
+                  ) : null}
+                </Space>
+                <Button type="link" size="small" style={{ padding: 0 }} onClick={() => setPayloadPreviewRecord(record)}>
+                  查看详情
+                </Button>
+              </>
+            ) : (
+              <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                {buildPayloadSummary(value)}
+              </Text>
+            )}
+          </Space>
+        );
+      },
     },
-    { title: '抽取时间', dataIndex: 'extractedAt', width: 170 },
+    {
+      title: '抽取时间',
+      dataIndex: 'extractedAt',
+      width: 170,
+      render: (value: string | number | null) => formatDateTime(value, '-'),
+    },
     { title: 'Run', dataIndex: 'runId', width: 80 },
     {
       title: '操作',
@@ -271,7 +333,9 @@ export default function ImportResultPage() {
                 {taskResult.lastRunStatus || '-'}
               </Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="最近运行时间">{taskResult.lastRunTime || '-'}</Descriptions.Item>
+            <Descriptions.Item label="最近运行时间">
+              {formatDateTime(taskResult.lastRunTime, '-')}
+            </Descriptions.Item>
             <Descriptions.Item label="落地字节">{formatBytes(taskResult.lastByteCount)}</Descriptions.Item>
           </Descriptions>
           <Row gutter={16} style={{ marginTop: 16 }}>
@@ -312,15 +376,26 @@ export default function ImportResultPage() {
           }}
           expandable={{
             expandedRowRender: (record) => (
-              <pre style={{ margin: 0, maxHeight: 280, overflow: 'auto', background: '#f8fafc', padding: 12 }}>
-                {(() => {
-                  try {
-                    return JSON.stringify(JSON.parse(record.payloadJson || '{}'), null, 2);
-                  } catch {
-                    return record.payloadJson || '';
-                  }
-                })()}
-              </pre>
+              (() => {
+                const parsed = parsePayload(record.payloadJson);
+                return parsed ? (
+                  <div style={{ background: '#f8fafc', padding: 12, borderRadius: 8 }}>
+                    <Descriptions size="small" bordered column={2}>
+                      {Object.entries(parsed).map(([key, value]) => (
+                        <Descriptions.Item key={key} label={key}>
+                          <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                            {formatPayloadValue(value)}
+                          </Text>
+                        </Descriptions.Item>
+                      ))}
+                    </Descriptions>
+                  </div>
+                ) : (
+                  <pre style={{ margin: 0, maxHeight: 280, overflow: 'auto', background: '#f8fafc', padding: 12 }}>
+                    {record.payloadJson || ''}
+                  </pre>
+                );
+              })()
             ),
           }}
           pagination={{
@@ -333,6 +408,58 @@ export default function ImportResultPage() {
           }}
         />
       </Card>
+      <Modal
+        open={!!payloadPreviewRecord}
+        title={`Payload 详情${payloadPreviewRecord?.id ? ` #${payloadPreviewRecord.id}` : ''}`}
+        footer={null}
+        width={860}
+        onCancel={() => setPayloadPreviewRecord(null)}
+      >
+        {payloadPreviewRecord ? (
+          (() => {
+            const parsed = parsePayload(payloadPreviewRecord.payloadJson);
+            return parsed ? (
+              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <Descriptions size="small" bordered column={2}>
+                  {Object.entries(parsed).map(([key, value]) => (
+                    <Descriptions.Item key={key} label={key}>
+                      <Text style={{ fontFamily: 'monospace', fontSize: 12 }}>
+                        {formatPayloadValue(value)}
+                      </Text>
+                    </Descriptions.Item>
+                  ))}
+                </Descriptions>
+                <Divider style={{ margin: 0 }}>原始 JSON</Divider>
+                <pre
+                  style={{
+                    margin: 0,
+                    maxHeight: 320,
+                    overflow: 'auto',
+                    background: '#f8fafc',
+                    padding: 12,
+                    borderRadius: 8,
+                  }}
+                >
+                  {JSON.stringify(parsed, null, 2)}
+                </pre>
+              </Space>
+            ) : (
+              <pre
+                style={{
+                  margin: 0,
+                  maxHeight: 420,
+                  overflow: 'auto',
+                  background: '#f8fafc',
+                  padding: 12,
+                  borderRadius: 8,
+                }}
+              >
+                {payloadPreviewRecord.payloadJson || ''}
+              </pre>
+            );
+          })()
+        ) : null}
+      </Modal>
     </Space>
   );
 }

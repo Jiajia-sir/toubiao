@@ -101,6 +101,7 @@ import {
   type ImportTaskResult,
 } from '@/services/biz/structured-import';
 import dayjs from 'dayjs';
+import { formatDateTime as formatDateTimeUtil } from '@/utils/date';
 
 const { Search } = Input;
 const { Dragger } = Upload;
@@ -2396,11 +2397,18 @@ export default function MonitorPage() {
   const formatDateTime = (value: any): string => {
     if (value === null || value === undefined || value === '') return '';
     if (typeof value === 'string') {
+      if (/^\d+$/.test(value)) {
+        const raw = Number(value);
+        const timestamp = value.length <= 10 ? raw * 1000 : raw;
+        const d = dayjs(timestamp);
+        return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : value;
+      }
       const d = dayjs(value);
       return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : value;
     }
     if (typeof value === 'number') {
-      const d = dayjs(value);
+      const timestamp = String(Math.abs(value)).length <= 10 ? value * 1000 : value;
+      const d = dayjs(timestamp);
       return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : String(value);
     }
     if (value instanceof Date) {
@@ -6556,7 +6564,11 @@ export default function MonitorPage() {
                   { title: '对象', dataIndex: 'objectName' },
                   { title: '类型', dataIndex: 'objectKind', width: 100 },
                   { title: '条数', dataIndex: 'recordCount', width: 100 },
-                  { title: '最近抽取', dataIndex: 'lastExtractedAt' },
+                  {
+                    title: '最近抽取',
+                    dataIndex: 'lastExtractedAt',
+                    render: (value: any) => formatDateTimeUtil(value, '-'),
+                  },
                 ]}
               />
             </>
