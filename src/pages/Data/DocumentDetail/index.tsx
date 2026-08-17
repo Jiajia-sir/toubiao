@@ -199,6 +199,9 @@ const stripHtml = (value: string) =>
 
 const toPlainText = (value: any) => stripHtml(String(value ?? ''));
 
+const getDocumentGraphWay = (channelName: any) =>
+  toPlainText(channelName) === '页面上传' ? 'front_upload' : 'auto_read';
+
 const toRichTextList = (value: any): string[] => {
   if (Array.isArray(value)) {
     return value
@@ -1067,7 +1070,10 @@ export default function DataDetailPage() {
     setGraphOpen(true);
     setGraphLoading(true);
     try {
-      const response = await getDocumentKnowledgeGraph(params.id || document.id);
+      const response = await getDocumentKnowledgeGraph(
+        params.id || document.id,
+        getDocumentGraphWay(detailData?.channelName),
+      );
       setGraphData(extractResultData<DocumentKnowledgeGraphResult>(response));
     } catch (error) {
       console.error(error);
