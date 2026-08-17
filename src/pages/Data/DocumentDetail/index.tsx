@@ -710,6 +710,7 @@ export default function DataDetailPage() {
   const params = useParams<{ id: string }>();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
+  const sourceTab = searchParams.get('tab');
   const initialPreviewMode = searchParams.get('previewMode') === 'original' ? 'original' : 'parsed';
   const [graphOpen, setGraphOpen] = useState(false);
   const [graphLoading, setGraphLoading] = useState(false);
@@ -741,6 +742,14 @@ export default function DataDetailPage() {
   const sourceEsId = searchParams.get('esId');
   const sourceKeyword = searchParams.get('keyword');
   const sourcePreviewMode = searchParams.get('previewMode');
+
+  const handleBack = () => {
+    if (sourceTab === '1' || sourceTab === '2') {
+      history.push(`/data/document-import?tab=${sourceTab}`);
+      return;
+    }
+    history.go(-1);
+  };
 
   useEffect(() => {
     setPreviewKeyword(sourceKeyword || '');
@@ -1131,7 +1140,7 @@ export default function DataDetailPage() {
             >
               <Button
                 icon={<ArrowLeftOutlined />}
-                onClick={() => history.go(-1)}
+                onClick={handleBack}
                 style={{
                   width: 40,
                   height: 40,
@@ -1301,7 +1310,7 @@ export default function DataDetailPage() {
               <Empty description={detailError || '当前文档不存在'} />
               <Button
                 icon={<ArrowLeftOutlined />}
-                onClick={() => history.go(-1)}
+                onClick={handleBack}
                 style={{ marginTop: 12 }}
               >
                 返回上一页

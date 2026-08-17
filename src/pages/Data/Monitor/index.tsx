@@ -33,8 +33,8 @@ import {
   Popover,
   Slider,
   Descriptions,
+  theme,
 } from 'antd';
-import type { TabsProps } from 'antd';
 import {
   DeleteOutlined,
   EditOutlined,
@@ -62,6 +62,7 @@ import {
   LoadingOutlined,
   CloudUploadOutlined,
   ClockCircleOutlined,
+  CaretRightFilled,
   ArrowUpOutlined,
   ArrowDownOutlined,
   EyeOutlined,
@@ -82,22 +83,14 @@ import EntityRelationGraph, {
 import type { KnowledgeGraphData } from '@/data/documentGraph';
 import type { EntityGraphData, EntityGraphNodeType } from '@/data/entityGraphMock';
 import {
-  getDataSourcePage,
-  listDataSourceFields,
-  listDataSourceObjects,
-  previewDataSourceObject,
   type DataSourceRecord,
 } from '@/services/biz/data-source';
 import {
   getImportRunPage,
-  getImportStatsOverview,
   retryImportRun,
   stopImportRun,
-  triggerImportTask,
-  getImportTaskPage,
   getImportTaskResult,
   type ImportRunRecord,
-  type ImportStatsOverview,
   type ImportTaskResult,
 } from '@/services/biz/structured-import';
 import dayjs from 'dayjs';
@@ -110,6 +103,49 @@ const compactMetricCardStyle = {
   padding: '10px 12px',
   borderRadius: 14,
 } as const;
+
+function DirectionalMotionIcon({
+  type,
+  animated = false,
+}: {
+  type: 'read' | 'write';
+  animated?: boolean;
+}) {
+  const baseOffset = type === 'read' ? -4 : 4;
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    if (!animated) {
+      setOffset(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setOffset((prev) => (prev === 0 ? baseOffset : 0));
+    }, 360);
+
+    return () => window.clearInterval(timer);
+  }, [animated, baseOffset]);
+
+  const isRead = type === 'read';
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: isRead ? '#2563eb' : '#16a34a',
+        lineHeight: 1,
+        transform: `translateY(${offset}px)`,
+        opacity: animated ? (offset === 0 ? 1 : 0.38) : 1,
+        transition: animated ? 'transform 0.28s ease, opacity 0.28s ease' : 'none',
+      }}
+    >
+      {isRead ? <ArrowDownOutlined /> : <ArrowUpOutlined />}
+    </span>
+  );
+}
 
 function CompactGraphPreviewToolbar({
   graphName,
@@ -486,6 +522,8 @@ interface ImportJob {
   id: string;
   taskId?: number;
   name: string;
+  triggerType?: string;
+  traceId?: string;
   source: string;
   type: 'document' | 'database';
   status: 'running' | 'paused' | 'completed' | 'error' | 'waiting';
@@ -496,6 +534,8 @@ interface ImportJob {
   recordsProcessed: number;
   recordsSuccess: number;
   recordsError: number;
+  recordsRead?: number;
+  recordsSkipped?: number;
   /** 真实落地字节量（来自后端 byteCount，单位 Byte） */
   dataSent: number;
   /** 当前与 dataSent 同口径：平台入库字节量（Bronze payload） */
@@ -595,6 +635,36 @@ const frequencyOptions = [
   { label: '每小时', value: 'hourly' },
   { label: '每天 02:00', value: 'daily' },
 ];
+
+const triggerTypeLabelMap: Record<string, string> = {
+  MANUAL: '手动触发',
+  CRON: '定时触发',
+};
+
+const getTriggerTypeLabel = (triggerType?: string) => {
+  if (!triggerType) return '-';
+  return triggerTypeLabelMap[triggerType] || triggerType;
+};
+
+const getTriggerTypeTagStyle = (triggerType: string | undefined, token: any) => {
+  return {
+    border: `1px solid ${token.colorPrimaryBorder}`,
+    background: token.colorPrimaryBg,
+    color: token.colorPrimaryText,
+  };
+};
+
+const getTriggerTypeIcon = (triggerType?: string) => {
+  if (triggerType === 'MANUAL') {
+    return <CaretRightFilled />;
+  }
+
+  if (triggerType === 'CRON') {
+    return <ClockCircleOutlined />;
+  }
+
+  return null;
+};
 
 const databaseTypeOptions = [
   { label: 'MySQL', value: 'mysql' },
@@ -2313,17 +2383,21 @@ const catalogOptions = [
 ];
 
 export default function MonitorPage() {
-  const [activeTab, setActiveTab] = useState<string>('monitor');
+  const { token } = theme.useToken();
   const [activeAlertKey, setActiveAlertKey] = useState<string[]>(
     initialImportJobs.length > 0 ? [initialImportJobs[0].id] : [],
   );
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
   const [documentFiles, setDocumentFiles] = useState<DocumentFile[]>(sampleDocumentFiles);
   const [importJobs, setImportJobs] = useState<ImportJob[]>([]);
+  const [importRunPageNo, setImportRunPageNo] = useState(1);
+  const [importRunPageSize, setImportRunPageSize] = useState(10);
+  const [importRunTotal, setImportRunTotal] = useState(0);
+  const [importRunTriggerType, setImportRunTriggerType] = useState<string | undefined>();
+  const [importRunStatus, setImportRunStatus] = useState<string | undefined>();
   const [docImportTasks, setDocImportTasks] = useState<DocImportTask[]>(initialDocImportTasks);
 
   const [loading, setLoading] = useState(false);
-  const [statsOverview, setStatsOverview] = useState<ImportStatsOverview | null>(null);
   const [taskResultDrawer, setTaskResultDrawer] = useState(false);
   const [taskResultLoading, setTaskResultLoading] = useState(false);
   const [taskResultDetail, setTaskResultDetail] = useState<ImportTaskResult | null>(null);
@@ -2350,7 +2424,6 @@ export default function MonitorPage() {
 
 
   const [selectedSource, setSelectedSource] = useState<DataSource | null>(null);
-  const [liveCatalogMap, setLiveCatalogMap] = useState<Record<string, DatabaseCatalog[]>>({});
 
   const mapStatusFromLastTest = (status?: number | null): DataSource['status'] => {
     if (status === 1) return 'connected';
@@ -2461,11 +2534,14 @@ export default function MonitorPage() {
     const read = Number(run.readCount || 0);
     const write = Number(run.writeCount || 0);
     const fail = Number(run.failCount || 0);
+    const skip = Number(run.skipCount || 0);
     const processed = write + fail;
     return {
       id: String(run.id),
       taskId: run.taskId ? Number(run.taskId) : undefined,
       name: run.taskName || `运行#${run.id}`,
+      triggerType: run.triggerType,
+      traceId: run.traceId,
       source: `${run.sourceType || '-'} / 数据源${run.dataSourceId || ''}`,
       type: 'database',
       status: mapRunStatus(run.status),
@@ -2476,6 +2552,8 @@ export default function MonitorPage() {
       recordsProcessed: processed,
       recordsSuccess: write,
       recordsError: fail,
+      recordsRead: read,
+      recordsSkipped: skip,
       // byteCount 为真实 payload 写入字节累计，不是前端 mock
       dataSent: Number(run.byteCount || 0),
       dataReceived: Number(run.byteCount || 0),
@@ -2496,22 +2574,18 @@ export default function MonitorPage() {
   const loadMonitorRealtimeData = async () => {
     setLoading(true);
     try {
-      const [dsRes, runRes, statsRes]: any[] = await Promise.all([
-        getDataSourcePage({ pageNo: 1, pageSize: 100 }),
-        getImportRunPage({ pageNo: 1, pageSize: 50 }),
-        getImportStatsOverview(),
-      ]);
-      const dsList = (dsRes?.data?.list || dsRes?.list || []).map(toMonitorDataSource);
+      const runRes: any = await getImportRunPage({
+        pageNo: importRunPageNo,
+        pageSize: importRunPageSize,
+        triggerType: importRunTriggerType || undefined,
+        status: importRunStatus || undefined,
+      });
+      const dsList: DataSource[] = [];
       const runList = (runRes?.data?.list || runRes?.list || []).map(toImportJob);
+      const runTotal = runRes?.data?.total ?? runRes?.total ?? runList.length;
       setDataSources(dsList);
       setImportJobs(runList);
-      setStatsOverview(statsRes?.data || statsRes || null);
-      if (!selectedSource && dsList.length) {
-        setSelectedSource(dsList[0]);
-      } else if (selectedSource) {
-        const refreshed = dsList.find((item: DataSource) => item.id === selectedSource.id);
-        if (refreshed) setSelectedSource(refreshed);
-      }
+      setImportRunTotal(runTotal);
     } catch (error) {
       console.error(error);
       message.error('加载监控数据失败，请确认后端服务已启动且已执行 SQL');
@@ -2526,7 +2600,7 @@ export default function MonitorPage() {
       loadMonitorRealtimeData();
     }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [importRunPageNo, importRunPageSize, importRunTriggerType, importRunStatus]);
 
 
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false);
@@ -2546,132 +2620,6 @@ export default function MonitorPage() {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [labelMaxLength, setLabelMaxLength] = useState<number>(7);
   const [linkWidth, setLinkWidth] = useState<number>(1.35);
-
-  useEffect(() => {
-    if (!selectedSource) {
-      setSelectedCatalogId(null);
-      setSelectedObjectId(null);
-      setTableDetailSearch('');
-      setCatalogSearch('');
-      setObjectSearch('');
-      setObjectKindFilter('all');
-      setDetailTab('fields');
-      return;
-    }
-
-    let cancelled = false;
-    const loadCatalog = async () => {
-      try {
-        const res: any = await listDataSourceObjects(selectedSource.id);
-        const objects = (res?.data || res || []) as Array<any>;
-        const tables: DatabaseObjectDetail[] = objects.slice(0, 200).map((obj: any) => {
-          const kindRaw = String(obj.objectKind || 'table').toLowerCase();
-          const kind = (
-            ['table', 'view', 'collection', 'vertex', 'edge'].includes(kindRaw)
-              ? kindRaw
-              : kindRaw === 'node'
-                ? 'vertex'
-                : kindRaw === 'tag'
-                  ? 'vertex'
-                  : 'table'
-          ) as DatabaseObjectDetail['kind'];
-          return {
-            id: obj.objectName,
-            name: obj.objectName,
-            kind,
-            rowCount: '-',
-            storage: selectedSource.type,
-            updatedAt: '-',
-            description: obj.remark || '',
-            fields: [],
-            indexes: [],
-            sampleRows: [],
-          };
-        });
-        if (cancelled) return;
-        const catalog: DatabaseCatalog = {
-          id: `live-${selectedSource.id}`,
-          name: selectedSource.database || selectedSource.name,
-          engine: selectedSource.type,
-          description: selectedSource.description || '实时探查',
-          owner: selectedSource.owner,
-          tables,
-        };
-        setLiveCatalogMap((prev) => ({ ...prev, [selectedSource.id]: [catalog] }));
-        setSelectedCatalogId(catalog.id);
-        setSelectedObjectId(tables[0]?.id || null);
-        setDetailTab('fields');
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) {
-          // 回退 mock 结构，保证页面仍可浏览
-          const catalogs = databaseCatalogMap[selectedSource.id] || [];
-          const firstCatalog = catalogs[0] || null;
-          const firstObject = firstCatalog?.tables[0] || null;
-          setSelectedCatalogId(firstCatalog?.id || null);
-          setSelectedObjectId(firstObject?.id || null);
-        }
-      }
-    };
-
-    loadCatalog();
-    setTableDetailSearch('');
-    setCatalogSearch('');
-    setObjectSearch('');
-    setObjectKindFilter('all');
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSource]);
-
-  useEffect(() => {
-    if (!selectedSource || !selectedObjectId) return;
-    let cancelled = false;
-    const loadObjectDetail = async () => {
-      try {
-        const [fieldRes, previewRes]: any[] = await Promise.all([
-          listDataSourceFields(selectedSource.id, selectedObjectId),
-          previewDataSourceObject(selectedSource.id, selectedObjectId, 10),
-        ]);
-        if (cancelled) return;
-        const fields: DatabaseObjectField[] = (fieldRes?.data || fieldRes || []).map((f: any) => ({
-          name: f.fieldName,
-          type: f.fieldType || '-',
-          nullable: f.nullable,
-          keyRole: f.primaryKey ? 'PK' : undefined,
-          description: f.remark || '',
-          sample: '',
-        }));
-        const sampleRows = (previewRes?.data?.rows || previewRes?.rows || []) as Array<
-          Record<string, string | number>
-        >;
-        setLiveCatalogMap((prev) => {
-          const catalogs = prev[selectedSource.id] || [];
-          if (!catalogs.length) return prev;
-          const nextCatalogs = catalogs.map((catalog) => ({
-            ...catalog,
-            tables: catalog.tables.map((table) =>
-              table.id === selectedObjectId
-                ? {
-                    ...table,
-                    fields,
-                    sampleRows,
-                  }
-                : table,
-            ),
-          }));
-          return { ...prev, [selectedSource.id]: nextCatalogs };
-        });
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    loadObjectDetail();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSource, selectedObjectId]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -2698,8 +2646,7 @@ export default function MonitorPage() {
   }, [currentTime]);
 
   useEffect(() => {
-    if (activeTab === 'monitor') {
-      intervalRef.current = setInterval(() => {
+    intervalRef.current = setInterval(() => {
         setStatsUpdated((prev) => prev + 1);
         setCurrentTime(new Date().toLocaleTimeString());
 
@@ -2843,14 +2790,13 @@ export default function MonitorPage() {
           }),
         );
       }, 1000);
-    }
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [activeTab]);
+  }, []);
 
   const filteredDataSources = dataSources.filter((item) => {
     if (typeFilter && item.type !== typeFilter) return false;
@@ -3486,7 +3432,7 @@ export default function MonitorPage() {
   };
 
   const selectedPreview = selectedSource ? structuredPreviewMap[selectedSource.id] : undefined;
-  const selectedCatalogs = selectedSource ? (liveCatalogMap[selectedSource.id] || databaseCatalogMap[selectedSource.id] || []) : [];
+  const selectedCatalogs = selectedSource ? (databaseCatalogMap[selectedSource.id] || []) : [];
   const selectedCatalog =
     selectedCatalogs.find((item) => item.id === selectedCatalogId) || selectedCatalogs[0] || null;
   const selectedDatabaseObject =
@@ -4383,7 +4329,7 @@ export default function MonitorPage() {
       key: 'name',
       width: 200,
       render: (name: string, record: DocImportTask) => (
-        <Space direction="vertical" size={0}>
+        <Space direction="vertical" size={0} style={{ alignItems: 'center' }}>
           <span style={{ fontWeight: 500, color: '#1890ff' }}>{name}</span>
           <span style={{ fontSize: 11, color: '#999' }}>
             {record.serverIP}:{record.serverPort}
@@ -4537,42 +4483,78 @@ export default function MonitorPage() {
       title: '任务名称',
       dataIndex: 'name',
       key: 'name',
-      width: 180,
-      render: (name: string, record: ImportJob) => (
-        <span style={{ fontWeight: 500, color: '#1890ff' }}>{name}</span>
+      width: 290,
+      render: (name: string, record: ImportJob) => {
+        const triggerTypeTagStyle = getTriggerTypeTagStyle(record.triggerType, token);
 
-        // <Space>
-        //   <span style={{ fontWeight: 500 }}>{name}</span>
-        //   {record.alerts.filter((a) => a.level === "error").length > 0 && (
-        //     <Badge
-        //       count={record.alerts.filter((a) => a.level === "error").length}
-        //     />
-        //   )}
-        // </Space>
-      ),
-    },
-    {
-      title: '数据类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 100,
-      render: (type: string) => (
-        <Tag icon={type === 'document' ? <FileOutlined /> : <DatabaseOutlined />}>
-          {type === 'document' ? '文档' : '数据库'}
-        </Tag>
-      ),
+        return (
+          <div style={{ minWidth: 0, padding: '3px 0' }}>
+            <div
+              title={name}
+              style={{
+                marginBottom: 7,
+                overflow: 'hidden',
+                color: token.colorText,
+                fontSize: 13,
+                fontWeight: 600,
+                lineHeight: '20px',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {name}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  flexShrink: 0,
+                  padding: '1px 7px',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  lineHeight: '16px',
+                  ...triggerTypeTagStyle,
+                }}
+              >
+                {getTriggerTypeIcon(record.triggerType)}
+                {getTriggerTypeLabel(record.triggerType)}
+              </span>
+              <Tooltip title={record.traceId ? `Trace ID：${record.traceId}` : '暂无 Trace ID'}>
+                <span
+                  style={{
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    color: token.colorTextTertiary,
+                    fontFamily: 'Consolas, Monaco, monospace',
+                    fontSize: 10,
+                    lineHeight: '18px',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Trace: {record.traceId || '-'}
+                </span>
+              </Tooltip>
+            </div>
+          </div>
+        );
+      },
     },
     {
       title: '数据源',
       dataIndex: 'source',
       key: 'source',
       width: 160,
+      align: 'center' as const,
     },
     {
       title: '进度',
       dataIndex: 'progress',
       key: 'progress',
       width: 150,
+      align: 'center' as const,
       render: (progress: number, record: ImportJob) => (
         <Progress
           percent={progress}
@@ -4588,12 +4570,40 @@ export default function MonitorPage() {
       ),
     },
     {
-      title: '已同步/总量',
-      key: 'records',
-      width: 120,
+      title: '读取/写入',
+      key: 'readWriteRecords',
+      width: 110,
+      align: 'center' as const,
+      render: (_: any, record: ImportJob) => {
+        const isRunning = record.status === 'running';
+
+        return (
+          <span className="monitorReadWriteValue">
+            <span className="monitorReadWriteValue__icon is-read">
+              <DirectionalMotionIcon type="read" animated={isRunning} />
+            </span>
+            <span className="monitorReadWriteValue__number">
+              {(record.recordsRead ?? record.recordsTotal).toLocaleString()}
+            </span>
+            <span className="monitorReadWriteValue__divider">/</span>
+            <span className="monitorReadWriteValue__icon is-write">
+              <DirectionalMotionIcon type="write" animated={isRunning} />
+            </span>
+            <span className="monitorReadWriteValue__number">
+              {record.recordsSuccess.toLocaleString()}
+            </span>
+          </span>
+        );
+      },
+    },
+    {
+      title: '失败/跳过',
+      key: 'failedSkippedRecords',
+      width: 110,
+      align: 'center' as const,
       render: (_: any, record: ImportJob) => (
         <span style={{ fontSize: 12 }}>
-          {record.recordsProcessed.toLocaleString()}/{record.recordsTotal.toLocaleString()}
+          {record.recordsError.toLocaleString()}/{(record.recordsSkipped ?? 0).toLocaleString()}
         </span>
       ),
     },
@@ -4601,6 +4611,7 @@ export default function MonitorPage() {
       title: '数据量',
       key: 'data',
       width: 150,
+      align: 'center' as const,
       render: (_: any, record: ImportJob) => (
         <Space direction="vertical" size={0}>
           <Tooltip title="入库字节量：后端累计 payload JSON 字节（byteCount）">
@@ -4627,6 +4638,7 @@ export default function MonitorPage() {
       dataIndex: 'status',
       key: 'status',
       width: 100,
+      align: 'center' as const,
       render: (status: string) => {
         const config = statusConfig[status];
         return (
@@ -4637,22 +4649,39 @@ export default function MonitorPage() {
       },
     },
     {
-      title: '开始时间',
+      title: '执行时间',
       dataIndex: 'startTime',
       key: 'startTime',
-      width: 160,
+      width: 185,
+      align: 'center' as const,
       render: (time: string, record: ImportJob) => (
-        <span style={{ fontSize: 12 }}>
-          {time}
-          {record.endTime && <br />}
-          {record.endTime}
-        </span>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 11,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ color: token.colorTextTertiary }}>开始</span>
+            <span style={{ color: token.colorText }}>{time}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ color: token.colorTextTertiary }}>完成</span>
+            <span style={{ color: record.endTime ? token.colorText : token.colorPrimary }}>
+              {record.endTime || '进行中'}
+            </span>
+          </div>
+        </div>
       ),
     },
     {
       title: '操作',
       key: 'action',
       width: 220,
+      align: 'center' as const,
       render: (_: any, record: ImportJob) => (
         <Space size="small" wrap>
           {record.type === 'database' && (
@@ -4725,187 +4754,146 @@ export default function MonitorPage() {
     const failedJobs = importJobs.filter((j) => j.status === 'error');
     const totalDataSent = runningJobs.reduce((sum, j) => sum + j.dataSent, 0);
     const totalDataReceived = runningJobs.reduce((sum, j) => sum + j.dataReceived, 0);
-
-    const statCardStyle: React.CSSProperties = {
-      borderRadius: 18,
-      border: '1px solid #b3d8ff',
-      boxShadow: '0 8px 18px rgba(64, 158, 255, 0.12)',
-      overflow: 'hidden',
-    };
-
-    const runningCardBgStyle: React.CSSProperties = {
-      background: 'linear-gradient(180deg, #f5faff 0%, #ecf5ff 100%)',
-      position: 'relative',
-    };
-
-    const failedCardBgStyle: React.CSSProperties = {
-      background: 'linear-gradient(180deg, #f5faff 0%, #ecf5ff 100%)',
-      position: 'relative',
-    };
-
-    const statHeaderStyle: React.CSSProperties = {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: '16px 20px 12px',
-      borderBottom: '1px solid #d9ecff',
-    };
-
-    const statValueStyle: React.CSSProperties = {
-      fontSize: 32,
-      fontWeight: 700,
-    };
-
-    const statLabelStyle: React.CSSProperties = {
-      fontSize: 13,
-      color: '#606266',
-      marginTop: 4,
-    };
-
-    const dataTransferCardStyle: React.CSSProperties = {
-      borderRadius: 18,
-      border: '1px solid #b3d8ff',
-      boxShadow: '0 8px 18px rgba(64, 158, 255, 0.12)',
-      overflow: 'hidden',
-    };
-
-    const dataTransferBgStyle: React.CSSProperties = {
-      background: 'linear-gradient(180deg, #f5faff 0%, #ecf5ff 100%)',
-    };
+    const latestRunningJob = runningJobs[0];
 
     return (
-      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col span={6}>
-          <Card
-            style={{ ...statCardStyle, ...runningCardBgStyle }}
-            styles={{ body: { padding: 0 } }}
-          >
-            <div style={statHeaderStyle}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#303133' }}>运行中任务</span>
-              <div
-                style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: 10,
-                  background: '#d9ecff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <LoadingOutlined spin style={{ color: '#2563eb', fontSize: 18 }} />
-              </div>
-            </div>
-            <div style={{ padding: '16px 20px 20px' }}>
-              <div style={{ ...statValueStyle, color: '#303133' }}>{runningJobs.length}</div>
-              <div style={statLabelStyle}>个任务正在执行</div>
-            </div>
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card
-            style={{ ...statCardStyle, ...failedCardBgStyle }}
-            styles={{ body: { padding: 0 } }}
-          >
-            <div style={statHeaderStyle}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#303133' }}>失败任务</span>
-              <div
-                style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: 10,
-                  background: '#fef0f0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <CloseCircleOutlined style={{ color: '#dc2626', fontSize: 18 }} />
-              </div>
-            </div>
-            <div style={{ padding: '16px 20px 20px' }}>
-              <div style={{ ...statValueStyle, color: '#303133' }}>{failedJobs.length}</div>
-              <div style={statLabelStyle}>个任务执行失败</div>
-            </div>
-          </Card>
-        </Col>
-        <Col span={12}>
-          <Card
-            style={{ ...dataTransferCardStyle, ...dataTransferBgStyle }}
-            styles={{ body: { padding: 0 } }}
-          >
-            <div
+      <Card
+        style={{
+          marginBottom: 20,
+          borderRadius: 16,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          boxShadow: '0 10px 30px rgba(31, 56, 88, 0.07)',
+          overflow: 'hidden',
+          background: token.colorBgContainer,
+        }}
+        styles={{ body: { padding: 0 } }}
+      >
+        <div
+          style={{
+            height: 3,
+            background: token.colorPrimary,
+          }}
+        />
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '15px 22px 13px',
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            background: token.colorBgContainer,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '16px 20px 12px',
-                borderBottom: '1px solid #d9ecff',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: token.colorPrimary,
+                boxShadow: `0 0 0 5px ${token.colorPrimaryBg}`,
+              }}
+            />
+            <span style={{ color: token.colorText, fontSize: 14, fontWeight: 650 }}>运行概览</span>
+          </div>
+          {/* {latestRunningJob && (
+            <div
+              title={latestRunningJob.name}
+              style={{
+                maxWidth: 300,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                color: token.colorTextSecondary,
+                fontSize: 12,
               }}
             >
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#303133' }}>数据传输</span>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 8,
-                }}
-              >
-                <div
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    background: '#f0f7ff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <ArrowUpOutlined style={{ color: '#16a34a', fontSize: 12 }} />
-                  <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 500 }}>发送</span>
-                </div>
-                <div
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    background: '#f0f7ff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  <ArrowDownOutlined style={{ color: '#2563eb', fontSize: 12 }} />
-                  <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 500 }}>接收</span>
-                </div>
-              </div>
+              {latestRunningJob.name}
             </div>
-            <Row>
-              <Col span={12}>
-                <div
+          )} */}
+        </div>
+        <Row
+          style={{
+            padding: '20px 6px 22px',
+            background: '#f1f4f7',
+          }}
+        >
+          {[
+            {
+              label: '运行中任务',
+              value: runningJobs.length,
+              suffix: '',
+              color: token.colorPrimary,
+              icon: <LoadingOutlined spin />,
+            },
+            {
+              label: '失败任务',
+              value: failedJobs.length,
+              suffix: '',
+              color: failedJobs.length > 0 ? token.colorError : token.colorPrimary,
+              icon: <CloseCircleOutlined />,
+            },
+            {
+              label: '数据发送量',
+              value: (totalDataSent / 1024 / 1024).toFixed(2),
+              suffix: 'MB',
+              color: token.colorSuccess,
+              icon: <ArrowUpOutlined />,
+            },
+            {
+              label: '数据接收量',
+              value: (totalDataReceived / 1024 / 1024).toFixed(2),
+              suffix: 'MB',
+              color: token.colorPrimary,
+              icon: <ArrowDownOutlined />,
+            },
+          ].map((item, index) => (
+            <Col
+              span={6}
+              key={item.label}
+              style={{
+                padding: '0 22px',
+                borderLeft: index === 0 ? 'none' : '1px solid #e3e8ef',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+                <span
                   style={{
-                    padding: '20px 20px 16px',
-                    borderRight: '1px solid #d9ecff',
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: item.color,
+                    fontSize: 13,
+                    background: token.colorBgContainer,
+                    border: `1px solid ${token.colorBorderSecondary}`,
                   }}
                 >
-                  <div style={{ ...statValueStyle, color: '#409eff' }}>
-                    {(totalDataSent / 1024 / 1024).toFixed(2)}
-                    <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}>MB</span>
-                  </div>
-                  <div style={statLabelStyle}>数据发送量</div>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div style={{ padding: '20px 20px 16px' }}>
-                  <div style={{ ...statValueStyle, color: '#409eff' }}>
-                    {(totalDataReceived / 1024 / 1024).toFixed(2)}
-                    <span style={{ fontSize: 14, fontWeight: 400, marginLeft: 4 }}>MB</span>
-                  </div>
-                  <div style={statLabelStyle}>数据接收量</div>
-                </div>
-              </Col>
-            </Row>
-          </Card>
-        </Col>
-      </Row>
+                  {item.icon}
+                </span>
+                <span style={{ color: token.colorTextSecondary, fontSize: 12 }}>{item.label}</span>
+              </div>
+              <div style={{ color: item.color, fontSize: 30, fontWeight: 700, lineHeight: 1 }}>
+                {item.value}
+                {item.suffix && (
+                  <span
+                    style={{
+                      marginLeft: 5,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      color: token.colorTextTertiary,
+                    }}
+                  >
+                    {item.suffix}
+                  </span>
+                )}
+              </div>
+            </Col>
+          ))}
+        </Row>
+      </Card>
     );
   };
 
@@ -5109,438 +5097,194 @@ export default function MonitorPage() {
 
   return (
     <div className={styles.monitorPage}>
-      {activeTab === 'monitor' && (
-        <div key="monitor" className="slide-in-right">
-          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-            <Col span={18}>
-              <Card
+      <div key="monitor" className="slide-in-right">
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col span={18}>
+            <Card
+              style={{
+                borderRadius: 8,
+                border: '1px solid #edf0f5',
+              }}
+              styles={{
+                body: { padding: 20 },
+              }}
+            >
+              {renderDataStats()}
+
+              <div
                 style={{
-                  borderRadius: 8,
-                  border: '1px solid #edf0f5',
-                }}
-                styles={{
-                  body: { padding: 20 },
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  margin: '2px 0 12px',
                 }}
               >
-                {renderDataStats()}
+                <Space size={10} style={{ minWidth: 0 }}>
+                  <span
+                    style={{
+                      width: 3,
+                      height: 16,
+                      borderRadius: 2,
+                      background: token.colorPrimary,
+                    }}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 650, color: token.colorText }}>
+                    数据源实时任务
+                  </span>
+                  <span style={{ fontSize: 12, color: token.colorTextTertiary }}>
+                    共 {importRunTotal} 条运行记录
+                  </span>
+                </Space>
+                <Space size={8}>
+                  <Select
+                    allowClear
+                    placeholder="触发方式"
+                    value={importRunTriggerType}
+                    style={{ width: 140 }}
+                    options={[
+                      { label: '手动触发', value: 'MANUAL' },
+                      { label: '定时触发', value: 'CRON' },
+                    ]}
+                    onChange={(value) => {
+                      setImportRunPageNo(1);
+                      setImportRunTriggerType(value);
+                    }}
+                  />
+                  <Select
+                    allowClear
+                    placeholder="状态"
+                    value={importRunStatus}
+                    style={{ width: 140 }}
+                    options={[
+                      { label: '运行中', value: 'RUNNING' },
+                      { label: '等待中', value: 'PENDING' },
+                      { label: '成功', value: 'SUCCESS' },
+                      { label: '失败', value: 'FAILED' },
+                      { label: '部分成功', value: 'PARTIAL' },
+                      { label: '已取消', value: 'CANCELLED' },
+                      { label: '取消中', value: 'CANCELING' },
+                    ]}
+                    onChange={(value) => {
+                      setImportRunPageNo(1);
+                      setImportRunStatus(value);
+                    }}
+                  />
+                </Space>
+              </div>
 
+              <div
+                style={{
+                  padding: '4px 12px 0',
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  borderRadius: 12,
+                  background: token.colorBgContainer,
+                  boxShadow: '0 4px 16px rgba(31, 56, 88, 0.04)',
+                }}
+              >
                 <Table
                   columns={monitorColumns}
                   dataSource={importJobs}
                   rowKey="id"
-                  pagination={{ pageSize: 6 }}
+                  pagination={{
+                    current: importRunPageNo,
+                    pageSize: importRunPageSize,
+                    total: importRunTotal,
+                    showSizeChanger: true,
+                    onChange: (page, pageSize) => {
+                      setImportRunPageNo(page);
+                      setImportRunPageSize(pageSize);
+                    },
+                  }}
                   size="middle"
                   style={{ minHeight: '60vh' }}
                 />
-              </Card>
-            </Col>
-            <Col span={6}>
-              <Card
-                title={
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 8,
-                      width: '100%',
-                    }}
-                  >
-                    <Space size={8}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          backgroundColor: alertCount > 0 ? '#faad14' : '#52c41a',
-                          boxShadow:
-                            alertCount > 0
-                              ? '0 0 0 4px rgba(250, 173, 20, 0.14), 0 0 12px rgba(250, 173, 20, 0.45)'
-                              : '0 0 0 4px rgba(82, 196, 26, 0.12)',
-                          animation: 'pulse 1.6s ease-in-out infinite',
-                        }}
-                      />
-                      <WarningOutlined style={{ color: alertCount > 0 ? '#d48806' : '#64748b' }} />
-                      <span
-                        style={{
-                          fontWeight: 600,
-                          fontSize: 15,
-                          color: '#1f2937',
-                        }}
-                      >
-                        实时告警
-                      </span>
-                    </Space>
-                    <Space size={6}>
-                      <Tag
-                        color={alertCount > 0 ? 'warning' : 'success'}
-                        style={{ margin: 0, fontWeight: 600, fontSize: 12 }}
-                      >
-                        {alertCount > 0 ? `${alertCount} 条` : '正常'}
-                      </Tag>
-                      <Tag color="processing" style={{ margin: 0, fontSize: 12 }}>
-                        实时
-                      </Tag>
-                    </Space>
-                  </div>
-                }
-                style={{
-                  borderRadius: 8,
-                  border:
-                    alertCount > 0 ? '1px solid rgba(250, 173, 20, 0.36)' : '1px solid #edf0f5',
-                  background: '#f8fafc',
-                  boxShadow: alertCount > 0 ? '0 8px 24px rgba(250, 173, 20, 0.10)' : 'none',
-                  minHeight: 'calc(90vh - 80px)',
-                }}
-                bodyStyle={{ background: '#f8fafc', padding: 12 }}
-              >
+              </div>
+            </Card>
+          </Col>
+          <Col span={6}>
+            <Card
+              title={
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    marginBottom: 10,
-                    padding: '6px 8px',
-                    background: '#fff',
-                    border: '1px solid #f0f0f0',
-                    borderRadius: 6,
-                    color: '#64748b',
-                    fontSize: 12,
+                    gap: 8,
+                    width: '100%',
                   }}
                 >
-                  <span>监听中</span>
-                  <span>更新 {currentTime || '--:--:--'}</span>
-                </div>
-                {renderAlerts()}
-              </Card>
-            </Col>
-          </Row>
-        </div>
-      )}
-
-      {activeTab === 'document' && (
-        <div key="document" className="slide-in-right">
-          <Card>
-            <Alert
-              message={<span style={{ fontWeight: 600, fontSize: 15 }}>异构文档导入任务管理</span>}
-              description={
-                <div>
-                  <div style={{ fontSize: 13, color: '#475569', marginBottom: 8 }}>
-                    创建文档导入任务，指定文件采集服务器IP和端口、读取路径、备份路径。
-                    导入的文档将自动归入指定的
+                  <Space size={8}>
                     <span
                       style={{
-                        background: '#dbeafe',
-                        color: '#1e40af',
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        fontWeight: 600,
-                        margin: '0 2px',
+                        display: 'inline-block',
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: alertCount > 0 ? '#faad14' : '#52c41a',
+                        boxShadow:
+                          alertCount > 0
+                            ? '0 0 0 4px rgba(250, 173, 20, 0.14), 0 0 12px rgba(250, 173, 20, 0.45)'
+                            : '0 0 0 4px rgba(82, 196, 26, 0.12)',
+                        animation: 'pulse 1.6s ease-in-out infinite',
                       }}
-                    >
-                      知识库
-                    </span>
-                    和
+                    />
+                    <WarningOutlined style={{ color: alertCount > 0 ? '#d48806' : '#64748b' }} />
                     <span
                       style={{
-                        background: '#dbeafe',
-                        color: '#1e40af',
-                        padding: '2px 6px',
-                        borderRadius: 4,
                         fontWeight: 600,
-                        margin: '0 2px',
+                        fontSize: 15,
+                        color: '#1f2937',
                       }}
                     >
-                      编目
+                      实时告警
                     </span>
-                    。
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>
-                    <strong>支持的格式：</strong>
-                    <Tag color="default">docx</Tag>
-                    <Tag color="default">xlsx</Tag>
-                    <Tag color="default">pptx</Tag>
-                    <Tag color="default">md</Tag>
-                    <Tag color="default">txt</Tag>
-                    <Tag color="default">pdf</Tag>
-                    <Tag color="default">html</Tag>
-                    <Tag color="default">eml</Tag>
-                  </div>
+                  </Space>
+                  <Space size={6}>
+                    <Tag
+                      color={alertCount > 0 ? 'warning' : 'success'}
+                      style={{ margin: 0, fontWeight: 600, fontSize: 12 }}
+                    >
+                      {alertCount > 0 ? `${alertCount} 条` : '正常'}
+                    </Tag>
+                    <Tag color="processing" style={{ margin: 0, fontSize: 12 }}>
+                      实时
+                    </Tag>
+                  </Space>
                 </div>
               }
-              type="info"
-              showIcon
-              closable
               style={{
-                marginBottom: 20,
-                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-                border: '1px solid #93c5fd',
                 borderRadius: 8,
-                boxShadow: '0 2px 12px rgba(59, 130, 246, 0.15)',
+                border:
+                  alertCount > 0 ? '1px solid rgba(250, 173, 20, 0.36)' : '1px solid #edf0f5',
+                background: '#fff',
+                boxShadow: alertCount > 0 ? '0 8px 24px rgba(250, 173, 20, 0.10)' : 'none',
+                minHeight: 'calc(90vh - 80px)',
               }}
-              icon={<InfoCircleOutlined style={{ color: '#2563eb', fontSize: 16 }} />}
-            />
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 16,
-              }}
+              bodyStyle={{ background: '#fff', padding: 12 }}
             >
-              <Space size={12}>
-                <Search
-                  placeholder="搜索任务..."
-                  allowClear
-                  onSearch={setSearchText}
-                  style={{ width: 200 }}
-                />
-                <Select
-                  placeholder="筛选状态"
-                  allowClear
-                  onChange={setTypeFilter}
-                  style={{ width: 120 }}
-                  options={[
-                    { label: '待导入', value: 'pending' },
-                    { label: '运行中', value: 'running' },
-                    { label: '已暂停', value: 'paused' },
-                    { label: '已完成', value: 'completed' },
-                    { label: '错误', value: 'error' },
-                  ]}
-                />
-              </Space>
-              <Button type="primary" icon={<CloudUploadOutlined />} onClick={handleSelectFolder}>
-                创建导入任务
-              </Button>
-            </div>
-
-            <Table
-              columns={docTaskColumns}
-              dataSource={filteredDocTasks}
-              rowKey="id"
-              pagination={{ pageSize: 6 }}
-            />
-          </Card>
-        </div>
-      )}
-
-      {activeTab === 'database' && (
-        <div
-          key="database"
-          className="slide-in-right"
-          style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 240px)' }}
-        >
-          <div
-            style={{
-              padding: 24,
-              borderRadius: 24,
-              background: 'linear-gradient(180deg, rgba(248,250,252,0.96) 0%, #ffffff 55%)',
-              border: '1px solid rgba(148,163,184,0.16)',
-              boxShadow: '0 18px 60px rgba(15, 23, 42, 0.08)',
-              display: 'flex',
-              flexDirection: 'column',
-              flex: 1,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: 16,
-                marginBottom: 20,
-                flexWrap: 'wrap',
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontSize: 26,
-                    fontWeight: 700,
-                    color: '#0f172a',
-                    letterSpacing: '0.02em',
-                    marginBottom: 6,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      flexWrap: 'wrap',
-                      marginBottom: 14,
-                    }}
-                  >
-                    {databaseTypeOptions.map((option) => {
-                      const config = typeConfig[option.value];
-                      const count = dataSources.filter((item) => item.type === option.value).length;
-                      const active = typeFilter === option.value;
-
-                      return (
-                        <Button
-                          key={option.value}
-                          size="small"
-                          type={active ? 'primary' : 'default'}
-                          icon={config.icon}
-                          onClick={() => setTypeFilter(active ? null : option.value)}
-                          style={{
-                            height: 30,
-                            borderRadius: 999,
-                            paddingInline: 12,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            borderColor: active ? config.accent : 'rgba(148,163,184,0.28)',
-                            background: active ? config.accent : '#fff',
-                            boxShadow: 'none',
-                          }}
-                        >
-                          {config.label}
-                          <span style={{ opacity: 0.78 }}>{count}</span>
-                        </Button>
-                      );
-                    })}
-                  </div>
-                  {/* 结构化数据接入工作台 */}
-                </div>
-              </div>
-              <Button
-                type="primary"
-                icon={<DatabaseOutlined />}
-                onClick={handleAddDataSource}
+              <div
                 style={{
-                  height: 42,
-                  borderRadius: 12,
-                  paddingInline: 18,
-                  border: 'none',
-                  boxShadow: '0 12px 24px rgba(37,99,235,0.24)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 10,
+                  padding: '6px 8px',
+                  background: '#fff',
+                  border: '1px solid #f0f0f0',
+                  borderRadius: 6,
+                  color: '#64748b',
+                  fontSize: 12,
                 }}
               >
-                新增数据源
-              </Button>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 16,
-                gap: 12,
-                flexWrap: 'wrap',
-              }}
-            >
-              <Space size={12} wrap>
-                <Search
-                  placeholder="搜索数据源名称或用途"
-                  allowClear
-                  onSearch={setSearchText}
-                  style={{ width: 260 }}
-                />
-                <Select
-                  placeholder="筛选数据库类型"
-                  allowClear
-                  value={typeFilter || undefined}
-                  onChange={setTypeFilter}
-                  style={{ width: 180 }}
-                  options={databaseTypeOptions}
-                />
-                <Button onClick={() => setTypeFilter(null)}>查看全部</Button>
-              </Space>
-            </div>
-
-            <Row
-              gutter={16}
-              style={{ display: 'flex', alignItems: 'stretch', flex: 1, minHeight: 0 }}
-            >
-              <Col
-                xs={24}
-                xl={isGraphPreview ? 9 : 14}
-                style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
-              >
-                <Card
-                  title="数据源资产清单"
-                  extra={
-                    <span style={{ color: '#64748b', fontSize: 12 }}>
-                      共 {filteredDataSources.length} 个数据源
-                    </span>
-                  }
-                  style={{
-                    borderRadius: 20,
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    height: '100%',
-                    minHeight: 0,
-                  }}
-                  styles={{ body: { flex: 1, overflow: 'auto' } }}
-                >
-                  <Table
-                    columns={dataSourceColumns}
-                    dataSource={filteredDataSources}
-                    rowKey="id"
-                    pagination={{ pageSize: 6 }}
-                    scroll={{ x: 1100 }}
-                    rowClassName={(record) =>
-                      record.id === selectedSource?.id
-                        ? 'source-asset-row source-asset-row-selected'
-                        : 'source-asset-row'
-                    }
-                    onRow={(record) => ({
-                      onClick: () => handleSelectSource(record),
-                    })}
-                  />
-                </Card>
-              </Col>
-              <Col
-                xs={24}
-                xl={isGraphPreview ? 15 : 10}
-                style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
-              >
-                <Card
-                  title={selectedSource ? `${selectedSource.name} 预览` : '智能预览'}
-                  extra={
-                    selectedSource ? (
-                      <Space size={8}>
-                        <Tag color={typeConfig[selectedSource.type].color}>
-                          {typeConfig[selectedSource.type].label}
-                        </Tag>
-                        <Button
-                          type="link"
-                          size="small"
-                          onClick={() => handleOpenSyncDrawer(selectedSource)}
-                        >
-                          配置同步
-                        </Button>
-                      </Space>
-                    ) : null
-                  }
-                  style={{
-                    borderRadius: 20,
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    height: '100%',
-                    minHeight: 0,
-                  }}
-                  styles={{
-                    body: {
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 16,
-                      flex: 1,
-                      overflow: 'auto',
-                    },
-                  }}
-                >
-                  {renderOptimizedStructuredPreview()}
-                </Card>
-              </Col>
-            </Row>
-          </div>
-        </div>
-      )}
+                <span>监听中</span>
+                <span>更新 {currentTime || '--:--:--'}</span>
+              </div>
+              {renderAlerts()}
+            </Card>
+          </Col>
+        </Row>
+      </div>
 
       <Modal
         title={editRecord ? '编辑数据源' : '添加数据源'}

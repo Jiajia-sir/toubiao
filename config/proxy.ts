@@ -22,7 +22,7 @@ export default {
     // localhost:8000/admin-api/** -> http://localhost:8080/admin-api/**
     '/admin-api/': {
       target: 'http://192.168.31.244:42026',
-      // target: 'http://192.168.31.152:42026',
+      // target: 'http://192.168.31.150:42026', // 临时后端地址
       changeOrigin: true,
     },
     // 不知道这啥，没用到

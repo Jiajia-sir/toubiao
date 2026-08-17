@@ -5,3 +5,72 @@
     }
   }
 }
+
+@keyframes monitorReadIconFloat {
+  0%,
+  100% {
+    transform: translateY(-2px);
+    opacity: 0.45;
+  }
+
+  50% {
+    transform: translateY(2px);
+    opacity: 1;
+  }
+}
+
+@keyframes monitorWriteIconFloat {
+  0%,
+  100% {
+    transform: translateY(2px);
+    opacity: 0.45;
+  }
+
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+}
+
+:global {
+  .monitorReadWriteValue {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-size: 12px;
+  }
+
+  .monitorReadWriteValue__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1;
+  }
+
+  .monitorReadWriteValue__icon.is-read {
+    color: #2563eb;
+  }
+
+  .monitorReadWriteValue__icon.is-write {
+    color: #16a34a;
+  }
+
+  .monitorReadWriteValue__icon.is-read.is-animated {
+    animation: monitorReadIconFloat 0.95s ease-in-out infinite;
+  }
+
+  .monitorReadWriteValue__icon.is-write.is-animated {
+    animation: monitorWriteIconFloat 0.95s ease-in-out infinite;
+  }
+
+  .monitorReadWriteValue__number {
+    color: rgba(15, 23, 42, 0.88);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .monitorReadWriteValue__divider {
+    color: rgba(15, 23, 42, 0.38);
+  }
+}
