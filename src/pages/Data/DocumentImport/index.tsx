@@ -259,6 +259,12 @@ const IntelligentProcessingTag: React.FC = () => {
 const extractPageList = (payload: any): any[] =>
   payload?.data?.list || payload?.data?.records || payload?.list || payload?.rows || [];
 
+const resolveAccessModeFromSearch = (search: string) => {
+  const params = new URLSearchParams(search);
+  const tab = params.get('tab');
+  return tab === '1' || tab === '2' ? tab : '2';
+};
+
 const extractPageTotal = (payload: any) =>
   Number(payload?.data?.total ?? payload?.total ?? payload?.data?.count ?? 0);
 
@@ -763,7 +769,9 @@ export default function DocumentImportPage() {
   const [channelFilter, setChannelFilter] = useState<number | string | undefined>();
   const [searchText, setSearchText] = useState('');
   // accessMode：1=自动读取 2=页面上传
-  const [accessMode, setAccessMode] = useState<string>('2');
+  const [accessMode, setAccessMode] = useState<string>(() =>
+    resolveAccessModeFromSearch(location.search),
+  );
 
   const [retryingId, setRetryingId] = useState<string | null>(null);
 
@@ -918,6 +926,11 @@ export default function DocumentImportPage() {
       });
     }
   }, [location.pathname, searchParams]);
+
+  useEffect(() => {
+    const nextAccessMode = resolveAccessModeFromSearch(location.search);
+    setAccessMode((prev) => (prev === nextAccessMode ? prev : nextAccessMode));
+  }, [location.search]);
 
   useEffect(() => {
     const fetchChannelOptions = async () => {
@@ -1782,6 +1795,7 @@ export default function DocumentImportPage() {
                 disabled={!completed}
                 onClick={() => {
                   const detailQuery = new URLSearchParams();
+                  detailQuery.set('tab', accessMode);
                   if (record.name && record.name !== '-') {
                     detailQuery.set('title', record.name);
                   }
