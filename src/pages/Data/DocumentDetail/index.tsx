@@ -50,6 +50,7 @@ import DocumentFilePreview, { extractPreviewFileName } from '@/components/Docume
 import EntityRelationGraph from '@/components/Graph/EntityRelationGraph';
 import { getDocumentHtmlChunkPage, viewDocument } from '@/services/biz/document-query';
 import { getDocumentKnowledgeGraph, type DocumentKnowledgeGraphResult } from '@/services/biz/graph';
+import { formatDateTime as formatDateTimeUtil } from '@/utils/date';
 
 type PreviewBlockType = 'meta' | 'heading' | 'paragraph' | 'bullet';
 
@@ -83,24 +84,7 @@ const formatFileSize = (bytes: any) => {
   return `${(size / 1024 / 1024 / 1024).toFixed(1)} GB`;
 };
 
-const formatDateTime = (value: any) => {
-  if (value === null || value === undefined || value === '') {
-    return '-';
-  }
-  if (typeof value === 'number' || /^\d+$/.test(String(value))) {
-    const date = new Date(Number(value));
-    if (!Number.isNaN(date.getTime())) {
-      const year = date.getFullYear();
-      const month = `${date.getMonth() + 1}`.padStart(2, '0');
-      const day = `${date.getDate()}`.padStart(2, '0');
-      const hours = `${date.getHours()}`.padStart(2, '0');
-      const minutes = `${date.getMinutes()}`.padStart(2, '0');
-      const seconds = `${date.getSeconds()}`.padStart(2, '0');
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    }
-  }
-  return String(value);
-};
+const formatDateTime = (value: any) => formatDateTimeUtil(value, '-');
 
 const ensureArray = <T,>(value: T | T[] | null | undefined): T[] => {
   if (Array.isArray(value)) {
