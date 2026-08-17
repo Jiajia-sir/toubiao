@@ -1780,7 +1780,7 @@ export default function DataSearchPage() {
               </div>
             </div>
 
-            <div
+            {/* <div
               style={{
                 background: '#fff',
                 borderRadius: 8,
@@ -1803,7 +1803,7 @@ export default function DataSearchPage() {
                   </a>
                 ))}
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       </Card>
