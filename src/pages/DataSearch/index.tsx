@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { history } from '@umijs/max';
 import {
   Button,
@@ -169,6 +169,35 @@ const extractList = <T,>(response: any): T[] => {
 const extractPageTotal = (response: any) =>
   Number(response?.data?.total ?? response?.total ?? response?.data?.count ?? 0);
 
+const resolveAccessModeLabel = (value: any) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return '未知来源';
+  }
+
+  if (
+    raw === '1' ||
+    /auto[_-]?read/i.test(raw) ||
+    /auto[_-]?upload/i.test(raw) ||
+    raw.includes('自动')
+  ) {
+    return '自动读取';
+  }
+
+  if (
+    raw === '2' ||
+    /front[_-]?upload/i.test(raw) ||
+    /manual[_-]?upload/i.test(raw) ||
+    raw.includes('页面') ||
+    raw.includes('手动') ||
+    raw.includes('上传')
+  ) {
+    return '页面上传';
+  }
+
+  return raw;
+};
+
 const normalizeCountOption = (item: any): FilterOption | null => {
   const rawValue =
     item?.value ??
@@ -182,7 +211,13 @@ const normalizeCountOption = (item: any): FilterOption | null => {
     return null;
   }
   return {
-    label: String(item?.label ?? item?.name ?? rawValue),
+    label:
+      item?.accessMode !== undefined ||
+      item?.mode !== undefined ||
+      String(rawValue) === '1' ||
+      String(rawValue) === '2'
+        ? resolveAccessModeLabel(rawValue)
+        : String(item?.label ?? item?.name ?? rawValue),
     value: String(rawValue),
     count: Number(item?.count ?? item?.total ?? item?.docCount ?? 0),
     knowledgeBase:
@@ -324,7 +359,7 @@ const mapDocumentResult = (item: any): SearchResult => {
     name: item?.name ?? item?.fileName ?? item?.documentName ?? '-',
     type: String(item?.fileType ?? item?.type ?? 'DOCX').toUpperCase(),
     accessMode: resolveAccessModeType(item),
-    source: item?.channelName ?? item?.accessMode ?? item?.source ?? '-',
+    source: resolveAccessModeLabel(item?.channelName ?? item?.accessMode ?? item?.source ?? '-'),
     uploader: item?.creatorName ?? item?.creator ?? item?.uploader ?? item?.createBy ?? '-',
     uploadTime: formatDateTime(item?.createTime ?? item?.uploadTime),
     size: formatFileSize(item?.fileSizeBytes ?? item?.fileSize),
@@ -365,7 +400,7 @@ const mapDocumentResultFixed = (item: any): SearchResult => {
     name: item?.name ?? item?.fileName ?? item?.documentName ?? '-',
     type: String(item?.fileType ?? item?.type ?? 'DOCX').toUpperCase(),
     accessMode: resolveAccessModeType(item),
-    source: item?.channelName ?? item?.accessMode ?? item?.source ?? '-',
+    source: resolveAccessModeLabel(item?.channelName ?? item?.accessMode ?? item?.source ?? '-'),
     uploader: item?.creatorName ?? item?.creator ?? item?.uploader ?? item?.createBy ?? '-',
     uploadTime: formatDateTime(item?.createTime ?? item?.uploadTime),
     size: formatFileSize(item?.fileSizeBytes ?? item?.fileSize),
@@ -380,6 +415,7 @@ const mapDocumentResultFixed = (item: any): SearchResult => {
 };
 
 export default function DataSearchPage() {
+  const hasInitializedFilterEffect = useRef(false);
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [totalResults, setTotalResults] = useState(0);
@@ -667,6 +703,29 @@ export default function DataSearchPage() {
     fetchDocuments(1, pageSize);
   }, []);
 
+  useEffect(() => {
+    if (!hasInitializedFilterEffect.current) {
+      hasInitializedFilterEffect.current = true;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      fetchDocuments(1, pageSize);
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    sourceFilter,
+    documentTypes,
+    knowledgeBaseFilter,
+    selectedTags,
+    selectedEntities,
+    catalogFilter,
+    dateRange,
+    sortField,
+    sortOrder,
+  ]);
+
   const handleSearch = () => {
     fetchDocuments(1, pageSize);
   };
@@ -676,7 +735,6 @@ export default function DataSearchPage() {
       ? selectedEntities.filter((item) => item !== entity)
       : [...selectedEntities, entity];
     setSelectedEntities(nextSelected);
-    fetchDocuments(1, pageSize, { entityNames: nextSelected });
   };
 
   const handleOpenDocumentDetail = (result: SearchResult) => {
@@ -1780,7 +1838,7 @@ export default function DataSearchPage() {
               </div>
             </div>
 
-            <div
+            {/* <div
               style={{
                 background: '#fff',
                 borderRadius: 8,
@@ -1803,7 +1861,7 @@ export default function DataSearchPage() {
                   </a>
                 ))}
               </div>
-            </div>
+            </div> */}
           </div>
         </div>
       </Card>

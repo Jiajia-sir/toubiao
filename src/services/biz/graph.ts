@@ -84,10 +84,10 @@ export interface SearchGraphResult {
   nextCursor?: number;
 }
 
-export async function getDocumentKnowledgeGraph(id: number | string) {
+export async function getDocumentKnowledgeGraph(id: number | string, way?: string) {
   return request<DocumentKnowledgeGraphResult>(`${API_PREFIX}/biz/graph/document-knowledge-graph`, {
     method: "GET",
-    params: { id },
+    params: { id, way },
   });
 }
 

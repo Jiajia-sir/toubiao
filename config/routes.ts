@@ -260,6 +260,12 @@ export default [
     ],
   },
   {
+    name: '知识图谱操作记录',
+    icon: 'history',
+    path: '/graph/operation-log',
+    component: './Graph/OperationLog',
+  },
+  {
     path: '*',
     layout: false,
     component: './404',
