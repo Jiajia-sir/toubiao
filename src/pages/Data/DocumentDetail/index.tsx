@@ -2112,7 +2112,7 @@ export default function DataDetailPage() {
                         flex: 1,
                         minHeight: 0,
                         maxHeight: '100%',
-                        overflowY: 'scroll',
+                        overflowY: 'auto',
                         overflowX: 'hidden',
                         scrollbarGutter: 'stable',
                         paddingRight: 4,
