@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { history } from '@umijs/max';
+import { history, useLocation } from '@umijs/max';
 import dayjs from 'dayjs';
 import {
   Button,
@@ -255,6 +255,7 @@ function buildPayload(
 }
 
 export default function DataSourcePage() {
+  const location = useLocation();
   const [searchForm] = Form.useForm<SearchFormValues>();
   const [editForm] = Form.useForm<EditFormValues>();
 
@@ -367,6 +368,26 @@ export default function DataSourcePage() {
   useEffect(() => {
     fetchData(page, searchValues);
   }, [page]);
+
+  useEffect(() => {
+    if (!typeOptions.length) {
+      return;
+    }
+
+    const params = new URLSearchParams(location.search || '');
+    if (params.get('action') !== 'upload') {
+      return;
+    }
+
+    openCreateModal();
+
+    params.delete('action');
+    const nextSearch = params.toString();
+    history.replace({
+      pathname: location.pathname,
+      search: nextSearch ? `?${nextSearch}` : '',
+    });
+  }, [location.pathname, location.search, typeOptions.length]);
 
   const openCreateModal = () => {
     const firstType = typeOptions[0];
