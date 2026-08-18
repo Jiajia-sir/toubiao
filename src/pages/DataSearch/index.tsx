@@ -14,6 +14,7 @@ import {
   Select,
   Space,
   Tag,
+  Tooltip,
   message,
 } from 'antd';
 import {
@@ -122,6 +123,88 @@ const relatedSearches = [
 
 function HighlightHtml({ html }: { html: string }) {
   return <span dangerouslySetInnerHTML={{ __html: sanitizeHighlightHtml(html) }} />;
+}
+
+function CollapsedTagList({
+  items,
+  color,
+  maxVisible = 10,
+}: {
+  items: string[];
+  color: string;
+  maxVisible?: number;
+}) {
+  const visibleItems = items.slice(0, maxVisible);
+  const hiddenCount = Math.max(items.length - visibleItems.length, 0);
+
+  return (
+    <Tooltip
+      placement="topLeft"
+      color="#ffffff"
+      overlayInnerStyle={{
+        background: '#ffffff',
+        color: '#262626',
+        width: 920,
+        maxWidth: 920,
+        padding: 14,
+        borderRadius: 10,
+        boxShadow: '0 10px 30px rgba(15, 23, 42, 0.12)',
+      }}
+      title={
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, width: 892, maxWidth: 892 }}>
+          {items.map((item, index) => (
+            <Tag
+              key={`${color}-${index}-${item}`}
+              color={color}
+              style={{
+                margin: 0,
+                maxWidth: 260,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <HighlightHtml html={item} />
+            </Tag>
+          ))}
+        </div>
+      }
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          minWidth: 0,
+          flexWrap: 'nowrap',
+          flex: 1,
+          overflow: 'hidden',
+        }}
+      >
+        {visibleItems.map((item, index) => (
+          <Tag
+            key={`${color}-${index}-${item}`}
+            color={color}
+            style={{
+              margin: 0,
+              maxWidth: 180,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              flexShrink: 1,
+            }}
+          >
+            <HighlightHtml html={item} />
+          </Tag>
+        ))}
+        {hiddenCount > 0 ? (
+          <span style={{ color: '#8c8c8c', fontSize: 12, whiteSpace: 'nowrap', flexShrink: 0 }}>
+            +{hiddenCount}
+          </span>
+        ) : null}
+      </div>
+    </Tooltip>
+  );
 }
 
 const typeIconMap: Record<string, React.ReactNode> = {
@@ -1732,46 +1815,50 @@ export default function DataSearchPage() {
                     </div>
 
                     {result.entities.length > 0 && (
-                      <div style={{ marginBottom: 8 }}>
+                      <div
+                        style={{
+                          marginBottom: 8,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          minWidth: 0,
+                        }}
+                      >
                         <span
                           style={{
                             fontSize: 12,
                             color: '#595959',
                             fontWeight: 500,
-                            marginRight: 8,
+                            flexShrink: 0,
                           }}
                         >
                           实体：
                         </span>
-                        <Space wrap size={4}>
-                          {result.entities.map((entity) => (
-                            <Tag key={entity} color="blue">
-                              <HighlightHtml html={entity} />
-                            </Tag>
-                          ))}
-                        </Space>
+                        <CollapsedTagList items={result.entities} color="blue" />
                       </div>
                     )}
 
                     {result.keywords.length > 0 && (
-                      <div style={{ marginBottom: 8 }}>
+                      <div
+                        style={{
+                          marginBottom: 8,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          minWidth: 0,
+                        }}
+                      >
                         <span
                           style={{
                             fontSize: 12,
                             color: '#595959',
                             fontWeight: 500,
-                            marginRight: 8,
+                            flexShrink: 0,
                           }}
                         >
                           关键词：
                         </span>
-                        <Space wrap size={4}>
-                          {result.keywords.map((keyword) => (
-                            <Tag key={keyword} color="gold">
-                              <HighlightHtml html={keyword} />
-                            </Tag>
-                          ))}
-                        </Space>
+                        <CollapsedTagList items={result.keywords} color="gold" />
                       </div>
                     )}
 
