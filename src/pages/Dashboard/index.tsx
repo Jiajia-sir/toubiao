@@ -2,21 +2,19 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { history } from '@umijs/max';
-import { Row, Col, Card, Progress, Table, Tag, Button, Space, Select, theme } from 'antd';
+import { Row, Col, Card, Table, Tag, Button, Space, Select, theme } from 'antd';
 import {
   ApiOutlined,
-  MoreOutlined,
   CloudUploadOutlined,
-  LoadingOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
+  ArrowRightOutlined,
   FileTextOutlined,
   DatabaseOutlined,
   ClusterOutlined,
-  FundProjectionScreenOutlined,
+  FolderOpenOutlined,
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
-import { statusConfig } from '@/config/status';
+import { getDataSourcePage, type DataSourceRecord } from '@/services/biz/data-source';
+import { formatDateTime } from '@/utils/date';
 import {
   getDashboardFileTypeCount,
   getDashboardImportTrend,
@@ -27,44 +25,24 @@ import {
   type DashboardOverviewCount,
 } from '@/services/biz/dashboard';
 
-const PIE_COLORS = ['#1e3a8a', '#1e40af', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#dbeafe'];
-
-const recentTasks = [
-  {
-    key: '1',
-    name: '2024年项目文档批量导入',
-    type: '文档导入',
-    status: 'completed',
-    progress: 100,
-    createTime: '2024-01-15 14:30:00',
-  },
-  {
-    key: '2',
-    name: 'MySQL业务数据库同步',
-    type: '数据库导入',
-    status: 'running',
-    progress: 68,
-    createTime: '2024-01-15 10:20:00',
-  },
-  {
-    key: '3',
-    name: '行业研究报告PDF导入',
-    type: '文档导入',
-    status: 'pending',
-    progress: 0,
-    createTime: '2024-01-15 09:15:00',
-  },
-  {
-    key: '4',
-    name: 'MongoDB日志数据导入',
-    type: '数据库导入',
-    status: 'failed',
-    progress: 45,
-    createTime: '2024-01-14 16:45:00',
-  },
+const PIE_COLORS = [
+  '#3b82f6',
+  '#60a5fa',
+  '#93c5fd',
+  '#bfdbfe',
+  '#dbeafe',
+  '#2563eb',
+  '#1d4ed8',
+  '#89c2ff',
 ];
 
 const formatCount = (value?: number) => Number(value || 0).toLocaleString('zh-CN');
+
+const extractDataSourceList = (payload: any): DataSourceRecord[] =>
+  payload?.data?.list || payload?.data?.records || payload?.list || payload?.rows || [];
+
+const extractDataSourceTotal = (payload: any): number =>
+  Number(payload?.data?.total || payload?.total || 0);
 
 const getTrendListByRange = (trendData: DashboardImportTrend | undefined, timeRange: string) => {
   if (!trendData) {
@@ -199,6 +177,10 @@ export default function DashboardPage() {
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
   const [timeRange, setTimeRange] = useState<string>('30');
   const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dataSourceLoading, setDataSourceLoading] = useState(false);
+  const [dataSourcePage, setDataSourcePage] = useState(1);
+  const [dataSourceTotal, setDataSourceTotal] = useState(0);
+  const [dataSourceList, setDataSourceList] = useState<DataSourceRecord[]>([]);
   const [dashboardStats, setDashboardStats] = useState<{
     overview: DashboardOverviewCount;
     trend: DashboardImportTrend;
@@ -240,6 +222,30 @@ export default function DashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDataSources = async () => {
+      setDataSourceLoading(true);
+      try {
+        const result = await getDataSourcePage({ pageNo: dataSourcePage, pageSize: 5 });
+        if (!cancelled) {
+          setDataSourceList(extractDataSourceList(result));
+          setDataSourceTotal(extractDataSourceTotal(result));
+        }
+      } finally {
+        if (!cancelled) {
+          setDataSourceLoading(false);
+        }
+      }
+    };
+
+    loadDataSources();
+    return () => {
+      cancelled = true;
+    };
+  }, [dataSourcePage]);
+
   const statCards = useMemo(
     () => [
       {
@@ -249,9 +255,7 @@ export default function DashboardPage() {
         icon: <FileTextOutlined />,
         color: '#3b82f6',
         gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
-        bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
         link: '/data/document-import',
-        trendText: '累计总量',
         jumpMoudle: '文档导入页',
       },
       {
@@ -261,21 +265,17 @@ export default function DashboardPage() {
         icon: <DatabaseOutlined />,
         color: '#3b82f6',
         gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
-        bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
         link: '/data/source',
-        trendText: '累计总量',
         jumpMoudle: '数据源接入页',
       },
       {
         title: '知识库总数',
         value: formatCount(dashboardStats?.overview?.knowledgeBaseTotal),
         suffix: '个',
-        icon: <FundProjectionScreenOutlined />,
+        icon: <FolderOpenOutlined />,
         color: '#3b82f6',
         gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
-        bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
         link: '/knowledge',
-        trendText: '累计总量',
         jumpMoudle: '知识库页',
       },
       {
@@ -285,10 +285,8 @@ export default function DashboardPage() {
         icon: <ClusterOutlined />,
         color: '#3b82f6',
         gradient: 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #93c5fd 100%)',
-        bgGradient: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-        link: '/dashboard',
-        trendText: '累计总量',
-        jumpMoudle: '实体页',
+        link: '/graph',
+        jumpMoudle: '知识图谱页',
       },
     ],
     [dashboardStats],
@@ -316,117 +314,97 @@ export default function DashboardPage() {
     { label: '近90天', value: '90' },
   ];
 
-  const columns = [
+  const dataSourceColumns = [
     {
-      title: '任务名称',
+      title: '数据源名称',
       dataIndex: 'name',
       key: 'name',
-      align: 'center' as const,
-      render: (name: string) => <span style={{ fontWeight: 500, color: '#1f2937' }}>{name}</span>,
+      render: (name: string, record: DataSourceRecord) => (
+        <Space direction="vertical" size={2}>
+          <span style={{ fontWeight: 600, color: '#1f2937' }}>{name || '-'}</span>
+          <span style={{ color: '#94a3b8', fontSize: 12 }}>{record.description || '暂无说明'}</span>
+        </Space>
+      ),
     },
     {
       title: '类型',
-      dataIndex: 'type',
+      dataIndex: 'typeName',
       key: 'type',
-      align: 'center' as const,
-      render: (type: string) => (
-        <Tag
-          color={type === '文档导入' ? '#3b82f6' : '#2563eb'}
-          style={{
-            borderRadius: 6,
-            border: 'none',
-            fontWeight: 500,
-            boxShadow:
-              type === '文档导入'
-                ? '0 2px 8px rgba(59, 130, 246, 0.3)'
-                : '0 2px 8px rgba(37, 99, 235, 0.3)',
-          }}
-        >
-          {type}
-        </Tag>
+      render: (_: string, record: DataSourceRecord) => (
+        <Space size={6} wrap>
+          <Tag color="blue">{record.typeName || record.type || '-'}</Tag>
+          <Tag>{record.categoryName || record.category || '-'}</Tag>
+        </Space>
       ),
+    },
+    {
+      title: '连接信息',
+      key: 'connection',
+      render: (_: unknown, record: DataSourceRecord) =>
+        record.connectionUri ||
+        [record.host, record.port, record.databaseName].filter(Boolean).join(' / ') ||
+        '-',
+    },
+    {
+      title: '数据库 / 空间',
+      key: 'databaseName',
+      render: (_: unknown, record: DataSourceRecord) => {
+        const dbName =
+          record.databaseName || record.properties?.spaceName || record.properties?.filePath;
+        return <span style={{ color: '#334155', fontSize: 13 }}>{dbName || '-'}</span>;
+      },
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       align: 'center' as const,
-      render: (status: string) => {
-        const config = statusConfig[status as keyof typeof statusConfig];
+      render: (status: number) =>
+        status === 1 ? <Tag color="success">启用</Tag> : <Tag>停用</Tag>,
+    },
+    {
+      title: '最近测试',
+      key: 'lastTest',
+      render: (_: unknown, record: DataSourceRecord) => {
+        const statusTag =
+          record.lastTestStatus === 1 ? (
+            <Tag color="success">成功</Tag>
+          ) : record.lastTestStatus === 0 ? (
+            <Tag color="error">失败</Tag>
+          ) : (
+            <Tag>未测试</Tag>
+          );
         return (
-          <Space>
-            {status === 'running' ? (
-              <LoadingOutlined
-                spin
-                style={{
-                  color: config?.color,
-                  filter: `drop-shadow(0 0 4px ${config?.color})`,
-                }}
-              />
-            ) : (
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  backgroundColor: config?.color,
-                  boxShadow: `0 0 8px ${config?.color}, 0 0 4px ${config?.color}`,
-                }}
-              />
-            )}
-            <span style={{ color: '#4b5563' }}>{config?.text}</span>
+          <Space direction="vertical" size={2}>
+            <Space size={6}>
+              {statusTag}
+              <span style={{ color: '#64748b', fontSize: 12 }}>
+                {formatDateTime(record.lastTestTime, '-')}
+              </span>
+            </Space>
+            <span style={{ color: '#94a3b8', fontSize: 12 }}>
+              {record.lastTestMessage || '暂无测试记录'}
+            </span>
           </Space>
         );
       },
-    },
-    {
-      title: '进度',
-      dataIndex: 'progress',
-      key: 'progress',
-      align: 'center' as const,
-      render: (progress: number, record: any) => {
-        const config = statusConfig[record.status as keyof typeof statusConfig];
-        return (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              justifyContent: 'center',
-            }}
-          >
-            <Progress
-              percent={progress}
-              size="small"
-              strokeColor={config?.color}
-              style={{
-                width: 120,
-                filter: `drop-shadow(0 0 3px ${config?.color}80)`,
-              }}
-            />
-          </div>
-        );
-      },
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createTime',
-      key: 'createTime',
-      align: 'center' as const,
-      render: (time: string) => <span style={{ color: '#6b7280', fontSize: 13 }}>{time}</span>,
-    },
-    {
-      title: '操作',
-      key: 'action',
-      align: 'center' as const,
-      width: 80,
-      render: () => <Button type="text" icon={<MoreOutlined />} style={{ color: '#9ca3af' }} />,
     },
   ];
 
   return (
     <>
+      <style>{`
+        @keyframes dashboardIconFloat {
+          0%, 100% { transform: translateY(0) scale(1); filter: brightness(1); }
+          50% { transform: translateY(-3px) scale(1.015); filter: brightness(1.04); }
+        }
+        @keyframes dashboardAccentShine {
+          0%, 18% { transform: translateX(-140%); opacity: 0; }
+          28% { opacity: 0.75; }
+          48% { transform: translateX(520%); opacity: 0; }
+          100% { transform: translateX(520%); opacity: 0; }
+        }
+      `}</style>
       <div
         className={`dashboard-page ${isDark ? 'theme-dark' : 'theme-light'}`}
         style={{
@@ -451,214 +429,182 @@ export default function DashboardPage() {
                 style={{
                   position: 'relative',
                   cursor: card.link ? 'pointer' : 'default',
+                  minHeight: 170,
+                  padding: '24px 24px 20px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
                   borderRadius: 20,
-                  background: '#fff',
+                  background:
+                    hoveredCard === index
+                      ? `linear-gradient(135deg, #fff 0%, ${card.color}08 100%)`
+                      : '#fff',
                   border: '1px solid rgba(99, 102, 241, 0.08)',
                   boxShadow:
                     hoveredCard === index
                       ? `0 16px 40px ${card.color}20, 0 0 24px ${card.color}10`
-                      : `0 4px 16px rgba(99, 102, 241, 0.06)`,
-                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                  transform: hoveredCard === index ? 'translateY(-6px)' : 'translateY(0)',
+                      : `0 8px 24px rgba(15, 23, 42, 0.06), inset 0 0 0 1px ${card.color}05`,
+                  transition: 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transform: hoveredCard === index ? 'translateY(-5px)' : 'translateY(0)',
                   overflow: 'hidden',
                 }}
               >
-                {/* 顶部渐变光带 */}
                 <div
                   style={{
                     position: 'absolute',
                     top: 0,
                     left: 0,
                     right: 0,
-                    height: 4,
+                    height: hoveredCard === index ? 5 : 4,
                     background: card.gradient,
+                    boxShadow: hoveredCard === index ? `0 2px 10px ${card.color}35` : 'none',
+                    transition: 'height 0.25s ease, box-shadow 0.25s ease',
+                    overflow: 'hidden',
                   }}
-                />
-
-                {/* 右上角装饰光晕 */}
+                >
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      left: 0,
+                      width: '22%',
+                      background:
+                        'linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)',
+                      animation: 'dashboardAccentShine 4.2s ease-in-out infinite',
+                    }}
+                  />
+                </div>
                 <div
                   style={{
                     position: 'absolute',
-                    top: -30,
-                    right: -30,
-                    width: 140,
-                    height: 140,
-                    borderRadius: '50%',
-                    background: `radial-gradient(circle, ${card.color}15 0%, transparent 70%)`,
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    width: '32%',
+                    zIndex: 2,
+                    background:
+                      'linear-gradient(105deg, transparent 15%, rgba(255,255,255,0.72) 50%, transparent 85%)',
+                    transform:
+                      hoveredCard === index
+                        ? 'translateX(420%) skewX(-12deg)'
+                        : 'translateX(-140%) skewX(-12deg)',
+                    transition: 'transform 0.65s cubic-bezier(0.22, 1, 0.36, 1)',
                     pointerEvents: 'none',
                   }}
                 />
+                <div
+                  style={{
+                    width: 64,
+                    height: 64,
+                    flex: '0 0 auto',
+                    borderRadius: 18,
+                    background: card.gradient,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontSize: 28,
+                    boxShadow:
+                      hoveredCard === index
+                        ? `0 14px 30px ${card.color}42`
+                        : `0 10px 24px ${card.color}30`,
+                    transform:
+                      hoveredCard === index
+                        ? 'translateY(-6px) scale(1.1) rotate(-5deg)'
+                        : 'translateY(0) scale(1) rotate(0)',
+                    animation:
+                      hoveredCard === index
+                        ? 'none'
+                        : 'dashboardIconFloat 3.4s ease-in-out infinite',
+                    transition:
+                      'transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s ease',
+                    position: 'relative',
+                    zIndex: 1,
+                  }}
+                >
+                  {card.icon}
+                </div>
 
-                <div style={{ padding: '24px 24px 20px' }}>
-                  {/* 标题栏 */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: 16,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 10,
-                          background: card.gradient,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: `0 4px 12px ${card.color}40`,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 18,
-                            color: '#fff',
-                            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))',
-                          }}
-                        >
-                          {card.icon}
-                        </span>
-                      </div>
-                      <span
-                        style={{
-                          fontSize: 14,
-                          color: '#6b7280',
-                          fontWeight: 500,
-                        }}
-                      >
-                        {card.title}
-                      </span>
-                    </div>
+                <div
+                  style={{
+                    width: 1,
+                    height: hoveredCard === index ? 88 : 76,
+                    flex: '0 0 auto',
+                    background: `linear-gradient(180deg, transparent, ${card.color}${hoveredCard === index ? '42' : '22'}, transparent)`,
+                    transition: 'height 0.3s ease, background 0.3s ease',
+                  }}
+                />
+
+                <div
+                  style={{
+                    minWidth: 0,
+                    flex: 1,
+                    alignSelf: 'stretch',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    zIndex: 1,
+                  }}
+                >
+                  <div style={{ color: '#64748b', fontSize: 14, fontWeight: 600 }}>
+                    {card.title}
                   </div>
-
-                  {/* 数字 */}
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'baseline',
                       gap: 6,
-                      marginBottom: 12,
+                      marginTop: 10,
                     }}
                   >
                     <span
                       style={{
-                        fontSize: 32,
+                        fontSize: 34,
                         fontWeight: 700,
-                        background: card.gradient,
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                        backgroundClip: 'text',
-                        letterSpacing: '-0.5px',
-                        lineHeight: 1.2,
+                        color: '#172033',
+                        letterSpacing: '-0.8px',
+                        lineHeight: 1.05,
                       }}
                     >
                       {card.value}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 13,
-                        color: '#9ca3af',
-                        fontWeight: 500,
-                      }}
-                    >
+                    <span style={{ color: '#94a3b8', fontSize: 13, fontWeight: 500 }}>
                       {card.suffix}
                     </span>
                   </div>
-
-                  {/* 趋势标签 */}
-                  {card.trend && (
-                    <div
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        padding: '3px 10px',
-                        borderRadius: 20,
-                        background: card.trendUp
-                          ? 'rgba(99, 102, 241, 0.08)'
-                          : 'rgba(239, 68, 68, 0.08)',
-                        border: `1px solid ${
-                          card.trendUp ? 'rgba(99, 102, 241, 0.2)' : 'rgba(239, 68, 68, 0.2)'
-                        }`,
-                      }}
-                    >
-                      {card.trendUp ? (
-                        <ArrowUpOutlined style={{ fontSize: 10, color: '#6366f1' }} />
-                      ) : (
-                        <ArrowDownOutlined style={{ fontSize: 10, color: '#ef4444' }} />
-                      )}
-                      <span
-                        style={{
-                          color: card.trendUp ? '#6366f1' : '#ef4444',
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {card.trend}
-                      </span>
-                      <span
-                        style={{
-                          color: '#9ca3af',
-                          fontSize: 11,
-                          marginLeft: 2,
-                        }}
-                      >
-                        {card.trendText}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* 悬浮跳转提示层 */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: hoveredCard === index && card.link ? 38 : 0,
-                    background: card.gradient,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    overflow: 'hidden',
-                    transition: 'height 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
-                    boxShadow: hoveredCard === index ? `0 -4px 16px ${card.color}40` : 'none',
-                  }}
-                >
-                  <span
+                  <div
                     style={{
-                      color: '#fff',
-                      fontSize: 13,
+                      position: 'absolute',
+                      right: 0,
+                      bottom: 0,
+                      height: 30,
+                      padding: '0 10px',
+                      borderRadius: 15,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      background:
+                        hoveredCard === index && card.link ? card.gradient : `${card.color}08`,
+                      border: `1px solid ${hoveredCard === index ? 'transparent' : `${card.color}28`}`,
+                      color: hoveredCard === index ? '#fff' : card.color,
+                      fontSize: 12,
                       fontWeight: 600,
-                      letterSpacing: '0.3px',
                       whiteSpace: 'nowrap',
-                      textShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                      boxShadow: hoveredCard === index ? `0 6px 16px ${card.color}28` : 'none',
+                      transition:
+                        'color 0.25s ease, background 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease',
                     }}
                   >
-                    跳转 {card.jumpMoudle}
-                  </span>
-                  <span
-                    style={{
-                      color: '#fff',
-                      fontSize: 14,
-                      fontWeight: 700,
-                      transform: hoveredCard === index ? 'translateX(4px)' : 'translateX(0)',
-                      transition: 'transform 0.3s ease',
-                    }}
-                  >
-                    →
-                  </span>
+                    <span>查看{card.jumpMoudle}</span>
+                    <ArrowRightOutlined
+                      style={{
+                        transform: hoveredCard === index ? 'translateX(3px)' : 'translateX(0)',
+                        transition: 'transform 0.25s ease',
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </Col>
@@ -762,7 +708,7 @@ export default function DashboardPage() {
           </Col>
         </Row>
 
-        {/* 任务表格 */}
+        {/* 数据源表格 */}
         <Card
           title={
             <div
@@ -787,7 +733,7 @@ export default function DashboardPage() {
                   color: '#1f2937',
                 }}
               >
-                最近导入任务
+                最近数据源接入
               </span>
             </div>
           }
@@ -834,10 +780,18 @@ export default function DashboardPage() {
           }
         >
           <Table
-            columns={columns as any}
-            dataSource={recentTasks}
-            rowKey="key"
-            pagination={false}
+            loading={dataSourceLoading}
+            columns={dataSourceColumns as any}
+            dataSource={dataSourceList}
+            rowKey="id"
+            pagination={{
+              current: dataSourcePage,
+              pageSize: 5,
+              total: dataSourceTotal,
+              showSizeChanger: false,
+              showTotal: (count) => `共 ${count} 条`,
+              onChange: setDataSourcePage,
+            }}
           />
         </Card>
       </div>
