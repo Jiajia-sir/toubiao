@@ -105,6 +105,7 @@ export interface ImportRunRecord {
   id: number;
   taskId: number;
   dataSourceId: number;
+  dataSourceName?: string;
   taskName?: string;
   sourceType?: string;
   triggerType?: string;
