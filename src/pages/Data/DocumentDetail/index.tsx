@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { history, useLocation, useParams } from '@umijs/max';
 import {
@@ -12,7 +12,6 @@ import {
   ClusterOutlined,
   FileOutlined,
   KeyOutlined,
-  ReloadOutlined,
   SaveOutlined,
   SearchOutlined,
   TagOutlined,
@@ -29,8 +28,10 @@ import {
   message,
   Modal,
   Progress,
+  Radio,
   Row,
   Segmented,
+  Select,
   Slider,
   Spin,
   Space,
@@ -50,7 +51,9 @@ import DocumentFilePreview, { extractPreviewFileName } from '@/components/Docume
 import EntityRelationGraph from '@/components/Graph/EntityRelationGraph';
 import { getDocumentHtmlChunkPage, viewDocument } from '@/services/biz/document-query';
 import { getDocumentKnowledgeGraph, type DocumentKnowledgeGraphResult } from '@/services/biz/graph';
+import { getKnowledgeBasePage } from '@/services/biz/knowledge-base';
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date';
+import { batchSetDocumentKnowledgeBase } from '../DocumentImport/api';
 
 type PreviewBlockType = 'meta' | 'heading' | 'paragraph' | 'bullet';
 
@@ -732,6 +735,16 @@ export default function DataDetailPage() {
   const [previewChunks, setPreviewChunks] = useState<
     Array<{ seq: string; value: string; hit?: boolean }>
   >([]);
+  const [saveKnowledgeVisible, setSaveKnowledgeVisible] = useState(false);
+  const [saveKnowledgeSubmitting, setSaveKnowledgeSubmitting] = useState(false);
+  const [saveKnowledgeOperateType, setSaveKnowledgeOperateType] = useState<'APPEND' | 'REPLACE'>(
+    'APPEND',
+  );
+  const [saveKnowledgeBases, setSaveKnowledgeBases] = useState<Array<number | string>>([]);
+  const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<
+    Array<{ label: string; value: number | string; disabled?: boolean }>
+  >([]);
+  const [knowledgeBaseNameMap, setKnowledgeBaseNameMap] = useState<Record<string, string>>({});
   const previewLoadingRef = useRef(false);
   const previewScrollLockRef = useRef(false);
 
@@ -745,6 +758,44 @@ export default function DataDetailPage() {
   const sourceEsId = searchParams.get('esId');
   const sourceKeyword = searchParams.get('keyword');
   const sourcePreviewMode = searchParams.get('previewMode');
+
+  const fetchDetail = useCallback(async () => {
+    setDetailLoading(true);
+    setDetailError('');
+    try {
+      const response = await viewDocument({
+        id: params.id || 0,
+        esId: sourceEsId || '',
+        keyword: sourceKeyword || '',
+      });
+
+      if (!isSuccessResponse(response)) {
+        setDetailData(null);
+        const errorMessage = getResponseMessage(response, '获取文档详情失败');
+        setDetailError(errorMessage);
+        message.error(errorMessage);
+        return;
+      }
+
+      const nextDetailData = extractDetailData(response);
+      if (!nextDetailData || typeof nextDetailData !== 'object' || !Object.keys(nextDetailData).length) {
+        setDetailData(null);
+        setDetailError('当前文档不存在');
+        return;
+      }
+
+      setDetailData(nextDetailData);
+    } catch (error) {
+      console.error(error);
+      setDetailData(null);
+      const errorMessage =
+        error instanceof Error && error.message ? error.message : '获取文档详情失败';
+      setDetailError(errorMessage);
+      message.error(errorMessage);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [params.id, sourceEsId, sourceKeyword]);
 
   const handleBack = () => {
     if (sourceTab === '1' || sourceTab === '2') {
@@ -760,64 +811,50 @@ export default function DataDetailPage() {
   }, [sourceKeyword, sourcePreviewMode, params.id]);
 
   useEffect(() => {
-    let active = true;
+    fetchDetail();
+  }, [fetchDetail]);
 
-    const fetchDetail = async () => {
+  useEffect(() => {
+    const fetchKnowledgeBaseOptions = async () => {
       try {
-        setDetailLoading(true);
-        setDetailError('');
-        const response = await viewDocument({
-          id: params.id || 0,
-          esId: sourceEsId || '',
-          keyword: sourceKeyword || '',
-        });
+        const size = 1000;
+        let currentPage = 1;
+        let items: any[] = [];
+        let totalCount = 0;
 
-        if (!active) {
-          return;
-        }
+        do {
+          const res: any = await getKnowledgeBasePage({
+            pageNo: currentPage,
+            pageSize: size,
+          });
+          const pageItems = extractPageList(res);
+          items = items.concat(pageItems);
+          totalCount = extractPageTotal(res);
+          currentPage += 1;
+        } while (totalCount > items.length && currentPage < 100);
 
-        if (!isSuccessResponse(response)) {
-          setDetailData(null);
-          const errorMessage = getResponseMessage(response, '获取文档详情失败');
-          setDetailError(errorMessage);
-          message.error(errorMessage);
-          return;
-        }
+        const options = items.map((item: any) => ({
+          label: item.name,
+          value: String(item.id),
+          disabled: String(item.enabled) === '0',
+        }));
+        const nameMap = items.reduce<Record<string, string>>((map, item) => {
+          if (item?.id !== undefined && item?.id !== null) {
+            map[String(item.id)] = String(item.name ?? '');
+          }
+          return map;
+        }, {});
 
-        const nextDetailData = extractDetailData(response);
-        if (
-          !nextDetailData ||
-          typeof nextDetailData !== 'object' ||
-          !Object.keys(nextDetailData).length
-        ) {
-          setDetailData(null);
-          setDetailError('当前文档不存在');
-          return;
-        }
-
-        setDetailData(nextDetailData);
+        setKnowledgeBaseOptions(options);
+        setKnowledgeBaseNameMap(nameMap);
       } catch (error) {
         console.error(error);
-        if (active) {
-          setDetailData(null);
-          const errorMessage =
-            error instanceof Error && error.message ? error.message : '获取文档详情失败';
-          setDetailError(errorMessage);
-          message.error(errorMessage);
-        }
-      } finally {
-        if (active) {
-          setDetailLoading(false);
-        }
+        message.error('获取知识库列表失败');
       }
     };
 
-    fetchDetail();
-
-    return () => {
-      active = false;
-    };
-  }, [params.id, sourceEsId, sourceKeyword]);
+    fetchKnowledgeBaseOptions();
+  }, []);
 
   useEffect(() => {
     setPreviewPageNo(1);
@@ -960,6 +997,93 @@ export default function DataDetailPage() {
       stripHtml(document.title).trim()
     );
   }, [detailData, sourceTitle, originalFilePath, document.title]);
+
+  const handleDownload = async () => {
+    if (!originalFilePath) {
+      message.warning('文件路径不存在，无法下载');
+      return;
+    }
+
+    try {
+      const isFullUrl =
+        /^(https?:)?\/\//i.test(originalFilePath) || /^(blob|data):/i.test(originalFilePath);
+      const downloadUrl =
+        isFullUrl || originalFilePath.startsWith('/') ? originalFilePath : `/${originalFilePath}`;
+      const response = await fetch(downloadUrl, { credentials: 'include' });
+
+      if (!response.ok) {
+        throw new Error(`下载失败：${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = originalPreviewFileName && originalPreviewFileName !== '-' ? originalPreviewFileName : '';
+      link.style.display = 'none';
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error(error);
+      message.error('下载失败，请稍后重试');
+    }
+  };
+
+  const handleSaveKnowledgeOpen = () => {
+    const documentId = detailData?.id ?? params.id;
+    if (!documentId) {
+      message.warning('当前文档不存在，无法保存到知识库');
+      return;
+    }
+
+    setSaveKnowledgeBases(detailSummary.knowledgeBases.map((item) => String(item.id)));
+    setSaveKnowledgeOperateType('APPEND');
+    setSaveKnowledgeVisible(true);
+  };
+
+  const handleSaveKnowledgeSubmit = async () => {
+    const documentId = detailData?.id ?? params.id;
+    if (!documentId) {
+      message.warning('当前文档不存在，无法保存到知识库');
+      return;
+    }
+    if (!saveKnowledgeBases.length) {
+      message.warning('请选择知识库');
+      return;
+    }
+
+    setSaveKnowledgeSubmitting(true);
+    try {
+      const res: any = await batchSetDocumentKnowledgeBase({
+        documentIds: [documentId],
+        knowledgeBaseIds: saveKnowledgeBases,
+        operateType: saveKnowledgeOperateType,
+      });
+      if (res?.code !== undefined && res.code !== 200) {
+        message.error(res?.msg || '保存到知识库失败');
+        return;
+      }
+
+      const knowledgeBaseNames = saveKnowledgeBases.map(
+        (id) => knowledgeBaseNameMap[String(id)] || String(id),
+      );
+      const knowledgeBaseText = knowledgeBaseNames.join('、');
+      message.success(
+        saveKnowledgeOperateType === 'REPLACE'
+          ? `已将当前文档覆盖到知识库 ${knowledgeBaseText}`
+          : `已为当前文档追加知识库 ${knowledgeBaseText}`,
+      );
+      setSaveKnowledgeVisible(false);
+      await fetchDetail();
+    } catch (error) {
+      console.error(error);
+      message.error('保存到知识库失败');
+    } finally {
+      setSaveKnowledgeSubmitting(false);
+    }
+  };
 
   const currentStatus = statusConfig[document.status];
   const plainDocumentTitle = toPlainText(document.title);
@@ -1258,16 +1382,19 @@ export default function DataDetailPage() {
             </div>
 
               <Space wrap size={[8, 8]}>
-                <Button disabled icon={<CloudDownloadOutlined />} style={actionButtonStyle}>
-                  下载解析结果
+                <Button
+                  icon={<CloudDownloadOutlined />}
+                  style={actionButtonStyle}
+                  onClick={handleDownload}
+                  disabled={!originalFilePath}
+                >
+                  下载
                 </Button>
-              <Button disabled icon={<ReloadOutlined />} style={actionButtonStyle}>
-                重新解析
-              </Button>
               <Button
-                disabled
                 type="primary"
                 icon={<SaveOutlined />}
+                onClick={handleSaveKnowledgeOpen}
+                disabled={!detailData?.id && !params.id}
                 style={{
                   ...actionButtonStyle,
                   color: '#fff',
@@ -1998,6 +2125,90 @@ export default function DataDetailPage() {
             </div>
           )}
           <Divider style={{ margin: '16px 0 0' }} />
+        </Modal>
+
+        <Modal
+          title="保存到知识库"
+          open={saveKnowledgeVisible}
+          onCancel={() => {
+            setSaveKnowledgeVisible(false);
+            setSaveKnowledgeBases([]);
+            setSaveKnowledgeOperateType('APPEND');
+          }}
+          onOk={handleSaveKnowledgeSubmit}
+          okText="确认"
+          cancelText="取消"
+          confirmLoading={saveKnowledgeSubmitting}
+          width={520}
+        >
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+              当前文档：
+              <span style={{ color: '#1890ff', fontWeight: 600 }}>
+                {plainDocumentTitle || originalPreviewFileName || '-'}
+              </span>
+            </div>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+              选择目标知识库 <span style={{ color: '#ff4d4f' }}>*</span>
+            </div>
+            <Select
+              mode="multiple"
+              style={{ width: '100%' }}
+              placeholder="请选择一个或多个知识库"
+              value={saveKnowledgeBases}
+              onChange={setSaveKnowledgeBases}
+              options={knowledgeBaseOptions}
+              showSearch
+              optionFilterProp="label"
+            />
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>
+              入知识库方式 <span style={{ color: '#ff4d4f' }}>*</span>
+            </div>
+            <Radio.Group
+              value={saveKnowledgeOperateType}
+              onChange={(e) => setSaveKnowledgeOperateType(e.target.value)}
+              style={{ width: '100%' }}
+            >
+              <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                <div
+                  style={{
+                    padding: '10px 12px',
+                    border:
+                      saveKnowledgeOperateType === 'APPEND'
+                        ? '1px solid #91caff'
+                        : '1px solid #f0f0f0',
+                    borderRadius: 8,
+                    background: saveKnowledgeOperateType === 'APPEND' ? '#f0f7ff' : '#fff',
+                  }}
+                >
+                  <Radio value="APPEND">追加关联</Radio>
+                  <div style={{ marginTop: 6, paddingLeft: 24, fontSize: 12, color: '#8c8c8c' }}>
+                    保留文档当前已有知识库，并额外添加本次选择的知识库，适合补充关联。
+                  </div>
+                </div>
+                <div
+                  style={{
+                    padding: '10px 12px',
+                    border:
+                      saveKnowledgeOperateType === 'REPLACE'
+                        ? '1px solid #ffccc7'
+                        : '1px solid #f0f0f0',
+                    borderRadius: 8,
+                    background: saveKnowledgeOperateType === 'REPLACE' ? '#fff2f0' : '#fff',
+                  }}
+                >
+                  <Radio value="REPLACE">覆盖替换</Radio>
+                  <div style={{ marginTop: 6, paddingLeft: 24, fontSize: 12, color: '#8c8c8c' }}>
+                    用本次选择的知识库替换文档当前已有知识库关联，请谨慎操作。
+                  </div>
+                </div>
+              </Space>
+            </Radio.Group>
+          </div>
         </Modal>
 
       </div>
