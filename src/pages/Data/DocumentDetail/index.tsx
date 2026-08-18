@@ -50,7 +50,12 @@ import type { EntityGraphData, EntityGraphNode } from '@/data/entityGraphMock';
 import DocumentFilePreview, { extractPreviewFileName } from '@/components/DocumentFilePreview';
 import EntityRelationGraph from '@/components/Graph/EntityRelationGraph';
 import { getDocumentHtmlChunkPage, viewDocument } from '@/services/biz/document-query';
-import { getDocumentKnowledgeGraph, type DocumentKnowledgeGraphResult } from '@/services/biz/graph';
+import {
+  getDocumentEntityReferRecord,
+  getDocumentKnowledgeGraph,
+  type DocumentEntityReferRecordItem,
+  type DocumentKnowledgeGraphResult,
+} from '@/services/biz/graph';
 import { getKnowledgeBasePage } from '@/services/biz/knowledge-base';
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date';
 import { batchSetDocumentKnowledgeBase } from '../DocumentImport/api';
@@ -61,14 +66,16 @@ const CARD_STACK_GAP = 12;
 const META_CARD_HEIGHT = 340;
 const KEYWORD_CARD_HEIGHT = 220;
 const ENTITY_CARD_HEIGHT = 280;
+const REFER_RECORD_CARD_HEIGHT = 220;
 const TAG_CARD_HEIGHT = 220;
 const PREVIEW_PAGE_SIZE = 10;
 const PREVIEW_CARD_HEIGHT =
   META_CARD_HEIGHT +
   KEYWORD_CARD_HEIGHT +
   ENTITY_CARD_HEIGHT +
+  REFER_RECORD_CARD_HEIGHT +
   TAG_CARD_HEIGHT +
-  CARD_STACK_GAP * 3;
+  CARD_STACK_GAP * 4;
 
 const formatFileSize = (bytes: any) => {
   const size = Number(bytes);
@@ -735,6 +742,7 @@ export default function DataDetailPage() {
   const [previewChunks, setPreviewChunks] = useState<
     Array<{ seq: string; value: string; hit?: boolean }>
   >([]);
+  const [entityReferRecords, setEntityReferRecords] = useState<DocumentEntityReferRecordItem[]>([]);
   const [saveKnowledgeVisible, setSaveKnowledgeVisible] = useState(false);
   const [saveKnowledgeSubmitting, setSaveKnowledgeSubmitting] = useState(false);
   const [saveKnowledgeOperateType, setSaveKnowledgeOperateType] = useState<'APPEND' | 'REPLACE'>(
@@ -855,6 +863,48 @@ export default function DataDetailPage() {
 
     fetchKnowledgeBaseOptions();
   }, []);
+
+  useEffect(() => {
+    const documentId = detailData?.id ?? params.id;
+    if (!documentId) {
+      setEntityReferRecords([]);
+      return;
+    }
+
+    let active = true;
+
+    const fetchEntityReferRecords = async () => {
+      try {
+        const response: any = await getDocumentEntityReferRecord(documentId);
+        if (!active) {
+          return;
+        }
+
+        if (!isSuccessResponse(response)) {
+          setEntityReferRecords([]);
+          return;
+        }
+
+        const records = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+            ? response
+            : [];
+        setEntityReferRecords(records);
+      } catch (error) {
+        console.error(error);
+        if (active) {
+          setEntityReferRecords([]);
+        }
+      }
+    };
+
+    fetchEntityReferRecords();
+
+    return () => {
+      active = false;
+    };
+  }, [detailData?.id, params.id]);
 
   useEffect(() => {
     setPreviewPageNo(1);
@@ -2022,6 +2072,120 @@ export default function DataDetailPage() {
                     </div>
                   ) : (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无实体" />
+                  )}
+                </Card>
+
+                <Card
+                  bordered={false}
+                  title="消歧记录"
+                  extra={<span style={{ color: '#94a3b8' }}>共 {entityReferRecords.length} 条</span>}
+                  style={{
+                    ...surfaceCardStyle,
+                    height: REFER_RECORD_CARD_HEIGHT,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                  }}
+                  styles={{ body: { padding: 14, flex: 1, overflow: 'hidden', minHeight: 0 } }}
+                >
+                  {entityReferRecords.length > 0 ? (
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: 8,
+                        height: '100%',
+                        minHeight: 0,
+                        overflowY: 'auto',
+                        paddingRight: 4,
+                      }}
+                    >
+                      {entityReferRecords.map((record, index) => (
+                        <div
+                          key={String(record.id ?? `${record.fromEntity}-${record.toEntity}-${index}`)}
+                          style={{
+                            paddingBottom: index === entityReferRecords.length - 1 ? 0 : 8,
+                            borderBottom:
+                              index === entityReferRecords.length - 1
+                                ? 'none'
+                                : '1px dashed #edf2f7',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                              marginBottom: 6,
+                            }}
+                          >
+                            <Space size={[6, 6]} wrap style={{ minWidth: 0, flex: 1 }}>
+                              <span
+                                style={{
+                                  color: '#64748b',
+                                  fontSize: 12,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                原词
+                              </span>
+                              <Tag
+                                style={{
+                                  marginInlineEnd: 0,
+                                  paddingInline: 8,
+                                  borderRadius: 999,
+                                  lineHeight: '20px',
+                                }}
+                              >
+                                {record.fromEntity || '-'}
+                              </Tag>
+                              <span
+                                style={{
+                                  color: '#94a3b8',
+                                  fontSize: 12,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                →
+                              </span>
+                              <Tag
+                                color="processing"
+                                style={{
+                                  marginInlineEnd: 0,
+                                  paddingInline: 8,
+                                  borderRadius: 999,
+                                  lineHeight: '20px',
+                                }}
+                              >
+                                {record.toEntity || '-'}
+                              </Tag>
+                            </Space>
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: 11,
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {formatDateTime(record.createTime)}
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: 11,
+                              lineHeight: 1.4,
+                              paddingLeft: 2,
+                            }}
+                          >
+                            消歧为实体“{record.toEntity || '-'}”
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无消歧记录" />
                   )}
                 </Card>
 

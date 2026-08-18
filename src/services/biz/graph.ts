@@ -21,6 +21,14 @@ export interface DocumentKnowledgeGraphResult {
   links?: DocumentKnowledgeGraphLink[];
 }
 
+export interface DocumentEntityReferRecordItem {
+  id: number | string;
+  docId: number | string;
+  fromEntity?: string;
+  toEntity?: string;
+  createTime?: number | string;
+}
+
 export interface ExtractLlmEntityItem {
   name?: string;
   type?: string;
@@ -89,6 +97,16 @@ export async function getDocumentKnowledgeGraph(id: number | string, way?: strin
     method: "GET",
     params: { id, way },
   });
+}
+
+export async function getDocumentEntityReferRecord(id: number | string) {
+  return request<DocumentEntityReferRecordItem[]>(
+    `${API_PREFIX}/biz/graph/document-entity-refer-record`,
+    {
+      method: "GET",
+      params: { id },
+    },
+  );
 }
 
 export async function searchGraph(params: { entity: string; way?: string }) {
