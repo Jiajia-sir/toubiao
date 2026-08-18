@@ -1,5 +1,6 @@
 'use client';
 
+import { history } from '@umijs/max';
 import { useState, useEffect, useRef } from 'react';
 import styles from './index.less';
 import {
@@ -524,7 +525,9 @@ interface ImportJob {
   name: string;
   triggerType?: string;
   traceId?: string;
-  source: string;
+  dataSourceId?: number;
+  dataSourceName: string;
+  sourceType?: string;
   type: 'document' | 'database';
   status: 'running' | 'paused' | 'completed' | 'error' | 'waiting';
   progress: number;
@@ -2542,7 +2545,9 @@ export default function MonitorPage() {
       name: run.taskName || `运行#${run.id}`,
       triggerType: run.triggerType,
       traceId: run.traceId,
-      source: `${run.sourceType || '-'} / 数据源${run.dataSourceId || ''}`,
+      dataSourceId: run.dataSourceId ? Number(run.dataSourceId) : undefined,
+      dataSourceName: run.dataSourceName || `数据源${run.dataSourceId || ''}`,
+      sourceType: run.sourceType,
       type: 'database',
       status: mapRunStatus(run.status),
       progress: Number(run.progressPercent || 0),
@@ -4544,10 +4549,30 @@ export default function MonitorPage() {
     },
     {
       title: '数据源',
-      dataIndex: 'source',
+      dataIndex: 'dataSourceName',
       key: 'source',
-      width: 160,
-      align: 'center' as const,
+      width: 220,
+      render: (_: string, record: ImportJob) => (
+        <Space direction="vertical" size={2}>
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0, height: 'auto', fontWeight: 600 }}
+            onClick={() =>
+              history.push(
+                record.dataSourceName
+                  ? `/data/source?name=${encodeURIComponent(record.dataSourceName)}`
+                  : '/data/source',
+              )
+            }
+          >
+            {record.dataSourceName}
+          </Button>
+          <span style={{ fontSize: 12, color: token.colorTextTertiary }}>
+            {record.sourceType || '-'}
+          </span>
+        </Space>
+      ),
     },
     {
       title: '进度',

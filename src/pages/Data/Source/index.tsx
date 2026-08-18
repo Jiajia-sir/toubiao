@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { history, useLocation } from '@umijs/max';
 import dayjs from 'dayjs';
 import {
@@ -256,6 +256,8 @@ function buildPayload(
 
 export default function DataSourcePage() {
   const location = useLocation();
+  const handledSearchNameRef = useRef<string>('');
+  const pendingAutoExpandRef = useRef<string>('');
   const [searchForm] = Form.useForm<SearchFormValues>();
   const [editForm] = Form.useForm<EditFormValues>();
 
@@ -351,11 +353,14 @@ export default function DataSourcePage() {
         category: filters.category || undefined,
         status: typeof filters.status === 'number' ? filters.status : undefined,
       });
-      setData(extractPageList(res).map(normalizeRecord));
+      const list = extractPageList(res).map(normalizeRecord);
+      setData(list);
       setTotal(extractPageTotal(res));
+      return list;
     } catch (error) {
       console.error(error);
       message.error('获取数据源列表失败');
+      return [];
     } finally {
       setLoading(false);
     }
@@ -367,7 +372,7 @@ export default function DataSourcePage() {
 
   useEffect(() => {
     fetchData(page, searchValues);
-  }, [page]);
+  }, [page, searchValues]);
 
   useEffect(() => {
     if (!typeOptions.length) {
@@ -443,8 +448,41 @@ export default function DataSourcePage() {
     };
     setSearchValues(values);
     setPage(1);
-    await fetchData(1, values);
+    const list = await fetchData(1, values);
+    if (pendingAutoExpandRef.current && pendingAutoExpandRef.current === (values.name || '')) {
+      pendingAutoExpandRef.current = '';
+      if (list.length) {
+        setExpandedRowKeys([list[0].id]);
+        await loadImportTasks(list[0].id);
+      }
+    }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const sourceName = params.get('name')?.trim() || '';
+    if (!sourceName) {
+      handledSearchNameRef.current = '';
+      return;
+    }
+    if (handledSearchNameRef.current === sourceName) {
+      return;
+    }
+
+    handledSearchNameRef.current = sourceName;
+    pendingAutoExpandRef.current = sourceName;
+    searchForm.setFieldsValue({
+      ...searchForm.getFieldsValue(),
+      name: sourceName,
+    });
+    params.delete('name');
+    const nextSearch = params.toString();
+    history.replace({
+      pathname: location.pathname,
+      search: nextSearch ? `?${nextSearch}` : '',
+    });
+    handleSearchValuesChange({ name: sourceName });
+  }, [location.search]);
 
   const handleReset = async () => {
     const values = {
