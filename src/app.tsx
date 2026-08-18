@@ -9,7 +9,7 @@ import { errorConfig } from './requestErrorConfig';
 import { getAccessToken, getRefreshToken, getTokenExpireTime, setSessionToken } from './access';
 import { ensureRemoteMenu, getRemoteMenu, getUserInfo, patchRouteWithRemoteMenus, refreshToken, setRemoteMenu } from './services/session';
 import { PageEnum } from './enums/pagesEnums';
-import { handleAuthExpired } from './utils/authRedirect';
+import { handleAuthExpired, redirectToLogin } from './utils/authRedirect';
 
 // ========== Token 刷新队列机制 ==========
 // 参考 data-processing-platform 的无感知刷新实现
@@ -24,6 +24,10 @@ const ignoreRefreshMsgs = ["无效的刷新令牌", "刷新令牌已过期"];
 const RETRY_HEADER_KEY = 'X-Retry-After-Refresh';
 
 const isDev = process.env.NODE_ENV === 'development';
+
+function hasValidCurrentUser(currentUser?: API.CurrentUser) {
+  return Boolean(currentUser?.userId);
+}
 
 function normalizeMenuText(value: unknown, fallback = ''): string {
   if (typeof value === 'string') {
@@ -139,6 +143,13 @@ export async function getInitialState(): Promise<{
   const { location } = history;
   if (location.pathname !== PageEnum.LOGIN && getAccessToken()) {
     const currentUser = await fetchUserInfo();
+    if (!hasValidCurrentUser(currentUser)) {
+      redirectToLogin();
+      return {
+        fetchUserInfo,
+        settings: defaultSettings as Partial<LayoutSettings>,
+      };
+    }
     return {
       fetchUserInfo,
       currentUser,
@@ -172,7 +183,8 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
         userId: initialState?.currentUser?.userId,
       },
       request: async () => {
-        if (!initialState?.currentUser?.userId) {
+        if (!hasValidCurrentUser(initialState?.currentUser)) {
+          redirectToLogin();
           return [];
         }
         return normalizeMenuItems((await ensureRemoteMenu()) as Record<string, any>[]);
@@ -183,8 +195,8 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
     onPageChange: () => {
       const { location } = history;
       // 如果没有登录，重定向到 login
-      if (!initialState?.currentUser && location.pathname !== PageEnum.LOGIN) {
-        history.push(PageEnum.LOGIN);
+      if (!hasValidCurrentUser(initialState?.currentUser) && location.pathname !== PageEnum.LOGIN) {
+        redirectToLogin();
       }
     },
     layoutBgImgList: [
