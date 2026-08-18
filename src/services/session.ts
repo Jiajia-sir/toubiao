@@ -91,7 +91,7 @@ export function setRemoteMenu(data: any) {
     return;
   }
 
-  if (Array.isArray(data)) {
+  if (Array.isArray(data) && data.length > 0) {
     window.sessionStorage.setItem(
       REMOTE_MENU_STORAGE_KEY,
       JSON.stringify(sanitizeMenuCache(data)),
@@ -103,11 +103,11 @@ export function setRemoteMenu(data: any) {
 }
 
 export async function ensureRemoteMenu() {
-  if (remoteMenu && Array.isArray(remoteMenu)) {
+  if (Array.isArray(remoteMenu) && remoteMenu.length > 0) {
     return remoteMenu;
   }
   const menus = await getRoutersInfo();
-  setRemoteMenu(menus);
+  setRemoteMenu(Array.isArray(menus) && menus.length > 0 ? menus : null);
   return menus;
 }
 

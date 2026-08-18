@@ -4815,7 +4815,7 @@ export default function MonitorPage() {
         <Row
           style={{
             padding: '20px 6px 22px',
-            background: '#f1f4f7',
+            background: '#f3f8ff',
           }}
         >
           {[
@@ -5257,11 +5257,11 @@ export default function MonitorPage() {
                 borderRadius: 8,
                 border:
                   alertCount > 0 ? '1px solid rgba(250, 173, 20, 0.36)' : '1px solid #edf0f5',
-                background: '#fff',
+                background: '#f3f8ff',
                 boxShadow: alertCount > 0 ? '0 8px 24px rgba(250, 173, 20, 0.10)' : 'none',
                 minHeight: 'calc(90vh - 80px)',
               }}
-              bodyStyle={{ background: '#fff', padding: 12 }}
+              bodyStyle={{ background: '#f3f8ff', padding: 12 }}
             >
               <div
                 style={{
@@ -5270,8 +5270,8 @@ export default function MonitorPage() {
                   justifyContent: 'space-between',
                   marginBottom: 10,
                   padding: '6px 8px',
-                  background: '#fff',
-                  border: '1px solid #f0f0f0',
+                  background: '#f8fbff',
+                  border: '1px solid #dbeafe',
                   borderRadius: 6,
                   color: '#64748b',
                   fontSize: 12,
