@@ -40,9 +40,7 @@ import {
 } from 'antd';
 import { statusConfig } from '@/config/status';
 import {
-  entityTypeMeta,
   type DocumentParseDetail,
-  type EntityType,
   type KnowledgeGraphData,
   type ParseStep,
 } from '@/data/documentGraph';
@@ -61,6 +59,15 @@ import { formatDateTime as formatDateTimeUtil } from '@/utils/date';
 import { batchSetDocumentKnowledgeBase } from '../DocumentImport/api';
 
 type PreviewBlockType = 'meta' | 'heading' | 'paragraph' | 'bullet';
+type DynamicEntity = {
+  id: string;
+  name: string;
+  type: string;
+};
+type DynamicEntityMap = Record<string, DynamicEntity[]>;
+type DetailDocument = Omit<DocumentParseDetail, 'entities'> & {
+  entities: DynamicEntityMap;
+};
 
 const CARD_STACK_GAP = 12;
 const META_CARD_HEIGHT = 340;
@@ -349,29 +356,31 @@ const renderHighlightedText = (text: string, keyword: string) => {
   );
 };
 
-const mapEntityType = (value: any): EntityType => {
-  const text = String(value ?? '').toLowerCase();
-  if (text.includes('person') || text.includes('人物') || text.includes('人名')) {
-    return 'person';
-  }
-  if (
-    text.includes('organization') ||
-    text.includes('company') ||
-    text.includes('组织') ||
-    text.includes('公司')
-  ) {
-    return 'organization';
-  }
-  if (text.includes('time') || text.includes('date') || text.includes('时间')) {
-    return 'time';
-  }
-  if (text.includes('product') || text.includes('产品')) {
-    return 'product';
-  }
-  if (text.includes('project') || text.includes('项目')) {
-    return 'project';
-  }
-  return 'term';
+const normalizeEntityTypeLabel = (value: any) => {
+  const label = String(value ?? '').trim();
+  return label || '未分类';
+};
+
+const ENTITY_TYPE_PALETTES = [
+  { color: '#2f6fed', bg: '#eaf2ff' },
+  { color: '#16a34a', bg: '#e9f8ef' },
+  { color: '#f97316', bg: '#fff2e8' },
+  { color: '#8b5cf6', bg: '#f3edff' },
+  { color: '#10b981', bg: '#e8fbf4' },
+  { color: '#84cc16', bg: '#f2fbe6' },
+  { color: '#ef4444', bg: '#fff1f2' },
+  { color: '#0f766e', bg: '#ecfeff' },
+];
+
+const getEntityTypeMeta = (type: string) => {
+  const normalizedType = normalizeEntityTypeLabel(type);
+  const hash = Array.from(normalizedType).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const palette = ENTITY_TYPE_PALETTES[hash % ENTITY_TYPE_PALETTES.length];
+  return {
+    label: normalizedType,
+    color: palette.color,
+    bg: palette.bg,
+  };
 };
 
 const mapIntelligentStatus = (value: any): DocumentParseDetail['status'] => {
@@ -481,14 +490,22 @@ const buildParseSteps = (detail: any): ParseStep[] => {
   ];
 };
 
-const normalizeEntities = (detail: any): DocumentParseDetail['entities'] => {
-  const initial: DocumentParseDetail['entities'] = {
-    person: [],
-    organization: [],
-    time: [],
-    term: [],
-    product: [],
-    project: [],
+const normalizeEntities = (detail: any): DynamicEntityMap => {
+  const initial: DynamicEntityMap = {};
+  const pushEntity = (rawType: any, rawName: any, idSeed: string) => {
+    const type = normalizeEntityTypeLabel(rawType);
+    const name = String(rawName ?? '').trim();
+    if (!name) {
+      return;
+    }
+    if (!initial[type]) {
+      initial[type] = [];
+    }
+    initial[type].push({
+      id: idSeed,
+      name,
+      type,
+    });
   };
 
   const entitySource =
@@ -505,7 +522,7 @@ const normalizeEntities = (detail: any): DocumentParseDetail['entities'] => {
 
   if (Array.isArray(entitySource)) {
     entitySource.forEach((item: any, index: number) => {
-      const type = mapEntityType(item?.type ?? item?.entityType ?? item?.category);
+      const type = item?.entityType ?? item?.type ?? item?.category;
       const names = Array.isArray(item?.entityName)
         ? item.entityName
         : [item?.name ?? item?.entityName ?? item?.value ?? ''];
@@ -513,16 +530,11 @@ const normalizeEntities = (detail: any): DocumentParseDetail['entities'] => {
         .map((name: any) => String(name ?? '').trim())
         .filter(Boolean)
         .forEach((name: string, nameIndex: number) => {
-          initial[type].push({
-            id: String(item?.id ?? item?.entityId ?? `${type}-${index}-${nameIndex}`),
-            name,
-            type,
-          });
+          pushEntity(type, name, String(item?.id ?? item?.entityId ?? `${type}-${index}-${nameIndex}`));
         });
     });
   } else if (typeof entitySource === 'object') {
     Object.entries(entitySource).forEach(([rawType, rawEntities]) => {
-      const type = mapEntityType(rawType);
       ensureArray<any>(rawEntities).forEach((item: any, index: number) => {
         const names = Array.isArray(item?.entityName)
           ? item.entityName
@@ -535,18 +547,17 @@ const normalizeEntities = (detail: any): DocumentParseDetail['entities'] => {
           .map((name: any) => String(name ?? '').trim())
           .filter(Boolean)
           .forEach((name: string, nameIndex: number) => {
-            initial[type].push({
-              id: String(item?.id ?? item?.entityId ?? `${type}-${index}-${nameIndex}`),
+            pushEntity(
+              item?.entityType ?? item?.type ?? item?.category ?? rawType,
               name,
-              type,
-            });
+              String(item?.id ?? item?.entityId ?? `${rawType}-${index}-${nameIndex}`),
+            );
           });
       });
     });
   }
 
-  const totalCount = Object.values(initial).reduce((sum, items) => sum + items.length, 0);
-  return totalCount > 0 ? initial : initial;
+  return initial;
 };
 
 const normalizeContent = (detail: any, fallback: string[]) => {
@@ -645,7 +656,7 @@ const buildEntityGraphData = (
   };
 };
 
-const createEmptyDocumentDetail = (id: string): DocumentParseDetail => ({
+const createEmptyDocumentDetail = (id: string): DetailDocument => ({
   id,
   title: '未命名文档',
   type: '-',
@@ -657,14 +668,7 @@ const createEmptyDocumentDetail = (id: string): DocumentParseDetail => ({
   keywords: [],
   tags: [],
   parseSteps: [],
-  entities: {
-    person: [],
-    organization: [],
-    time: [],
-    term: [],
-    product: [],
-    project: [],
-  },
+  entities: {},
   content: [],
   graph: {
     nodes: [],
@@ -673,11 +677,11 @@ const createEmptyDocumentDetail = (id: string): DocumentParseDetail => ({
 });
 
 const buildDocumentDetail = (
-  baseDocument: DocumentParseDetail,
+  baseDocument: DetailDocument,
   detail: any,
   sourceTitle: string | null,
   sourceType: string | null,
-): DocumentParseDetail => {
+): DetailDocument => {
   const normalizedKeywords = toTextList(
     detail?.keywordsList ?? detail?.keywords ?? detail?.keywordList ?? detail?.keywordNames,
   );
@@ -2021,7 +2025,7 @@ export default function DataDetailPage() {
                   {entityEntries.length > 0 ? (
                     <div style={{ display: 'grid', gap: 12 }}>
                       {entityEntries.map(([type, entities], index) => {
-                        const meta = entityTypeMeta[type as keyof typeof entityTypeMeta];
+                        const meta = getEntityTypeMeta(type);
                         return (
                           <div
                             key={type}
@@ -2086,7 +2090,16 @@ export default function DataDetailPage() {
                     flexDirection: 'column',
                     overflow: 'hidden',
                   }}
-                  styles={{ body: { padding: '10px 12px', flex: 1, overflow: 'hidden', minHeight: 0 } }}
+                  styles={{
+                    body: {
+                      padding: '10px 12px',
+                      flex: 1,
+                      minHeight: 0,
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                    },
+                  }}
                 >
                   {entityReferRecords.length > 0 ? (
                     <div
@@ -2097,7 +2110,11 @@ export default function DataDetailPage() {
                         alignItems: 'stretch',
                         justifyContent: 'flex-start',
                         flex: 1,
-                        overflowY: 'auto',
+                        minHeight: 0,
+                        maxHeight: '100%',
+                        overflowY: 'scroll',
+                        overflowX: 'hidden',
+                        scrollbarGutter: 'stable',
                         paddingRight: 4,
                       }}
                     >
