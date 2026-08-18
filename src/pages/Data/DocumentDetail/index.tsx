@@ -2086,15 +2086,17 @@ export default function DataDetailPage() {
                     flexDirection: 'column',
                     overflow: 'hidden',
                   }}
-                  styles={{ body: { padding: 14, flex: 1, overflow: 'hidden', minHeight: 0 } }}
+                  styles={{ body: { padding: '10px 12px', flex: 1, overflow: 'hidden', minHeight: 0 } }}
                 >
                   {entityReferRecords.length > 0 ? (
                     <div
                       style={{
-                        display: 'grid',
-                        gap: 8,
-                        height: '100%',
-                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6,
+                        alignItems: 'stretch',
+                        justifyContent: 'flex-start',
+                        flex: 1,
                         overflowY: 'auto',
                         paddingRight: 4,
                       }}
@@ -2103,7 +2105,7 @@ export default function DataDetailPage() {
                         <div
                           key={String(record.id ?? `${record.fromEntity}-${record.toEntity}-${index}`)}
                           style={{
-                            paddingBottom: index === entityReferRecords.length - 1 ? 0 : 8,
+                            padding: index === entityReferRecords.length - 1 ? '2px 0 0' : '2px 0 4px',
                             borderBottom:
                               index === entityReferRecords.length - 1
                                 ? 'none'
@@ -2116,14 +2118,14 @@ export default function DataDetailPage() {
                               alignItems: 'center',
                               justifyContent: 'space-between',
                               gap: 8,
-                              marginBottom: 6,
+                              lineHeight: 1.2,
                             }}
                           >
                             <Space size={[6, 6]} wrap style={{ minWidth: 0, flex: 1 }}>
                               <span
                                 style={{
                                   color: '#64748b',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   flexShrink: 0,
                                 }}
                               >
@@ -2132,9 +2134,12 @@ export default function DataDetailPage() {
                               <Tag
                                 style={{
                                   marginInlineEnd: 0,
-                                  paddingInline: 8,
+                                  paddingInline: 7,
                                   borderRadius: 999,
-                                  lineHeight: '20px',
+                                  height: 20,
+                                  lineHeight: '18px',
+                                  fontSize: 13,
+                                  paddingBlock: 0,
                                 }}
                               >
                                 {record.fromEntity || '-'}
@@ -2142,7 +2147,7 @@ export default function DataDetailPage() {
                               <span
                                 style={{
                                   color: '#94a3b8',
-                                  fontSize: 12,
+                                  fontSize: 13,
                                   flexShrink: 0,
                                 }}
                               >
@@ -2152,9 +2157,12 @@ export default function DataDetailPage() {
                                 color="processing"
                                 style={{
                                   marginInlineEnd: 0,
-                                  paddingInline: 8,
+                                  paddingInline: 7,
                                   borderRadius: 999,
-                                  lineHeight: '20px',
+                                  height: 20,
+                                  lineHeight: '18px',
+                                  fontSize: 13,
+                                  paddingBlock: 0,
                                 }}
                               >
                                 {record.toEntity || '-'}
@@ -2163,23 +2171,13 @@ export default function DataDetailPage() {
                             <span
                               style={{
                                 color: '#94a3b8',
-                                fontSize: 11,
+                                fontSize: 13,
                                 whiteSpace: 'nowrap',
                                 flexShrink: 0,
                               }}
                             >
                               {formatDateTime(record.createTime)}
                             </span>
-                          </div>
-                          <div
-                            style={{
-                              color: '#94a3b8',
-                              fontSize: 11,
-                              lineHeight: 1.4,
-                              paddingLeft: 2,
-                            }}
-                          >
-                            消歧为实体“{record.toEntity || '-'}”
                           </div>
                         </div>
                       ))}
