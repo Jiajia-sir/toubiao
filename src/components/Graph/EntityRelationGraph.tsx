@@ -188,11 +188,13 @@ function truncateLabel(name: string, maxLength: number) {
   return name.length > maxLength ? `${name.slice(0, maxLength)}...` : name;
 }
 
-function resolveNodeLabel(node: EntityGraphNode, maxLength: number) {
-  if (node.type === "value") {
-    return truncateLabel(getValueNodeFullText(node), maxLength);
-  }
-  return truncateLabel(node.name, maxLength);
+function getNodeFullLabel(node: EntityGraphNode) {
+  return node.type === "value" ? getValueNodeFullText(node) : node.name;
+}
+
+function resolveNodeLabel(node: EntityGraphNode, maxLength: number, fullLabel = false) {
+  const label = getNodeFullLabel(node);
+  return fullLabel ? label : truncateLabel(label, maxLength);
 }
 
 function drawValueNodeTag(
@@ -1230,14 +1232,14 @@ const EntityRelationGraph = forwardRef<
         }
 
         if (originalData && originalData.type === "value") {
-          const maxLength =
-            labelMaxLength || (originalData.type === "center" ? 6 : originalData.type === "entity" ? 5 : 4);
-          const capsuleText = resolveNodeLabel(originalData, maxLength);
+          const capsuleText = getNodeFullLabel(originalData);
           if (!capsuleText) return;
           const accentColor = (data as any).customColor || getBranchColor(originalData).fill;
           drawValueNodeTag(context, data.x!, data.y!, capsuleText, accentColor, (data as any).customLabelSize || 14);
         } else {
-          const label = data.label;
+          const label = String(
+            (originalData ? getNodeFullLabel(originalData) : data.label) || "",
+          ).trim();
           if (!label) return;
           const size = settings.labelSize || 12;
           context.font = `${settings.labelWeight || "normal"} ${size}px ${settings.labelFont || "sans-serif"}`;
@@ -1472,7 +1474,11 @@ const EntityRelationGraph = forwardRef<
 
           const maxLength =
             labelMaxLength || (originalData.type === "center" ? 6 : originalData.type === "entity" ? 5 : 4);
-          const label = String(nodeData.label || resolveNodeLabel(originalData, maxLength) || "").trim();
+          const shouldUseFullLabel =
+            nodeId === hoveredNodeId || nodeId === currentSelectedNodeId;
+          const label = String(
+            nodeData.label || resolveNodeLabel(originalData, maxLength, shouldUseFullLabel) || "",
+          ).trim();
           if (!label) {
             return null;
           }
