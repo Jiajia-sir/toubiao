@@ -33,6 +33,7 @@ import {
   SortAscendingOutlined,
   SortDescendingOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { getKnowledgeBaseList, type KnowledgeBaseItem } from '@/services/biz/knowledge-base';
 import { getTagPage, type TagItem } from '@/services/biz/tag';
 import { getCatalogTypeList } from '@/services/biz/catalogType';
@@ -46,6 +47,7 @@ import {
 import { formatDateTime as formatDateTimeUtil } from '@/utils/date';
 
 const { RangePicker } = DatePicker;
+const DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
 type SearchStrategyType = 'precise' | 'like' | 'custom';
 
@@ -111,6 +113,8 @@ type SearchPageState = {
 };
 
 const DEFAULT_VISIBLE_FILTER_COUNT = 4;
+const SEARCH_PAGE_STATE_STORAGE_KEY = 'data-search-page-state';
+const RESTORE_FROM_DETAIL_QUERY_KEY = 'restoreFromDetail';
 const DEFAULT_SEARCH_PAGE_STATE: SearchPageState = {
   searchText: '',
   currentPage: 1,
@@ -147,77 +151,131 @@ const DEFAULT_SEARCH_PAGE_STATE: SearchPageState = {
   ],
 };
 
-const parseSearchPageState = (search: string): SearchPageState => {
-  const searchParams = new URLSearchParams(search);
-  const encodedState = searchParams.get('state');
+const normalizeSearchPageState = (parsed: any): SearchPageState => ({
+  searchText: typeof parsed?.searchText === 'string' ? parsed.searchText : '',
+  currentPage: Math.max(Number(parsed?.currentPage) || 1, 1),
+  pageSize: Math.max(Number(parsed?.pageSize) || 10, 1),
+  sortField: parsed?.sortField === 'createTime' ? 'createTime' : '_score',
+  sortOrder: parsed?.sortOrder === 'asc' ? 'asc' : 'desc',
+  sourceFilter: typeof parsed?.sourceFilter === 'string' ? parsed.sourceFilter : null,
+  documentTypes: Array.isArray(parsed?.documentTypes) ? parsed.documentTypes : [],
+  knowledgeBaseFilter: Array.isArray(parsed?.knowledgeBaseFilter) ? parsed.knowledgeBaseFilter : [],
+  selectedTags: Array.isArray(parsed?.selectedTags) ? parsed.selectedTags : [],
+  selectedEntities: Array.isArray(parsed?.selectedEntities) ? parsed.selectedEntities : [],
+  entitySourceMode: parsed?.entitySourceMode === 'page' ? 'page' : 'auto',
+  entityKeyword: typeof parsed?.entityKeyword === 'string' ? parsed.entityKeyword : '',
+  catalogFilter: Array.isArray(parsed?.catalogFilter) ? parsed.catalogFilter : [],
+  dateRange:
+    Array.isArray(parsed?.dateRange) && parsed.dateRange.length === 2
+      ? [String(parsed.dateRange[0] || ''), String(parsed.dateRange[1] || '')]
+      : null,
+  showAdvancedSearch: Boolean(parsed?.showAdvancedSearch),
+  queryStrategyMode:
+    parsed?.queryStrategyMode === 'precise' || parsed?.queryStrategyMode === 'custom'
+      ? parsed.queryStrategyMode
+      : 'like',
+  fuzzyWeights: {
+    title: Number(parsed?.fuzzyWeights?.title) || 70,
+    content: Number(parsed?.fuzzyWeights?.content) || 20,
+    tag: Number(parsed?.fuzzyWeights?.tag) || 10,
+  },
+  slop: Math.max(Number(parsed?.slop) || 1, 0),
+  customConditions:
+    Array.isArray(parsed?.customConditions) && parsed.customConditions.length > 0
+      ? parsed.customConditions.map((item: any, index: number) => ({
+          id: Number(item?.id) || index + 1,
+          logic: item?.logic === 'OR' || item?.logic === 'NOT' ? item.logic : 'AND',
+          field:
+            typeof item?.field === 'string' && item.field
+              ? item.field
+              : DEFAULT_SEARCH_PAGE_STATE.customConditions[0].field,
+          operator:
+            typeof item?.operator === 'string' && item.operator
+              ? item.operator
+              : DEFAULT_SEARCH_PAGE_STATE.customConditions[0].operator,
+          value: typeof item?.value === 'string' ? item.value : '',
+          leftBracket: Boolean(item?.leftBracket),
+          rightBracket: Boolean(item?.rightBracket),
+        }))
+      : DEFAULT_SEARCH_PAGE_STATE.customConditions,
+});
 
-  if (!encodedState) {
+const clearSearchPageState = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(SEARCH_PAGE_STATE_STORAGE_KEY);
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const loadSearchPageState = (shouldRestore: boolean): SearchPageState => {
+  if (typeof window === 'undefined') {
+    return DEFAULT_SEARCH_PAGE_STATE;
+  }
+
+  if (!shouldRestore) {
+    clearSearchPageState();
     return DEFAULT_SEARCH_PAGE_STATE;
   }
 
   try {
-    const parsed = JSON.parse(encodedState);
-    return {
-      searchText: typeof parsed?.searchText === 'string' ? parsed.searchText : '',
-      currentPage: Math.max(Number(parsed?.currentPage) || 1, 1),
-      pageSize: Math.max(Number(parsed?.pageSize) || 10, 1),
-      sortField: parsed?.sortField === 'createTime' ? 'createTime' : '_score',
-      sortOrder: parsed?.sortOrder === 'asc' ? 'asc' : 'desc',
-      sourceFilter: typeof parsed?.sourceFilter === 'string' ? parsed.sourceFilter : null,
-      documentTypes: Array.isArray(parsed?.documentTypes) ? parsed.documentTypes : [],
-      knowledgeBaseFilter: Array.isArray(parsed?.knowledgeBaseFilter)
-        ? parsed.knowledgeBaseFilter
-        : [],
-      selectedTags: Array.isArray(parsed?.selectedTags) ? parsed.selectedTags : [],
-      selectedEntities: Array.isArray(parsed?.selectedEntities) ? parsed.selectedEntities : [],
-      entitySourceMode: parsed?.entitySourceMode === 'page' ? 'page' : 'auto',
-      entityKeyword: typeof parsed?.entityKeyword === 'string' ? parsed.entityKeyword : '',
-      catalogFilter: Array.isArray(parsed?.catalogFilter) ? parsed.catalogFilter : [],
-      dateRange:
-        Array.isArray(parsed?.dateRange) && parsed.dateRange.length === 2
-          ? [String(parsed.dateRange[0] || ''), String(parsed.dateRange[1] || '')]
-          : null,
-      showAdvancedSearch: Boolean(parsed?.showAdvancedSearch),
-      queryStrategyMode:
-        parsed?.queryStrategyMode === 'precise' || parsed?.queryStrategyMode === 'custom'
-          ? parsed.queryStrategyMode
-          : 'like',
-      fuzzyWeights: {
-        title: Number(parsed?.fuzzyWeights?.title) || 70,
-        content: Number(parsed?.fuzzyWeights?.content) || 20,
-        tag: Number(parsed?.fuzzyWeights?.tag) || 10,
-      },
-      slop: Math.max(Number(parsed?.slop) || 1, 0),
-      customConditions:
-        Array.isArray(parsed?.customConditions) && parsed.customConditions.length > 0
-          ? parsed.customConditions.map((item: any, index: number) => ({
-              id: Number(item?.id) || index + 1,
-              logic: item?.logic === 'OR' || item?.logic === 'NOT' ? item.logic : 'AND',
-              field:
-                typeof item?.field === 'string' && item.field
-                  ? item.field
-                  : DEFAULT_SEARCH_PAGE_STATE.customConditions[0].field,
-              operator:
-                typeof item?.operator === 'string' && item.operator
-                  ? item.operator
-                  : DEFAULT_SEARCH_PAGE_STATE.customConditions[0].operator,
-              value: typeof item?.value === 'string' ? item.value : '',
-              leftBracket: Boolean(item?.leftBracket),
-              rightBracket: Boolean(item?.rightBracket),
-            }))
-          : DEFAULT_SEARCH_PAGE_STATE.customConditions,
-    };
+    const raw = window.sessionStorage.getItem(SEARCH_PAGE_STATE_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_SEARCH_PAGE_STATE;
+    }
+    return normalizeSearchPageState(JSON.parse(raw));
   } catch (error) {
     console.error(error);
     return DEFAULT_SEARCH_PAGE_STATE;
   }
 };
 
-const buildSearchPageStateQuery = (state: SearchPageState) => {
-  const searchParams = new URLSearchParams();
-  searchParams.set('state', JSON.stringify(state));
-  return searchParams.toString();
+const saveSearchPageState = (state: SearchPageState) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(SEARCH_PAGE_STATE_STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.error(error);
+  }
 };
+
+const getDateRangePickerValue = (value: [string, string] | null) => {
+  if (!value || value.length !== 2 || !value[0] || !value[1]) {
+    return undefined;
+  }
+
+  const start = dayjs(value[0], DATE_TIME_FORMAT);
+  const end = dayjs(value[1], DATE_TIME_FORMAT);
+
+  if (!start.isValid() || !end.isValid()) {
+    return undefined;
+  }
+
+  return [start, end] as const;
+};
+
+const toTimestampRange = (value: [string, string] | null) => {
+  if (!value || value.length !== 2 || !value[0] || !value[1]) {
+    return [];
+  }
+
+  const start = dayjs(value[0], DATE_TIME_FORMAT);
+  const end = dayjs(value[1], DATE_TIME_FORMAT);
+
+  if (!start.isValid() || !end.isValid()) {
+    return [];
+  }
+
+  return [start.valueOf(), end.valueOf()];
+};
+
 const customFieldOptions = [
   { label: '标签', value: '标签' },
   { label: '对象名称', value: '对象名称' },
@@ -632,7 +690,14 @@ const mapDocumentResultFixed = (item: any): SearchResult => {
 
 export default function DataSearchPage() {
   const location = useLocation();
-  const initialState = useMemo(() => parseSearchPageState(location.search), [location.search]);
+  const shouldRestoreFromDetail = useMemo(() => {
+    const searchParams = new URLSearchParams(location.search);
+    return searchParams.get(RESTORE_FROM_DETAIL_QUERY_KEY) === '1';
+  }, [location.search]);
+  const initialState = useMemo(
+    () => loadSearchPageState(shouldRestoreFromDetail),
+    [shouldRestoreFromDetail],
+  );
   const hasInitializedFilterEffect = useRef(false);
   const [searchText, setSearchText] = useState(initialState.searchText);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -683,6 +748,12 @@ export default function DataSearchPage() {
     }
   }, [initialState]);
 
+  useEffect(() => {
+    if (shouldRestoreFromDetail) {
+      history.replace('/data-search');
+    }
+  }, [shouldRestoreFromDetail]);
+
   const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<FilterOption[]>([]);
   const [tagOptions, setTagOptions] = useState<FilterOption[]>([]);
   const [catalogOptions, setCatalogOptions] = useState<FilterOption[]>([]);
@@ -694,6 +765,7 @@ export default function DataSearchPage() {
   const [tagKeyword, setTagKeyword] = useState('');
   const [catalogKeyword, setCatalogKeyword] = useState('');
   const [showAllKnowledgeBases, setShowAllKnowledgeBases] = useState(false);
+  const [showAllDocumentTypes, setShowAllDocumentTypes] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
   const [showAllCatalogs, setShowAllCatalogs] = useState(false);
 
@@ -724,6 +796,9 @@ export default function DataSearchPage() {
   const visibleKnowledgeBaseOptions = showAllKnowledgeBases
     ? filteredKnowledgeBaseOptions
     : filteredKnowledgeBaseOptions.slice(0, DEFAULT_VISIBLE_FILTER_COUNT);
+  const visibleDocumentTypeOptions = showAllDocumentTypes
+    ? documentTypeOptions
+    : documentTypeOptions.slice(0, DEFAULT_VISIBLE_FILTER_COUNT);
   const visibleTagOptions = showAllTags
     ? filteredTagOptions
     : filteredTagOptions.slice(0, DEFAULT_VISIBLE_FILTER_COUNT);
@@ -815,7 +890,7 @@ export default function DataSearchPage() {
     accessModes: sourceFilter ? [sourceFilter] : [],
     entityTypes: [],
     entityNames: overrides?.entityNames ?? selectedEntities,
-    createTime: dateRange ?? [],
+    createTime: toTimestampRange(dateRange),
   });
 
   const fetchFilterOptions = async () => {
@@ -931,7 +1006,7 @@ export default function DataSearchPage() {
   }, []);
 
   useEffect(() => {
-    const nextQuery = buildSearchPageStateQuery({
+    saveSearchPageState({
       searchText,
       currentPage,
       pageSize,
@@ -952,11 +1027,6 @@ export default function DataSearchPage() {
       slop,
       customConditions,
     });
-    const currentQuery = location.search.startsWith('?') ? location.search.slice(1) : location.search;
-
-    if (currentQuery !== nextQuery) {
-      history.replace(`/data-search?${nextQuery}`);
-    }
   }, [
     catalogFilter,
     currentPage,
@@ -967,7 +1037,6 @@ export default function DataSearchPage() {
     entitySourceMode,
     fuzzyWeights,
     knowledgeBaseFilter,
-    location.search,
     pageSize,
     queryStrategyMode,
     searchText,
@@ -1016,7 +1085,7 @@ export default function DataSearchPage() {
 
   const handleOpenDocumentDetail = (result: SearchResult) => {
     const detailQuery = new URLSearchParams();
-    const returnSearch = buildSearchPageStateQuery({
+    saveSearchPageState({
       searchText,
       currentPage,
       pageSize,
@@ -1049,7 +1118,7 @@ export default function DataSearchPage() {
     if (result.type) {
       detailQuery.set('type', result.type);
     }
-    detailQuery.set('returnTo', `/data-search?${returnSearch}`);
+    detailQuery.set('returnTo', '/data-search');
     history.push(
       `/data/document/${result.id}${detailQuery.toString() ? `?${detailQuery.toString()}` : ''}`,
     );
@@ -1069,6 +1138,7 @@ export default function DataSearchPage() {
     setTagKeyword('');
     setCatalogKeyword('');
     setShowAllKnowledgeBases(false);
+    setShowAllDocumentTypes(false);
     setShowAllTags(false);
     setShowAllCatalogs(false);
     setCurrentPage(DEFAULT_SEARCH_PAGE_STATE.currentPage);
@@ -1080,6 +1150,8 @@ export default function DataSearchPage() {
     setQueryStrategyMode(DEFAULT_SEARCH_PAGE_STATE.queryStrategyMode);
     setFuzzyWeights(DEFAULT_SEARCH_PAGE_STATE.fuzzyWeights);
     setSlop(DEFAULT_SEARCH_PAGE_STATE.slop);
+    setCustomConditions(DEFAULT_SEARCH_PAGE_STATE.customConditions);
+    setActiveConditionId(DEFAULT_SEARCH_PAGE_STATE.customConditions[0]?.id || 1);
     message.success('已重置所有筛选条件');
   };
 
@@ -1205,20 +1277,27 @@ export default function DataSearchPage() {
       key: 'documentType',
       label: <span style={{ fontWeight: 600 }}>文档格式</span>,
       children: (
-        <Checkbox.Group
-          value={documentTypes}
-          onChange={(values) => setDocumentTypes(values as string[])}
-          style={{ width: '100%' }}
-        >
-          <Space direction="vertical" style={{ width: '100%' }}>
-            {documentTypeOptions.map((item) => (
-              <Checkbox key={item.value} value={item.value}>
-                {item.label}
-                {typeof item.count === 'number' ? ` (${item.count})` : ''}
-              </Checkbox>
-            ))}
-          </Space>
-        </Checkbox.Group>
+        <div>
+          <Checkbox.Group
+            value={documentTypes}
+            onChange={(values) => setDocumentTypes(values as string[])}
+            style={{ width: '100%' }}
+          >
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {visibleDocumentTypeOptions.map((item) => (
+                <Checkbox key={item.value} value={item.value}>
+                  {item.label}
+                  {typeof item.count === 'number' ? ` (${item.count})` : ''}
+                </Checkbox>
+              ))}
+            </Space>
+          </Checkbox.Group>
+          {!filterOptionsLoading && documentTypeOptions.length > DEFAULT_VISIBLE_FILTER_COUNT && (
+            <a onClick={() => setShowAllDocumentTypes((prev) => !prev)}>
+              {showAllDocumentTypes ? '收起' : '查看更多'}
+            </a>
+          )}
+        </div>
       ),
     },
     {
@@ -1266,6 +1345,9 @@ export default function DataSearchPage() {
       children: (
         <RangePicker
           style={{ width: '100%' }}
+          value={getDateRangePickerValue(dateRange)}
+          showTime={{ format: 'HH:mm:ss' }}
+          format={DATE_TIME_FORMAT}
           onChange={(_, dateStrings) => {
             const values = dateStrings.filter(Boolean) as string[];
             setDateRange(values.length === 2 ? [values[0], values[1]] : null);

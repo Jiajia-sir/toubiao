@@ -816,7 +816,7 @@ export default function DataDetailPage() {
       return;
     }
     if (returnTo) {
-      history.push(returnTo);
+      history.push(`${returnTo}${returnTo.includes('?') ? '&' : '?'}restoreFromDetail=1`);
       return;
     }
     history.go(-1);
