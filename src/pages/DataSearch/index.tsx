@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { history } from '@umijs/max';
+import { history, useLocation } from '@umijs/max';
 import {
   Button,
   Card,
@@ -84,7 +84,140 @@ type SearchResult = {
   knowledgeBases: Array<{ id: string; name: string }>;
 };
 
+type SearchPageState = {
+  searchText: string;
+  currentPage: number;
+  pageSize: number;
+  sortField: '_score' | 'createTime';
+  sortOrder: 'asc' | 'desc';
+  sourceFilter: string | null;
+  documentTypes: string[];
+  knowledgeBaseFilter: string[];
+  selectedTags: string[];
+  selectedEntities: string[];
+  entitySourceMode: 'page' | 'auto';
+  entityKeyword: string;
+  catalogFilter: string[];
+  dateRange: [string, string] | null;
+  showAdvancedSearch: boolean;
+  queryStrategyMode: SearchStrategyType;
+  fuzzyWeights: {
+    title: number;
+    content: number;
+    tag: number;
+  };
+  slop: number;
+  customConditions: CustomCondition[];
+};
+
 const DEFAULT_VISIBLE_FILTER_COUNT = 4;
+const DEFAULT_SEARCH_PAGE_STATE: SearchPageState = {
+  searchText: '',
+  currentPage: 1,
+  pageSize: 10,
+  sortField: '_score',
+  sortOrder: 'desc',
+  sourceFilter: null,
+  documentTypes: [],
+  knowledgeBaseFilter: [],
+  selectedTags: [],
+  selectedEntities: [],
+  entitySourceMode: 'auto',
+  entityKeyword: '',
+  catalogFilter: [],
+  dateRange: null,
+  showAdvancedSearch: false,
+  queryStrategyMode: 'like',
+  fuzzyWeights: {
+    title: 70,
+    content: 20,
+    tag: 10,
+  },
+  slop: 1,
+  customConditions: [
+    {
+      id: 1,
+      logic: 'AND',
+      field: '鏍囩',
+      operator: '绛変簬',
+      value: '',
+      leftBracket: false,
+      rightBracket: false,
+    },
+  ],
+};
+
+const parseSearchPageState = (search: string): SearchPageState => {
+  const searchParams = new URLSearchParams(search);
+  const encodedState = searchParams.get('state');
+
+  if (!encodedState) {
+    return DEFAULT_SEARCH_PAGE_STATE;
+  }
+
+  try {
+    const parsed = JSON.parse(encodedState);
+    return {
+      searchText: typeof parsed?.searchText === 'string' ? parsed.searchText : '',
+      currentPage: Math.max(Number(parsed?.currentPage) || 1, 1),
+      pageSize: Math.max(Number(parsed?.pageSize) || 10, 1),
+      sortField: parsed?.sortField === 'createTime' ? 'createTime' : '_score',
+      sortOrder: parsed?.sortOrder === 'asc' ? 'asc' : 'desc',
+      sourceFilter: typeof parsed?.sourceFilter === 'string' ? parsed.sourceFilter : null,
+      documentTypes: Array.isArray(parsed?.documentTypes) ? parsed.documentTypes : [],
+      knowledgeBaseFilter: Array.isArray(parsed?.knowledgeBaseFilter)
+        ? parsed.knowledgeBaseFilter
+        : [],
+      selectedTags: Array.isArray(parsed?.selectedTags) ? parsed.selectedTags : [],
+      selectedEntities: Array.isArray(parsed?.selectedEntities) ? parsed.selectedEntities : [],
+      entitySourceMode: parsed?.entitySourceMode === 'page' ? 'page' : 'auto',
+      entityKeyword: typeof parsed?.entityKeyword === 'string' ? parsed.entityKeyword : '',
+      catalogFilter: Array.isArray(parsed?.catalogFilter) ? parsed.catalogFilter : [],
+      dateRange:
+        Array.isArray(parsed?.dateRange) && parsed.dateRange.length === 2
+          ? [String(parsed.dateRange[0] || ''), String(parsed.dateRange[1] || '')]
+          : null,
+      showAdvancedSearch: Boolean(parsed?.showAdvancedSearch),
+      queryStrategyMode:
+        parsed?.queryStrategyMode === 'precise' || parsed?.queryStrategyMode === 'custom'
+          ? parsed.queryStrategyMode
+          : 'like',
+      fuzzyWeights: {
+        title: Number(parsed?.fuzzyWeights?.title) || 70,
+        content: Number(parsed?.fuzzyWeights?.content) || 20,
+        tag: Number(parsed?.fuzzyWeights?.tag) || 10,
+      },
+      slop: Math.max(Number(parsed?.slop) || 1, 0),
+      customConditions:
+        Array.isArray(parsed?.customConditions) && parsed.customConditions.length > 0
+          ? parsed.customConditions.map((item: any, index: number) => ({
+              id: Number(item?.id) || index + 1,
+              logic: item?.logic === 'OR' || item?.logic === 'NOT' ? item.logic : 'AND',
+              field:
+                typeof item?.field === 'string' && item.field
+                  ? item.field
+                  : DEFAULT_SEARCH_PAGE_STATE.customConditions[0].field,
+              operator:
+                typeof item?.operator === 'string' && item.operator
+                  ? item.operator
+                  : DEFAULT_SEARCH_PAGE_STATE.customConditions[0].operator,
+              value: typeof item?.value === 'string' ? item.value : '',
+              leftBracket: Boolean(item?.leftBracket),
+              rightBracket: Boolean(item?.rightBracket),
+            }))
+          : DEFAULT_SEARCH_PAGE_STATE.customConditions,
+    };
+  } catch (error) {
+    console.error(error);
+    return DEFAULT_SEARCH_PAGE_STATE;
+  }
+};
+
+const buildSearchPageStateQuery = (state: SearchPageState) => {
+  const searchParams = new URLSearchParams();
+  searchParams.set('state', JSON.stringify(state));
+  return searchParams.toString();
+};
 const customFieldOptions = [
   { label: '标签', value: '标签' },
   { label: '对象名称', value: '对象名称' },
@@ -498,33 +631,37 @@ const mapDocumentResultFixed = (item: any): SearchResult => {
 };
 
 export default function DataSearchPage() {
+  const location = useLocation();
+  const initialState = useMemo(() => parseSearchPageState(location.search), [location.search]);
   const hasInitializedFilterEffect = useRef(false);
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useState(initialState.searchText);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [totalResults, setTotalResults] = useState(0);
   const [searchTime, setSearchTime] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [sortField, setSortField] = useState<'_score' | 'createTime'>('_score');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
-  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
-  const [knowledgeBaseFilter, setKnowledgeBaseFilter] = useState<string[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
-  const [entitySourceMode, setEntitySourceMode] = useState<'page' | 'auto'>('auto');
-  const [entityKeyword, setEntityKeyword] = useState('');
-  const [catalogFilter, setCatalogFilter] = useState<string[]>([]);
-  const [dateRange, setDateRange] = useState<[string, string] | null>(null);
-  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
-  const [queryStrategyMode, setQueryStrategyMode] = useState<SearchStrategyType>('like');
-  const [fuzzyWeights, setFuzzyWeights] = useState({
-    title: 70,
-    content: 20,
-    tag: 10,
-  });
-  const [slop, setSlop] = useState(1);
+  const [currentPage, setCurrentPage] = useState(initialState.currentPage);
+  const [pageSize, setPageSize] = useState(initialState.pageSize);
+  const [sortField, setSortField] = useState<'_score' | 'createTime'>(initialState.sortField);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(initialState.sortOrder);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(initialState.sourceFilter);
+  const [documentTypes, setDocumentTypes] = useState<string[]>(initialState.documentTypes);
+  const [knowledgeBaseFilter, setKnowledgeBaseFilter] = useState<string[]>(
+    initialState.knowledgeBaseFilter,
+  );
+  const [selectedTags, setSelectedTags] = useState<string[]>(initialState.selectedTags);
+  const [selectedEntities, setSelectedEntities] = useState<string[]>(initialState.selectedEntities);
+  const [entitySourceMode, setEntitySourceMode] = useState<'page' | 'auto'>(
+    initialState.entitySourceMode,
+  );
+  const [entityKeyword, setEntityKeyword] = useState(initialState.entityKeyword);
+  const [catalogFilter, setCatalogFilter] = useState<string[]>(initialState.catalogFilter);
+  const [dateRange, setDateRange] = useState<[string, string] | null>(initialState.dateRange);
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(initialState.showAdvancedSearch);
+  const [queryStrategyMode, setQueryStrategyMode] = useState<SearchStrategyType>(
+    initialState.queryStrategyMode,
+  );
+  const [fuzzyWeights, setFuzzyWeights] = useState(initialState.fuzzyWeights);
+  const [slop, setSlop] = useState(initialState.slop);
   const [customConditions, setCustomConditions] = useState<CustomCondition[]>([
     {
       id: 1,
@@ -538,6 +675,13 @@ export default function DataSearchPage() {
   ]);
   const [activeConditionId, setActiveConditionId] = useState<number>(1);
   const [appliedStrategyLabel, setAppliedStrategyLabel] = useState('模糊匹配');
+
+  useEffect(() => {
+    if (initialState.customConditions.length > 0) {
+      setCustomConditions(initialState.customConditions);
+      setActiveConditionId(initialState.customConditions[0]?.id || 1);
+    }
+  }, [initialState]);
 
   const [knowledgeBaseOptions, setKnowledgeBaseOptions] = useState<FilterOption[]>([]);
   const [tagOptions, setTagOptions] = useState<FilterOption[]>([]);
@@ -783,8 +927,58 @@ export default function DataSearchPage() {
 
   useEffect(() => {
     fetchFilterOptions();
-    fetchDocuments(1, pageSize);
+    fetchDocuments(initialState.currentPage, initialState.pageSize);
   }, []);
+
+  useEffect(() => {
+    const nextQuery = buildSearchPageStateQuery({
+      searchText,
+      currentPage,
+      pageSize,
+      sortField,
+      sortOrder,
+      sourceFilter,
+      documentTypes,
+      knowledgeBaseFilter,
+      selectedTags,
+      selectedEntities,
+      entitySourceMode,
+      entityKeyword,
+      catalogFilter,
+      dateRange,
+      showAdvancedSearch,
+      queryStrategyMode,
+      fuzzyWeights,
+      slop,
+      customConditions,
+    });
+    const currentQuery = location.search.startsWith('?') ? location.search.slice(1) : location.search;
+
+    if (currentQuery !== nextQuery) {
+      history.replace(`/data-search?${nextQuery}`);
+    }
+  }, [
+    catalogFilter,
+    currentPage,
+    customConditions,
+    dateRange,
+    documentTypes,
+    entityKeyword,
+    entitySourceMode,
+    fuzzyWeights,
+    knowledgeBaseFilter,
+    location.search,
+    pageSize,
+    queryStrategyMode,
+    searchText,
+    selectedEntities,
+    selectedTags,
+    showAdvancedSearch,
+    slop,
+    sortField,
+    sortOrder,
+    sourceFilter,
+  ]);
 
   useEffect(() => {
     if (!hasInitializedFilterEffect.current) {
@@ -822,6 +1016,27 @@ export default function DataSearchPage() {
 
   const handleOpenDocumentDetail = (result: SearchResult) => {
     const detailQuery = new URLSearchParams();
+    const returnSearch = buildSearchPageStateQuery({
+      searchText,
+      currentPage,
+      pageSize,
+      sortField,
+      sortOrder,
+      sourceFilter,
+      documentTypes,
+      knowledgeBaseFilter,
+      selectedTags,
+      selectedEntities,
+      entitySourceMode,
+      entityKeyword,
+      catalogFilter,
+      dateRange,
+      showAdvancedSearch,
+      queryStrategyMode,
+      fuzzyWeights,
+      slop,
+      customConditions,
+    });
     if (result.esId) {
       detailQuery.set('esId', result.esId);
     }
@@ -834,6 +1049,7 @@ export default function DataSearchPage() {
     if (result.type) {
       detailQuery.set('type', result.type);
     }
+    detailQuery.set('returnTo', `/data-search?${returnSearch}`);
     history.push(
       `/data/document/${result.id}${detailQuery.toString() ? `?${detailQuery.toString()}` : ''}`,
     );
@@ -855,6 +1071,15 @@ export default function DataSearchPage() {
     setShowAllKnowledgeBases(false);
     setShowAllTags(false);
     setShowAllCatalogs(false);
+    setCurrentPage(DEFAULT_SEARCH_PAGE_STATE.currentPage);
+    setPageSize(DEFAULT_SEARCH_PAGE_STATE.pageSize);
+    setSortField(DEFAULT_SEARCH_PAGE_STATE.sortField);
+    setSortOrder(DEFAULT_SEARCH_PAGE_STATE.sortOrder);
+    setEntitySourceMode(DEFAULT_SEARCH_PAGE_STATE.entitySourceMode);
+    setShowAdvancedSearch(DEFAULT_SEARCH_PAGE_STATE.showAdvancedSearch);
+    setQueryStrategyMode(DEFAULT_SEARCH_PAGE_STATE.queryStrategyMode);
+    setFuzzyWeights(DEFAULT_SEARCH_PAGE_STATE.fuzzyWeights);
+    setSlop(DEFAULT_SEARCH_PAGE_STATE.slop);
     message.success('已重置所有筛选条件');
   };
 

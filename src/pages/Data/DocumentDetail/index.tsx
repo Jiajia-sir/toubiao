@@ -770,6 +770,7 @@ export default function DataDetailPage() {
   const sourceEsId = searchParams.get('esId');
   const sourceKeyword = searchParams.get('keyword');
   const sourcePreviewMode = searchParams.get('previewMode');
+  const returnTo = searchParams.get('returnTo');
 
   const fetchDetail = useCallback(async () => {
     setDetailLoading(true);
@@ -812,6 +813,10 @@ export default function DataDetailPage() {
   const handleBack = () => {
     if (sourceTab === '1' || sourceTab === '2') {
       history.push(`/data/document-import?tab=${sourceTab}`);
+      return;
+    }
+    if (returnTo) {
+      history.push(returnTo);
       return;
     }
     history.go(-1);
