@@ -5135,12 +5135,11 @@ export default function MonitorPage() {
                 gap: 10,
                 padding: '12px 14px',
                 marginBottom: 10,
-                background: '#fffdf7',
-                border: '1px solid #f5e6c7',
-                borderLeft: '3px solid #f59e0b',
+                background: '#ffffff',
+                border: '1px solid #e5e7eb',
                 borderRadius: 8,
                 fontSize: 13,
-                boxShadow: '0 1px 2px rgba(245, 158, 11, 0.04)',
+                boxShadow: 'none',
               }}
             >
               <span
@@ -5148,8 +5147,8 @@ export default function MonitorPage() {
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  background: '#f59e0b',
-                  boxShadow: '0 0 0 3px rgba(245, 158, 11, 0.10)',
+                  background: '#ef4444',
+                  boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.16)',
                   flexShrink: 0,
                   marginTop: 2,
                 }}
@@ -5386,13 +5385,22 @@ export default function MonitorPage() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '22px 24px 18px',
+                    padding: '18px 18px 16px 18px',
                     borderBottom: `1px solid ${token.colorBorderSecondary}`,
-                    background: '#fffaf1',
+                    background: '#f7f5f0',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                    <WarningOutlined style={{ color: token.colorWarning, fontSize: 14 }} />
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      minWidth: 0,
+                      paddingLeft: 10,
+                      borderLeft: '4px solid #ef4444',
+                    }}
+                  >
+                    <WarningOutlined style={{ color: '#ef4444', fontSize: 14 }} />
                     <span
                       style={{
                         color: token.colorText,
@@ -5403,15 +5411,11 @@ export default function MonitorPage() {
                     >
                       实时告警
                     </span>
-                    <span
-                      style={{ color: token.colorTextTertiary, fontSize: 12, whiteSpace: 'nowrap' }}
-                    >
+                    <span style={{ color: '#fca5a5', fontSize: 12, whiteSpace: 'nowrap' }}>
                       共 {importRunAlertTotal} 条告警
                     </span>
                   </div>
-                  <span
-                    style={{ color: token.colorTextTertiary, fontSize: 12, whiteSpace: 'nowrap' }}
-                  >
+                  <span style={{ color: '#ef4444', fontSize: 12, whiteSpace: 'nowrap' }}>
                     更新 {currentTime || '--:--:--'}
                   </span>
                 </div>
@@ -5422,9 +5426,10 @@ export default function MonitorPage() {
                 minWidth: 0,
                 marginBottom: 20,
                 borderRadius: 16,
-                border: '1px solid #edf0f5',
+                border: '1px solid #e5e7eb',
+                borderLeft: '4px solid #ef4444',
                 background: '#ffffff',
-                boxShadow: '0 10px 30px rgba(31, 56, 88, 0.07)',
+                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
@@ -5447,7 +5452,7 @@ export default function MonitorPage() {
                     justifyContent: 'space-between',
                     gap: 8,
                     flexWrap: 'nowrap',
-                    margin: '16px 0 16px',
+                    margin: '12px 0 14px',
                     padding: '0',
                     color: token.colorTextTertiary,
                     fontSize: 12,
