@@ -154,6 +154,11 @@ const typeOptions = ['docx', 'pdf', 'xlsx', 'pptx', 'md', 'txt', 'html', 'eml'].
   value: item,
 }));
 
+const translationOptions = [
+  { label: '否', value: 1 },
+  { label: '是', value: 0 },
+];
+
 /** 解析状态枚举：0=待处理 1=处理中 2=已完成 4=失败 5=特殊情况 */
 const documentStatusMap: Record<string, { text: string; color: string; bgColor: string }> = {
   '0': { text: '待处理', color: '#faad14', bgColor: '#fffbe6' },
@@ -876,6 +881,7 @@ export default function DocumentImportPage() {
 
   const [uploadKnowledgeBase, setUploadKnowledgeBase] = useState<Array<number | string>>([]);
   const [uploadTags, setUploadTags] = useState<Array<number | string>>([]);
+  const [uploadEnableTrans, setUploadEnableTrans] = useState(1);
   const [uploadCatalog, setUploadCatalog] = useState<number | string | undefined>();
   const [uploadChannelSource, setUploadChannelSource] = useState<number | string | undefined>();
   const [catalogOptions, setCatalogOptions] = useState<
@@ -1067,6 +1073,7 @@ export default function DocumentImportPage() {
     setUploadChannelSource(undefined);
     setUploadKnowledgeBase([]);
     setUploadTags([]);
+    setUploadEnableTrans(0);
     setUploadProgress(0);
     setFileList([]);
   };
@@ -1210,7 +1217,7 @@ export default function DocumentImportPage() {
         knowledgeBaseIds: uploadKnowledgeBase,
         fileTagIds: uploadTags,
         enableOcr: 0,
-        enableTrans: 0,
+        enableTrans: uploadEnableTrans,
         enableExtract: 0,
         files,
       };
@@ -2309,6 +2316,17 @@ export default function DocumentImportPage() {
             options={tagOptions}
             showSearch
             optionFilterProp="label"
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#8c8c8c' }}>是否需要翻译</div>
+          <Select
+            style={{ width: '100%' }}
+            placeholder="请选择是否翻译"
+            value={uploadEnableTrans}
+            onChange={setUploadEnableTrans}
+            options={translationOptions}
           />
         </div>
 
