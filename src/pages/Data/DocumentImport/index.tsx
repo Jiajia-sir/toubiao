@@ -158,6 +158,7 @@ const translationOptions = [
   { label: '否', value: 1 },
   { label: '是', value: 0 },
 ];
+const DEFAULT_UPLOAD_ENABLE_TRANS = 1;
 
 /** 解析状态枚举：0=待处理 1=处理中 2=已完成 4=失败 5=特殊情况 */
 const documentStatusMap: Record<string, { text: string; color: string; bgColor: string }> = {
@@ -881,7 +882,7 @@ export default function DocumentImportPage() {
 
   const [uploadKnowledgeBase, setUploadKnowledgeBase] = useState<Array<number | string>>([]);
   const [uploadTags, setUploadTags] = useState<Array<number | string>>([]);
-  const [uploadEnableTrans, setUploadEnableTrans] = useState(1);
+  const [uploadEnableTrans, setUploadEnableTrans] = useState(DEFAULT_UPLOAD_ENABLE_TRANS);
   const [uploadCatalog, setUploadCatalog] = useState<number | string | undefined>();
   const [uploadChannelSource, setUploadChannelSource] = useState<number | string | undefined>();
   const [catalogOptions, setCatalogOptions] = useState<
@@ -1073,7 +1074,7 @@ export default function DocumentImportPage() {
     setUploadChannelSource(undefined);
     setUploadKnowledgeBase([]);
     setUploadTags([]);
-    setUploadEnableTrans(0);
+    setUploadEnableTrans(DEFAULT_UPLOAD_ENABLE_TRANS);
     setUploadProgress(0);
     setFileList([]);
   };
