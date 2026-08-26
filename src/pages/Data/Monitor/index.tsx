@@ -2425,6 +2425,7 @@ export default function MonitorPage() {
   const [importRunAlertTotal, setImportRunAlertTotal] = useState(0);
   const [importRunAlertIsRealtime, setImportRunAlertIsRealtime] = useState(true);
   const [importRunAlertLoadingMore, setImportRunAlertLoadingMore] = useState(false);
+  const [importRunAlertTaskId, setImportRunAlertTaskId] = useState<number | undefined>();
   const [docImportTasks, setDocImportTasks] = useState<DocImportTask[]>(initialDocImportTasks);
   const importRunAlertPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -2635,8 +2636,13 @@ export default function MonitorPage() {
     }
   };
 
-  const loadImportAlerts = async (options?: { alertPageNo?: number; appendAlerts?: boolean }) => {
+  const loadImportAlerts = async (options?: {
+    alertPageNo?: number;
+    appendAlerts?: boolean;
+    taskId?: number | undefined;
+  }) => {
     const nextAlertPageNo = options?.alertPageNo ?? importRunAlertPageNo;
+    const nextTaskId = options?.taskId ?? importRunAlertTaskId;
     try {
       if (nextAlertPageNo > 1) {
         setImportRunAlertLoadingMore(true);
@@ -2646,6 +2652,7 @@ export default function MonitorPage() {
         pageSize: importRunAlertPageSize,
         triggerType: importRunAlertTriggerType || undefined,
         status: importRunAlertStatus.length > 0 ? importRunAlertStatus : undefined,
+        taskId: nextTaskId,
       });
       const warnList = (warnRes?.data?.list || warnRes?.list || []).map(toImportAlert);
       const warnTotal = warnRes?.data?.total ?? warnRes?.total ?? warnList.length;
@@ -2689,16 +2696,19 @@ export default function MonitorPage() {
       loadImportAlerts({
         alertPageNo: 1,
         appendAlerts: false,
+        taskId: importRunAlertTaskId,
       });
       loadImportAlerts({
         alertPageNo: 2,
         appendAlerts: true,
+        taskId: importRunAlertTaskId,
       });
     } else {
       setImportRunAlertIsRealtime(false);
       loadImportAlerts({
         alertPageNo: importRunAlertPageNo,
         appendAlerts: true,
+        taskId: importRunAlertTaskId,
       });
     }
   }, [
@@ -2706,6 +2716,7 @@ export default function MonitorPage() {
     importRunAlertPageSize,
     importRunAlertTriggerType,
     importRunAlertStatus,
+    importRunAlertTaskId,
   ]);
 
   useEffect(() => {
@@ -2736,6 +2747,7 @@ export default function MonitorPage() {
     importRunAlertPageSize,
     importRunAlertTriggerType,
     importRunAlertStatus,
+    importRunAlertTaskId,
   ]);
 
   useEffect(() => {
@@ -2764,6 +2776,14 @@ export default function MonitorPage() {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [labelMaxLength, setLabelMaxLength] = useState<number>(7);
   const [linkWidth, setLinkWidth] = useState<number>(1.35);
+  const selectedImportRunJob =
+    typeof importRunAlertTaskId === 'number'
+      ? importJobs.find((item) => item.taskId === importRunAlertTaskId)
+      : undefined;
+  const hasAlertFilter =
+    typeof importRunAlertTaskId === 'number' ||
+    Boolean(importRunAlertTriggerType) ||
+    importRunAlertStatus.length > 0;
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -2782,6 +2802,14 @@ export default function MonitorPage() {
   };
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetAlertFilters = () => {
+    setImportRunAlertTaskId(undefined);
+    setImportRunAlertTriggerType(undefined);
+    setImportRunAlertStatus([]);
+    setImportRunAlertPageNo(1);
+    setImportRunAlertIsRealtime(true);
+  };
 
   useEffect(() => {
     if (!currentTime) {
@@ -4681,6 +4709,34 @@ export default function MonitorPage() {
                 </span>
               </Tooltip>
             </div>
+            {record.taskId && record.taskId === importRunAlertTaskId && (
+              <div
+                style={{
+                  marginTop: 8,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  color: '#b91c1c',
+                  fontSize: 11,
+                  lineHeight: '16px',
+                }}
+                title="当前任务正在联动右侧实时告警"
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#ef4444',
+                    boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.16)',
+                  }}
+                />
+                当前联动告警
+              </div>
+            )}
           </div>
         );
       },
@@ -5099,7 +5155,6 @@ export default function MonitorPage() {
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
-            minHeight: 0,
             height: 'calc(100vh - 300px)',
             minHeight: 240,
             overflowY: 'auto',
@@ -5360,6 +5415,27 @@ export default function MonitorPage() {
                   columns={monitorColumns}
                   dataSource={importJobs}
                   rowKey="id"
+                  onRow={(record) => ({
+                    onClick: () => {
+                      if (record.taskId) {
+                        const nextTaskId =
+                          importRunAlertTaskId === record.taskId ? undefined : record.taskId;
+                        setImportRunAlertTaskId(nextTaskId);
+                        setImportRunAlertPageNo(1);
+                      } else {
+                        setImportRunAlertTaskId(undefined);
+                        setImportRunAlertPageNo(1);
+                      }
+                    },
+                    className: record.taskId
+                      ? importRunAlertTaskId === record.taskId
+                        ? 'source-asset-row source-asset-row-selected'
+                        : 'source-asset-row'
+                      : undefined,
+                    style: {
+                      cursor: 'pointer',
+                    },
+                  })}
                   pagination={{
                     current: importRunPageNo,
                     pageSize: importRunPageSize,
@@ -5448,10 +5524,8 @@ export default function MonitorPage() {
                 <div
                   style={{
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 8,
-                    flexWrap: 'nowrap',
+                    flexDirection: 'column',
+                    gap: 10,
                     margin: '12px 0 14px',
                     padding: '0',
                     color: token.colorTextTertiary,
@@ -5459,41 +5533,123 @@ export default function MonitorPage() {
                     flexShrink: 0,
                   }}
                 >
-                  <Space size={6}>
-                    <Select
-                      allowClear
-                      placeholder="触发方式"
-                      value={importRunAlertTriggerType}
-                      style={{ width: 112 }}
-                      size="small"
-                      options={[
-                        { label: '手动触发', value: 'MANUAL' },
-                        { label: '定时触发', value: 'CRON' },
-                      ]}
-                      onChange={(value) => {
-                        setImportRunAlertPageNo(1);
-                        setImportRunAlertTriggerType(value);
+                  {selectedImportRunJob && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        padding: '12px 14px',
+                        borderRadius: 14,
+                        border: '1px solid #fda4af',
+                        background:
+                          'linear-gradient(135deg, rgba(254, 242, 242, 0.96) 0%, rgba(255, 255, 255, 1) 100%)',
+                        marginBottom: 10,
+                        // boxShadow: '0 8px 20px rgba(239, 68, 68, 0.08)',
                       }}
-                    />
-                    <Select
-                      mode="multiple"
-                      allowClear
-                      maxTagCount={1}
-                      placeholder="状态"
-                      value={importRunAlertStatus}
-                      style={{ width: 160 }}
-                      size="small"
-                      options={[
-                        { label: '失败', value: 'FAILED' },
-                        { label: '部分成功', value: 'PARTIAL' },
-                        { label: '已取消', value: 'CANCELLED' },
-                      ]}
-                      onChange={(value) => {
-                        setImportRunAlertPageNo(1);
-                        setImportRunAlertStatus(value as string[]);
-                      }}
-                    />
-                  </Space>
+                    >
+                      <div
+                        style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}
+                      >
+                        <span style={{ color: '#b91c1c', fontSize: 12, fontWeight: 600 }}>
+                          当前联动任务
+                        </span>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            flexWrap: 'wrap',
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: '#7f1d1d',
+                              fontSize: 13,
+                              fontWeight: 600,
+                              maxWidth: 220,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={selectedImportRunJob.name}
+                          >
+                            {selectedImportRunJob.name}
+                          </span>
+                          <Tag color="red" style={{ margin: 0, borderRadius: 999 }}>
+                            {selectedImportRunJob.dataSourceName}
+                          </Tag>
+                          <Tag color="default" style={{ margin: 0, borderRadius: 999 }}>
+                            {getTriggerTypeLabel(selectedImportRunJob.triggerType)}
+                          </Tag>
+                        </div>
+                        {/* <span style={{ color: '#9f1239', fontSize: 12 }}>
+                          左侧再次点击当前任务，也可取消联动
+                        </span> */}
+                      </div>
+                      <Button
+                        size="small"
+                        danger
+                        type="primary"
+                        onClick={() => setImportRunAlertTaskId(undefined)}
+                      >
+                        取消联动
+                      </Button>
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Space size={6} wrap>
+                      <Select
+                        allowClear
+                        placeholder="触发方式"
+                        value={importRunAlertTriggerType}
+                        style={{ width: 112 }}
+                        size="small"
+                        options={[
+                          { label: '手动触发', value: 'MANUAL' },
+                          { label: '定时触发', value: 'CRON' },
+                        ]}
+                        onChange={(value) => {
+                          setImportRunAlertPageNo(1);
+                          setImportRunAlertTriggerType(value);
+                        }}
+                      />
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        maxTagCount={1}
+                        placeholder="状态"
+                        value={importRunAlertStatus}
+                        style={{ width: 160 }}
+                        size="small"
+                        options={[
+                          { label: '失败', value: 'FAILED' },
+                          { label: '部分成功', value: 'PARTIAL' },
+                          { label: '已取消', value: 'CANCELLED' },
+                        ]}
+                        onChange={(value) => {
+                          setImportRunAlertPageNo(1);
+                          setImportRunAlertStatus(value as string[]);
+                        }}
+                      />
+                      {hasAlertFilter && (
+                        <Button size="small" icon={<ReloadOutlined />} onClick={resetAlertFilters}>
+                          重置筛选
+                        </Button>
+                      )}
+                    </Space>
+                  </div>
                   <span style={{ lineHeight: '18px', whiteSpace: 'nowrap' }}>
                     共 {importRunAlertTotal} 条告警
                   </span>
@@ -6623,14 +6779,30 @@ export default function MonitorPage() {
         }
         .source-asset-row {
           cursor: pointer;
-          transition: background-color 0.2s ease, box-shadow 0.2s ease;
+          transition:
+            background-color 0.2s ease,
+            box-shadow 0.2s ease,
+            transform 0.2s ease;
         }
         .source-asset-row:hover > td {
-          background: rgba(37, 99, 235, 0.08) !important;
+          background: rgba(37, 99, 235, 0.04) !important;
         }
         .source-asset-row-selected > td {
-          background: rgba(37, 99, 235, 0.14) !important;
-          box-shadow: inset 3px 0 0 #2563eb;
+          background: rgba(37, 99, 235, 0.06) !important;
+          border-top: 1px solid rgba(59, 130, 246, 0.12);
+          border-bottom: 1px solid rgba(59, 130, 246, 0.12);
+        }
+        .source-asset-row-selected > td:first-child {
+          border-left: 3px solid #2563eb;
+          border-top-left-radius: 10px;
+          border-bottom-left-radius: 10px;
+        }
+        .source-asset-row-selected > td:last-child {
+          border-top-right-radius: 10px;
+          border-bottom-right-radius: 10px;
+        }
+        .source-asset-row-selected:hover > td {
+          background: rgba(37, 99, 235, 0.08) !important;
         }
       `}</style>
     </div>
