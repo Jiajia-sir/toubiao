@@ -1846,28 +1846,24 @@ export default function DataSourcePage() {
                 title={expanded ? '收起该数据源的导入任务列表' : '展开该数据源的导入任务列表'}
               >
                 <Button
+                  className="data-source-expand-button"
                   type="text"
                   size="small"
                   onClick={(event) => onExpand(record, event)}
-                  style={{
-                    width: 24,
-                    height: 24,
-                    padding: 0,
-                    borderRadius: 999,
-                    border: expanded ? '1px solid #91baff' : '1px solid #d9e7ff',
-                    background: expanded ? '#edf4ff' : '#ffffff',
-                    color: '#3166af',
-                  }}
-                  icon={
+                  aria-label={expanded ? '收起导入任务列表' : '展开导入任务列表'}
+                >
+                  <span className="data-source-expand-button__content">
+                    <span className="data-source-expand-button__list" aria-hidden="true">
+                      <span className="data-source-expand-button__list-line" />
+                      <span className="data-source-expand-button__list-line" />
+                    </span>
                     <CaretRightOutlined
-                      style={{
-                        fontSize: 12,
-                        transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                        transition: 'transform 0.2s ease',
-                      }}
+                      className={`data-source-expand-button__arrow${
+                        expanded ? ' data-source-expand-button__arrow--expanded' : ''
+                      }`}
                     />
-                  }
-                />
+                  </span>
+                </Button>
               </Tooltip>
             ),
           }}
