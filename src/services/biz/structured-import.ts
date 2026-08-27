@@ -125,6 +125,25 @@ export interface ImportRunRecord {
   createTime?: string;
 }
 
+export interface ImportRunWarnRecord {
+  id?: number | string;
+  runId?: number;
+  taskId?: number;
+  dataSourceId?: number;
+  dataSourceName?: string;
+  taskName?: string;
+  sourceType?: string;
+  triggerType?: string;
+  status?: string;
+  warnType?: string;
+  warnContent?: string;
+  message?: string;
+  errorMessage?: string;
+  createTime?: string;
+  updateTime?: string;
+  warnTime?: string;
+}
+
 export interface ImportStatsOverview {
   taskCount: number;
   enabledTaskCount: number;
@@ -187,6 +206,10 @@ export async function triggerImportTask(id: number | string, triggerType = 'MANU
 
 export async function getImportRunPage(params: Record<string, any>) {
   return request(`${API_PREFIX}/biz/import-run/page`, { method: 'GET', params });
+}
+
+export async function getImportRunWarnPage(params: Record<string, any>) {
+  return request(`${API_PREFIX}/biz/import-run/warnPage`, { method: 'GET', params });
 }
 
 export async function listImportRunsByDataSource(

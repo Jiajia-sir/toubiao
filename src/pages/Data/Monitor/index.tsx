@@ -83,15 +83,15 @@ import EntityRelationGraph, {
 } from '@/components/Graph/EntityRelationGraph';
 import type { KnowledgeGraphData } from '@/data/documentGraph';
 import type { EntityGraphData, EntityGraphNodeType } from '@/data/entityGraphMock';
-import {
-  type DataSourceRecord,
-} from '@/services/biz/data-source';
+import { type DataSourceRecord } from '@/services/biz/data-source';
 import {
   getImportRunPage,
+  getImportRunWarnPage,
   retryImportRun,
   stopImportRun,
   getImportTaskResult,
   type ImportRunRecord,
+  type ImportRunWarnRecord,
   type ImportTaskResult,
 } from '@/services/biz/structured-import';
 import dayjs from 'dayjs';
@@ -552,6 +552,10 @@ interface ImportAlert {
   time: string;
   level: 'info' | 'warning' | 'error';
   content: string;
+  jobId?: string;
+  jobName?: string;
+  triggerType?: string;
+  status?: string;
 }
 
 const typeConfig: Record<
@@ -647,6 +651,21 @@ const triggerTypeLabelMap: Record<string, string> = {
 const getTriggerTypeLabel = (triggerType?: string) => {
   if (!triggerType) return '-';
   return triggerTypeLabelMap[triggerType] || triggerType;
+};
+
+const alertStatusLabelMap: Record<string, string> = {
+  RUNNING: '运行中',
+  PENDING: '等待中',
+  SUCCESS: '成功',
+  FAILED: '失败',
+  PARTIAL: '部分成功',
+  CANCELLED: '已取消',
+  CANCELING: '取消中',
+};
+
+const getAlertStatusLabel = (status?: string) => {
+  if (!status) return '无状态';
+  return alertStatusLabelMap[status] || status;
 };
 
 const getTriggerTypeTagStyle = (triggerType: string | undefined, token: any) => {
@@ -2397,8 +2416,18 @@ export default function MonitorPage() {
   const [importRunPageSize, setImportRunPageSize] = useState(10);
   const [importRunTotal, setImportRunTotal] = useState(0);
   const [importRunTriggerType, setImportRunTriggerType] = useState<string | undefined>();
-  const [importRunStatus, setImportRunStatus] = useState<string | undefined>();
+  const [importRunStatus, setImportRunStatus] = useState<string[]>([]);
+  const [importRunAlertPageNo, setImportRunAlertPageNo] = useState(1);
+  const [importRunAlertPageSize, setImportRunAlertPageSize] = useState(20);
+  const [importRunAlertTriggerType, setImportRunAlertTriggerType] = useState<string | undefined>();
+  const [importRunAlertStatus, setImportRunAlertStatus] = useState<string[]>([]);
+  const [importRunAlerts, setImportRunAlerts] = useState<ImportAlert[]>([]);
+  const [importRunAlertTotal, setImportRunAlertTotal] = useState(0);
+  const [importRunAlertIsRealtime, setImportRunAlertIsRealtime] = useState(true);
+  const [importRunAlertLoadingMore, setImportRunAlertLoadingMore] = useState(false);
+  const [importRunAlertTaskId, setImportRunAlertTaskId] = useState<number | undefined>();
   const [docImportTasks, setDocImportTasks] = useState<DocImportTask[]>(initialDocImportTasks);
+  const importRunAlertPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [taskResultDrawer, setTaskResultDrawer] = useState(false);
@@ -2425,7 +2454,6 @@ export default function MonitorPage() {
   const [docTaskForm] = Form.useForm();
   const [syncForm] = Form.useForm();
 
-
   const [selectedSource, setSelectedSource] = useState<DataSource | null>(null);
 
   const mapStatusFromLastTest = (status?: number | null): DataSource['status'] => {
@@ -2435,7 +2463,8 @@ export default function MonitorPage() {
   };
 
   const mapCategory = (category?: string): DataSource['category'] => {
-    if (category === 'graph' || category === 'document' || category === 'relational') return category;
+    if (category === 'graph' || category === 'document' || category === 'relational')
+      return category;
     return 'relational';
   };
 
@@ -2563,27 +2592,35 @@ export default function MonitorPage() {
       dataSent: Number(run.byteCount || 0),
       dataReceived: Number(run.byteCount || 0),
       error: run.errorMessage,
-      alerts: run.errorMessage
-        ? [
-            {
-              id: `run-${run.id}-err`,
-              time: formatDateTime(run.finishedAt || run.startedAt) || formatDateTime(new Date()),
-              level: 'error',
-              content: run.errorMessage,
-            },
-          ]
-        : [],
+      alerts: [],
     };
   };
 
-  const loadMonitorRealtimeData = async () => {
+  const toImportAlert = (item: ImportRunWarnRecord): ImportAlert => {
+    const content =
+      item.warnContent || item.message || item.errorMessage || item.warnType || '无告警内容';
+    const time = item.warnTime || item.createTime || item.updateTime || new Date().toISOString();
+    const jobId = item.runId || item.id;
+    return {
+      id: String(item.id || `${jobId || 'warn'}-${time}`),
+      time,
+      level: 'warning',
+      content,
+      jobId: jobId ? String(jobId) : undefined,
+      jobName: item.taskName || (jobId ? `运行#${jobId}` : '导入运行'),
+      triggerType: item.triggerType,
+      status: item.status,
+    };
+  };
+
+  const loadImportRuns = async () => {
     setLoading(true);
     try {
       const runRes: any = await getImportRunPage({
         pageNo: importRunPageNo,
         pageSize: importRunPageSize,
         triggerType: importRunTriggerType || undefined,
-        status: importRunStatus || undefined,
+        status: importRunStatus.length > 0 ? importRunStatus : undefined,
       });
       const dsList: DataSource[] = [];
       const runList = (runRes?.data?.list || runRes?.list || []).map(toImportJob);
@@ -2599,14 +2636,128 @@ export default function MonitorPage() {
     }
   };
 
+  const loadImportAlerts = async (options?: {
+    alertPageNo?: number;
+    appendAlerts?: boolean;
+    taskId?: number | undefined;
+  }) => {
+    const nextAlertPageNo = options?.alertPageNo ?? importRunAlertPageNo;
+    const nextTaskId = options?.taskId ?? importRunAlertTaskId;
+    try {
+      if (nextAlertPageNo > 1) {
+        setImportRunAlertLoadingMore(true);
+      }
+      const warnRes: any = await getImportRunWarnPage({
+        pageNo: nextAlertPageNo,
+        pageSize: importRunAlertPageSize,
+        triggerType: importRunAlertTriggerType || undefined,
+        status: importRunAlertStatus.length > 0 ? importRunAlertStatus : undefined,
+        taskId: nextTaskId,
+      });
+      const warnList = (warnRes?.data?.list || warnRes?.list || []).map(toImportAlert);
+      const warnTotal = warnRes?.data?.total ?? warnRes?.total ?? warnList.length;
+      if (!options?.appendAlerts || nextAlertPageNo === 1) {
+        setImportRunAlerts(warnList);
+      } else {
+        setImportRunAlerts((prev) => {
+          const seen = new Set(prev.map((item) => item.id));
+          const merged = [...prev];
+          warnList.forEach((item) => {
+            if (!seen.has(item.id)) {
+              seen.add(item.id);
+              merged.push(item);
+            }
+          });
+          return merged;
+        });
+      }
+      setImportRunAlertTotal(warnTotal);
+      setActiveAlertKey(warnList.length > 0 ? [warnList[0].jobId || warnList[0].id] : []);
+    } catch (error) {
+      console.error(error);
+      message.error('加载实时告警失败，请确认后端服务已启动且已执行 SQL');
+    } finally {
+      setImportRunAlertLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
-    loadMonitorRealtimeData();
+    loadImportRuns();
     const timer = setInterval(() => {
-      loadMonitorRealtimeData();
+      loadImportRuns();
     }, 5000);
     return () => clearInterval(timer);
   }, [importRunPageNo, importRunPageSize, importRunTriggerType, importRunStatus]);
 
+  useEffect(() => {
+    if (importRunAlertPageNo === 1) {
+      setImportRunAlertIsRealtime(true);
+      setImportRunAlerts([]);
+      loadImportAlerts({
+        alertPageNo: 1,
+        appendAlerts: false,
+        taskId: importRunAlertTaskId,
+      });
+      loadImportAlerts({
+        alertPageNo: 2,
+        appendAlerts: true,
+        taskId: importRunAlertTaskId,
+      });
+    } else {
+      setImportRunAlertIsRealtime(false);
+      loadImportAlerts({
+        alertPageNo: importRunAlertPageNo,
+        appendAlerts: true,
+        taskId: importRunAlertTaskId,
+      });
+    }
+  }, [
+    importRunAlertPageNo,
+    importRunAlertPageSize,
+    importRunAlertTriggerType,
+    importRunAlertStatus,
+    importRunAlertTaskId,
+  ]);
+
+  useEffect(() => {
+    if (importRunAlertPollingRef.current) {
+      clearInterval(importRunAlertPollingRef.current);
+      importRunAlertPollingRef.current = null;
+    }
+
+    if (!importRunAlertIsRealtime) {
+      return;
+    }
+
+    importRunAlertPollingRef.current = setInterval(() => {
+      loadImportAlerts({
+        alertPageNo: 1,
+        appendAlerts: false,
+      });
+    }, 5000);
+
+    return () => {
+      if (importRunAlertPollingRef.current) {
+        clearInterval(importRunAlertPollingRef.current);
+        importRunAlertPollingRef.current = null;
+      }
+    };
+  }, [
+    importRunAlertIsRealtime,
+    importRunAlertPageSize,
+    importRunAlertTriggerType,
+    importRunAlertStatus,
+    importRunAlertTaskId,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (importRunAlertPollingRef.current) {
+        clearInterval(importRunAlertPollingRef.current);
+        importRunAlertPollingRef.current = null;
+      }
+    };
+  }, []);
 
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false);
   const [syncDrawerVisible, setSyncDrawerVisible] = useState(false);
@@ -2625,6 +2776,14 @@ export default function MonitorPage() {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [labelMaxLength, setLabelMaxLength] = useState<number>(7);
   const [linkWidth, setLinkWidth] = useState<number>(1.35);
+  const selectedImportRunJob =
+    typeof importRunAlertTaskId === 'number'
+      ? importJobs.find((item) => item.taskId === importRunAlertTaskId)
+      : undefined;
+  const hasAlertFilter =
+    typeof importRunAlertTaskId === 'number' ||
+    Boolean(importRunAlertTriggerType) ||
+    importRunAlertStatus.length > 0;
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -2644,6 +2803,14 @@ export default function MonitorPage() {
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const resetAlertFilters = () => {
+    setImportRunAlertTaskId(undefined);
+    setImportRunAlertTriggerType(undefined);
+    setImportRunAlertStatus([]);
+    setImportRunAlertPageNo(1);
+    setImportRunAlertIsRealtime(true);
+  };
+
   useEffect(() => {
     if (!currentTime) {
       setCurrentTime(new Date().toLocaleTimeString());
@@ -2652,149 +2819,148 @@ export default function MonitorPage() {
 
   useEffect(() => {
     intervalRef.current = setInterval(() => {
-        setStatsUpdated((prev) => prev + 1);
-        setCurrentTime(new Date().toLocaleTimeString());
+      setStatsUpdated((prev) => prev + 1);
+      setCurrentTime(new Date().toLocaleTimeString());
 
-        setImportJobs((prev) =>
-          prev.map((job) => {
-            // 结构化导入由后端真实轮询刷新，禁止前端 mock 改写进度和字节量。
-            if (job.type === 'database') {
-              return job;
-            }
-            if (job.status === 'running') {
-              const processed = Math.min(
-                job.recordsProcessed + Math.floor(Math.random() * 100),
-                job.recordsTotal,
-              );
-              const success = Math.floor(processed * (0.98 + Math.random() * 0.02));
-              const randomAlertChance = Math.random();
-
-              const newAlerts = [...job.alerts];
-              if (randomAlertChance < 0.15) {
-                const alertMessages = [
-                  {
-                    level: 'info',
-                    content: `正在同步第 ${processed} 条记录`,
-                  },
-                  {
-                    level: 'info',
-                    content: `数据传输速率: ${Math.floor(Math.random() * 2000 + 1000)} 条/秒`,
-                  },
-                  {
-                    level: 'warning',
-                    content: `检测到重复数据，已自动去重 ${Math.floor(Math.random() * 10) + 1} 条`,
-                  },
-                  {
-                    level: 'warning',
-                    content: `网络延迟: ${Math.floor(Math.random() * 500 + 100)}ms，传输速度略有下降`,
-                  },
-                  {
-                    level: 'error',
-                    content: `字段格式异常：第 ${Math.floor(Math.random() * processed)} 条记录的日期字段无法解析`,
-                  },
-                  {
-                    level: 'info',
-                    content: `已完成 ${((processed / job.recordsTotal) * 100).toFixed(1)}% 数据同步`,
-                  },
-                  {
-                    level: 'warning',
-                    content: `内存使用率较高: ${(75 + Math.random() * 20).toFixed(1)}%`,
-                  },
-                ];
-                const randomMessage =
-                  alertMessages[Math.floor(Math.random() * alertMessages.length)];
-                newAlerts.unshift({
-                  id: `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                  time: new Date().toLocaleString(),
-                  level: randomMessage.level as 'info' | 'warning' | 'error',
-                  content: randomMessage.content,
-                });
-                if (newAlerts.length > 10) {
-                  newAlerts.pop();
-                }
-              }
-
-              return {
-                ...job,
-                recordsProcessed: processed,
-                recordsSuccess: success,
-                recordsError: processed - success,
-                progress: Math.round((processed / job.recordsTotal) * 100),
-                dataSent: job.dataSent + Math.floor(Math.random() * 50000),
-                dataReceived: job.dataReceived + Math.floor(Math.random() * 100000),
-                alerts: newAlerts,
-                status: 'running',
-              };
-            }
+      setImportJobs((prev) =>
+        prev.map((job) => {
+          // 结构化导入由后端真实轮询刷新，禁止前端 mock 改写进度和字节量。
+          if (job.type === 'database') {
             return job;
-          }),
-        );
+          }
+          if (job.status === 'running') {
+            const processed = Math.min(
+              job.recordsProcessed + Math.floor(Math.random() * 100),
+              job.recordsTotal,
+            );
+            const success = Math.floor(processed * (0.98 + Math.random() * 0.02));
+            const randomAlertChance = Math.random();
 
-        setDocImportTasks((prev) =>
-          prev.map((task) => {
-            // if (
-            //   task.status === "running" &&
-            //   task.importedFiles < task.totalFiles
-            // ) {
-            //   const fileIncrement = Math.floor(Math.random() * 3) + 1;
-            //   const newImportedFiles = Math.min(
-            //     task.importedFiles + fileIncrement,
-            //     task.totalFiles,
-            //   );
-            //   const newSuccessFiles = newImportedFiles - task.errorFiles;
-            //   const newSizeIncrement =
-            //     fileIncrement * (500000 + Math.random() * 1000000);
-            //   const newImportedSize = Math.min(
-            //     task.importedSize + newSizeIncrement,
-            //     task.totalSize,
-            //   );
-            //   const progress = Math.round(
-            //     (newImportedFiles / task.totalFiles) * 100,
-            //   );
+            const newAlerts = [...job.alerts];
+            if (randomAlertChance < 0.15) {
+              const alertMessages = [
+                {
+                  level: 'info',
+                  content: `正在同步第 ${processed} 条记录`,
+                },
+                {
+                  level: 'info',
+                  content: `数据传输速率: ${Math.floor(Math.random() * 2000 + 1000)} 条/秒`,
+                },
+                {
+                  level: 'warning',
+                  content: `检测到重复数据，已自动去重 ${Math.floor(Math.random() * 10) + 1} 条`,
+                },
+                {
+                  level: 'warning',
+                  content: `网络延迟: ${Math.floor(Math.random() * 500 + 100)}ms，传输速度略有下降`,
+                },
+                {
+                  level: 'error',
+                  content: `字段格式异常：第 ${Math.floor(Math.random() * processed)} 条记录的日期字段无法解析`,
+                },
+                {
+                  level: 'info',
+                  content: `已完成 ${((processed / job.recordsTotal) * 100).toFixed(1)}% 数据同步`,
+                },
+                {
+                  level: 'warning',
+                  content: `内存使用率较高: ${(75 + Math.random() * 20).toFixed(1)}%`,
+                },
+              ];
+              const randomMessage = alertMessages[Math.floor(Math.random() * alertMessages.length)];
+              newAlerts.unshift({
+                id: `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                time: new Date().toLocaleString(),
+                level: randomMessage.level as 'info' | 'warning' | 'error',
+                content: randomMessage.content,
+              });
+              if (newAlerts.length > 10) {
+                newAlerts.pop();
+              }
+            }
 
-            //   const updatedFiles = task.files.map((file, index) => {
-            //     if (index < newImportedFiles && file.status === "pending") {
-            //       const isSuccess = Math.random() > 0.1;
-            //       return {
-            //         ...file,
-            //         status: isSuccess
-            //           ? ("completed" as const)
-            //           : ("error" as const),
-            //         importTime: new Date().toLocaleString(),
-            //         recordCount: Math.floor(Math.random() * 500) + 50,
-            //         error: isSuccess ? undefined : "文件解析失败",
-            //       };
-            //     }
-            //     return file;
-            //   });
+            return {
+              ...job,
+              recordsProcessed: processed,
+              recordsSuccess: success,
+              recordsError: processed - success,
+              progress: Math.round((processed / job.recordsTotal) * 100),
+              dataSent: job.dataSent + Math.floor(Math.random() * 50000),
+              dataReceived: job.dataReceived + Math.floor(Math.random() * 100000),
+              alerts: newAlerts,
+              status: 'running',
+            };
+          }
+          return job;
+        }),
+      );
 
-            //   const newErrorFiles = updatedFiles.filter(
-            //     (f) => f.status === "error",
-            //   ).length;
+      setDocImportTasks((prev) =>
+        prev.map((task) => {
+          // if (
+          //   task.status === "running" &&
+          //   task.importedFiles < task.totalFiles
+          // ) {
+          //   const fileIncrement = Math.floor(Math.random() * 3) + 1;
+          //   const newImportedFiles = Math.min(
+          //     task.importedFiles + fileIncrement,
+          //     task.totalFiles,
+          //   );
+          //   const newSuccessFiles = newImportedFiles - task.errorFiles;
+          //   const newSizeIncrement =
+          //     fileIncrement * (500000 + Math.random() * 1000000);
+          //   const newImportedSize = Math.min(
+          //     task.importedSize + newSizeIncrement,
+          //     task.totalSize,
+          //   );
+          //   const progress = Math.round(
+          //     (newImportedFiles / task.totalFiles) * 100,
+          //   );
 
-            //   return {
-            //     ...task,
-            //     importedFiles: newImportedFiles,
-            //     successFiles:
-            //       newSuccessFiles - newErrorFiles + task.successFiles,
-            //     errorFiles: task.errorFiles + newErrorFiles,
-            //     importedSize: newImportedSize,
-            //     progress,
-            //     files: updatedFiles,
-            //     status:
-            //       newImportedFiles === task.totalFiles
-            //         ? "completed"
-            //         : "running",
-            //     endTime:
-            //       newImportedFiles === task.totalFiles
-            //         ? new Date().toLocaleString()
-            //         : undefined,
-            //   };
-            // }
-            return task;
-          }),
-        );
-      }, 1000);
+          //   const updatedFiles = task.files.map((file, index) => {
+          //     if (index < newImportedFiles && file.status === "pending") {
+          //       const isSuccess = Math.random() > 0.1;
+          //       return {
+          //         ...file,
+          //         status: isSuccess
+          //           ? ("completed" as const)
+          //           : ("error" as const),
+          //         importTime: new Date().toLocaleString(),
+          //         recordCount: Math.floor(Math.random() * 500) + 50,
+          //         error: isSuccess ? undefined : "文件解析失败",
+          //       };
+          //     }
+          //     return file;
+          //   });
+
+          //   const newErrorFiles = updatedFiles.filter(
+          //     (f) => f.status === "error",
+          //   ).length;
+
+          //   return {
+          //     ...task,
+          //     importedFiles: newImportedFiles,
+          //     successFiles:
+          //       newSuccessFiles - newErrorFiles + task.successFiles,
+          //     errorFiles: task.errorFiles + newErrorFiles,
+          //     importedSize: newImportedSize,
+          //     progress,
+          //     files: updatedFiles,
+          //     status:
+          //       newImportedFiles === task.totalFiles
+          //         ? "completed"
+          //         : "running",
+          //     endTime:
+          //       newImportedFiles === task.totalFiles
+          //         ? new Date().toLocaleString()
+          //         : undefined,
+          //   };
+          // }
+          return task;
+        }),
+      );
+    }, 1000);
 
     return () => {
       if (intervalRef.current) {
@@ -2827,7 +2993,7 @@ export default function MonitorPage() {
     return true;
   });
 
-  const alertCount = importJobs.reduce((sum, j) => sum + j.alerts.length, 0);
+  const alertCount = importRunAlertTotal;
 
   const handleAddDataSource = () => {
     setEditRecord(null);
@@ -3437,7 +3603,7 @@ export default function MonitorPage() {
   };
 
   const selectedPreview = selectedSource ? structuredPreviewMap[selectedSource.id] : undefined;
-  const selectedCatalogs = selectedSource ? (databaseCatalogMap[selectedSource.id] || []) : [];
+  const selectedCatalogs = selectedSource ? databaseCatalogMap[selectedSource.id] || [] : [];
   const selectedCatalog =
     selectedCatalogs.find((item) => item.id === selectedCatalogId) || selectedCatalogs[0] || null;
   const selectedDatabaseObject =
@@ -4543,6 +4709,34 @@ export default function MonitorPage() {
                 </span>
               </Tooltip>
             </div>
+            {record.taskId && record.taskId === importRunAlertTaskId && (
+              <div
+                style={{
+                  marginTop: 8,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  color: '#b91c1c',
+                  fontSize: 11,
+                  lineHeight: '16px',
+                }}
+                title="当前任务正在联动右侧实时告警"
+              >
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#ef4444',
+                    boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.16)',
+                  }}
+                />
+                当前联动告警
+              </div>
+            )}
           </div>
         );
       },
@@ -4664,8 +4858,17 @@ export default function MonitorPage() {
       key: 'status',
       width: 100,
       align: 'center' as const,
-      render: (status: string) => {
+      render: (status: string, record: ImportJob) => {
         const config = statusConfig[status];
+        if (status === 'error' && record.error) {
+          return (
+            <Tooltip title={record.error}>
+              <Tag color="error" icon={config.icon}>
+                {config.text}
+              </Tag>
+            </Tooltip>
+          );
+        }
         return (
           <Tag color={config.color} icon={config.icon}>
             {config.text}
@@ -4923,207 +5126,206 @@ export default function MonitorPage() {
   };
 
   const renderAlerts = () => {
-    const runningJobs = importJobs.filter(
-      (job) => job.status === 'running' || job.status === 'paused',
-    );
-
-    if (runningJobs.length === 0) {
+    if (importRunAlerts.length === 0) {
       return (
         <Empty
-          description="暂无正在执行的任务"
+          description="暂无实时告警"
           style={{ padding: '60px 0' }}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       );
     }
 
-    const items = runningJobs.map((job) => {
-      const errorCount = job.alerts.filter((a) => a.level === 'error').length;
-      const warningCount = job.alerts.filter((a) => a.level === 'warning').length;
-      const infoCount = job.alerts.filter((a) => a.level === 'info').length;
-      const totalCount = job.alerts.length;
-
-      return {
-        key: job.id,
-        label: (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-              padding: '6px 4px',
-            }}
-          >
-            <Space size={8}>
-              {job.status === 'running' ? (
-                <LoadingOutlined spin style={{ color: '#1890ff', fontSize: 14 }} />
-              ) : (
-                <PauseCircleOutlined style={{ color: '#faad14', fontSize: 14 }} />
-              )}
-              <span style={{ fontWeight: 600, fontSize: 13 }}>{job.name}</span>
-            </Space>
-            <Space size={4}>
-              {errorCount > 0 && (
-                <Tag
-                  color="error"
-                  style={{
-                    margin: 0,
-                    padding: '0 6px',
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  {errorCount} 错误
-                </Tag>
-              )}
-              {warningCount > 0 && (
-                <Tag
-                  color="warning"
-                  style={{
-                    margin: 0,
-                    padding: '0 6px',
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  {warningCount} 警告
-                </Tag>
-              )}
-              {infoCount > 0 && (
-                <Tag
-                  color="processing"
-                  style={{
-                    margin: 0,
-                    padding: '0 6px',
-                    fontSize: 11,
-                  }}
-                >
-                  {infoCount} 信息
-                </Tag>
-              )}
-              {totalCount === 0 && (
-                <Tag color="success" style={{ margin: 0, fontSize: 11 }}>
-                  正常
-                </Tag>
-              )}
-            </Space>
-          </div>
-        ),
-        children:
-          job.alerts.length === 0 ? (
-            <div
-              style={{
-                textAlign: 'center',
-                padding: '30px 20px',
-                background: 'rgba(82, 196, 26, 0.05)',
-                borderRadius: 8,
-                margin: 8,
-              }}
-            >
-              <CheckCircleOutlined style={{ fontSize: 32, color: '#52c41a', marginBottom: 8 }} />
-              <div style={{ color: '#52c41a', fontWeight: 500 }}>运行正常，暂无告警</div>
-            </div>
-          ) : (
-            <div style={{ padding: 4 }}>
-              {job.alerts
-                .sort((a, b) => dayjs(formatDateTime(b.time)).valueOf() - dayjs(formatDateTime(a.time)).valueOf())
-                .slice(0, 8)
-                .map((alert, idx) => {
-                  const colors =
-                    alert.level === 'error'
-                      ? { bg: '#fff7f7', dot: '#ff4d4f', border: '#ffd6d6', label: '错误' }
-                      : alert.level === 'warning'
-                        ? { bg: '#fffaf0', dot: '#faad14', border: '#ffe7a3', label: '警告' }
-                        : { bg: '#f5f9ff', dot: '#1890ff', border: '#cfe4ff', label: '信息' };
-
-                  return (
-                    <div
-                      key={alert.id || idx}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '10px 12px',
-                        marginBottom: 8,
-                        background: colors.bg,
-                        border: `1px solid ${colors.border}`,
-                        borderLeft: `3px solid ${colors.dot}`,
-                        borderRadius: 6,
-                        fontSize: 13,
-                        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.03)',
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          background: colors.dot,
-                          boxShadow: `0 0 0 3px ${colors.dot}1f`,
-                          flexShrink: 0,
-                        }}
-                      />
-                      <Tag
-                        color={
-                          alert.level === 'error'
-                            ? 'error'
-                            : alert.level === 'warning'
-                              ? 'warning'
-                              : 'processing'
-                        }
-                        style={{
-                          margin: 0,
-                          borderRadius: 4,
-                          fontSize: 11,
-                          lineHeight: '18px',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {colors.label}
-                      </Tag>
-                      <span style={{ flex: 1, color: '#333' }}>{alert.content}</span>
-                      <span style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>
-                        {(() => { const t = formatDateTime(alert.time); return (t.split(' ')[1] || t || '-'); })()}
-                      </span>
-                    </div>
-                  );
-                })}
-            </div>
-          ),
-      };
-    });
+    const alerts = [...importRunAlerts].sort(
+      (a, b) => dayjs(formatDateTime(b.time)).valueOf() - dayjs(formatDateTime(a.time)).valueOf(),
+    );
 
     return (
-      <Collapse
-        accordion
-        items={items}
-        activeKey={activeAlertKey}
-        onChange={(keys) => setActiveAlertKey(keys as string[])}
+      <div
         style={{
-          background: '#fff',
-          border: '1px solid #f0f0f0',
-          borderRadius: 8,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          minHeight: 0,
         }}
-        expandIcon={({ isActive }) => (
-          <ArrowDownOutlined
-            rotate={isActive ? 180 : 0}
-            style={{
-              color: '#000',
-              fontSize: 12,
-              marginTop: '16px',
-              transition: 'transform 0.3s ease',
-            }}
-          />
-        )}
-      />
+      >
+        <div
+          className="monitorRealtimeScroll"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            height: 'calc(100vh - 300px)',
+            minHeight: 240,
+            overflowY: 'auto',
+            paddingRight: 4,
+          }}
+          onScroll={(e) => {
+            const target = e.currentTarget;
+            if (target.scrollTop <= 16) {
+              if (!importRunAlertIsRealtime || importRunAlertPageNo !== 1) {
+                setImportRunAlertIsRealtime(true);
+                setImportRunAlertPageNo(1);
+                loadImportAlerts({
+                  alertPageNo: 1,
+                  appendAlerts: false,
+                });
+              }
+              return;
+            }
+            const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 80;
+            const hasMore = importRunAlerts.length < importRunAlertTotal;
+            const canLoadNext = !loading && !importRunAlertLoadingMore && hasMore;
+            if (nearBottom && canLoadNext) {
+              setImportRunAlertPageNo((prev) => prev + 1);
+            }
+          }}
+        >
+          {alerts.map((alert, idx) => (
+            <div
+              key={alert.id || idx}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 10,
+                padding: '12px 14px',
+                marginBottom: 10,
+                background: '#ffffff',
+                border: '1px solid #e5e7eb',
+                borderRadius: 8,
+                fontSize: 13,
+                boxShadow: 'none',
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: '#ef4444',
+                  boxShadow: '0 0 0 3px rgba(239, 68, 68, 0.16)',
+                  flexShrink: 0,
+                  marginTop: 2,
+                }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    color: '#334155',
+                    lineHeight: 1.5,
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                  }}
+                  title={alert.content}
+                >
+                  {alert.content}
+                </div>
+                <div
+                  style={{
+                    marginTop: 5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    flexWrap: 'wrap',
+                    minWidth: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: '#64748b',
+                      fontSize: 12,
+                      minWidth: 0,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: '100%',
+                    }}
+                    title={alert.jobName}
+                  >
+                    {alert.jobName}
+                  </span>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      margin: 0,
+                      borderRadius: 999,
+                      fontSize: 10,
+                      lineHeight: '16px',
+                      padding: '0 8px',
+                      color: '#b91c1c',
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={getAlertStatusLabel(alert.status)}
+                  >
+                    <span
+                      style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }}
+                    />
+                    {getAlertStatusLabel(alert.status)}
+                  </span>
+                  <Tag
+                    color="default"
+                    style={{
+                      margin: 0,
+                      borderRadius: 999,
+                      fontSize: 10,
+                      lineHeight: '16px',
+                      padding: '0 6px',
+                      color: '#64748b',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  >
+                    {getTriggerTypeLabel(alert.triggerType)}
+                  </Tag>
+                </div>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  flexShrink: 0,
+                  minWidth: 54,
+                }}
+              >
+                <span style={{ color: '#b45309', fontSize: 12 }}>
+                  {(() => {
+                    const t = formatDateTime(alert.time);
+                    return t.split(' ')[1] || t || '-';
+                  })()}
+                </span>
+              </div>
+            </div>
+          ))}
+          {importRunAlertLoadingMore && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                padding: '10px 0 6px',
+                color: '#64748b',
+                fontSize: 12,
+              }}
+            >
+              <Spin size="small" />
+              <span>正在加载更多告警</span>
+            </div>
+          )}
+        </div>
+      </div>
     );
   };
 
   return (
     <div className={styles.monitorPage}>
       <div key="monitor" className="slide-in-right">
-        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Row gutter={[16, 16]} align="stretch" style={{ marginTop: 16 }}>
           <Col span={18}>
             <Card
               style={{
@@ -5177,10 +5379,12 @@ export default function MonitorPage() {
                     }}
                   />
                   <Select
+                    mode="multiple"
                     allowClear
+                    maxTagCount={1}
                     placeholder="状态"
                     value={importRunStatus}
-                    style={{ width: 140 }}
+                    style={{ width: 180 }}
                     options={[
                       { label: '运行中', value: 'RUNNING' },
                       { label: '等待中', value: 'PENDING' },
@@ -5192,7 +5396,7 @@ export default function MonitorPage() {
                     ]}
                     onChange={(value) => {
                       setImportRunPageNo(1);
-                      setImportRunStatus(value);
+                      setImportRunStatus(value as string[]);
                     }}
                   />
                 </Space>
@@ -5211,6 +5415,27 @@ export default function MonitorPage() {
                   columns={monitorColumns}
                   dataSource={importJobs}
                   rowKey="id"
+                  onRow={(record) => ({
+                    onClick: () => {
+                      if (record.taskId) {
+                        const nextTaskId =
+                          importRunAlertTaskId === record.taskId ? undefined : record.taskId;
+                        setImportRunAlertTaskId(nextTaskId);
+                        setImportRunAlertPageNo(1);
+                      } else {
+                        setImportRunAlertTaskId(undefined);
+                        setImportRunAlertPageNo(1);
+                      }
+                    },
+                    className: record.taskId
+                      ? importRunAlertTaskId === record.taskId
+                        ? 'source-asset-row source-asset-row-selected'
+                        : 'source-asset-row'
+                      : undefined,
+                    style: {
+                      cursor: 'pointer',
+                    },
+                  })}
                   pagination={{
                     current: importRunPageNo,
                     pageSize: importRunPageSize,
@@ -5227,85 +5452,210 @@ export default function MonitorPage() {
               </div>
             </Card>
           </Col>
-          <Col span={6}>
+          <Col span={6} style={{ display: 'flex' }}>
             <Card
+              className="monitorRealtimeCard"
               title={
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: 8,
-                    width: '100%',
+                    padding: '18px 18px 16px 18px',
+                    borderBottom: `1px solid ${token.colorBorderSecondary}`,
+                    background: '#f7f5f0',
                   }}
                 >
-                  <Space size={8}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      minWidth: 0,
+                      paddingLeft: 10,
+                      borderLeft: '4px solid #ef4444',
+                    }}
+                  >
+                    <WarningOutlined style={{ color: '#ef4444', fontSize: 14 }} />
                     <span
                       style={{
-                        display: 'inline-block',
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        backgroundColor: alertCount > 0 ? '#faad14' : '#52c41a',
-                        boxShadow:
-                          alertCount > 0
-                            ? '0 0 0 4px rgba(250, 173, 20, 0.14), 0 0 12px rgba(250, 173, 20, 0.45)'
-                            : '0 0 0 4px rgba(82, 196, 26, 0.12)',
-                        animation: 'pulse 1.6s ease-in-out infinite',
-                      }}
-                    />
-                    <WarningOutlined style={{ color: alertCount > 0 ? '#d48806' : '#64748b' }} />
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        fontSize: 15,
-                        color: '#1f2937',
+                        color: token.colorText,
+                        fontSize: 14,
+                        fontWeight: 650,
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       实时告警
                     </span>
-                  </Space>
-                  <Space size={6}>
-                    <Tag
-                      color={alertCount > 0 ? 'warning' : 'success'}
-                      style={{ margin: 0, fontWeight: 600, fontSize: 12 }}
-                    >
-                      {alertCount > 0 ? `${alertCount} 条` : '正常'}
-                    </Tag>
-                    <Tag color="processing" style={{ margin: 0, fontSize: 12 }}>
-                      实时
-                    </Tag>
-                  </Space>
+                    <span style={{ color: '#fca5a5', fontSize: 12, whiteSpace: 'nowrap' }}>
+                      共 {importRunAlertTotal} 条告警
+                    </span>
+                  </div>
+                  <span style={{ color: '#ef4444', fontSize: 12, whiteSpace: 'nowrap' }}>
+                    更新 {currentTime || '--:--:--'}
+                  </span>
                 </div>
               }
               style={{
-                borderRadius: 8,
-                border:
-                  alertCount > 0 ? '1px solid rgba(250, 173, 20, 0.36)' : '1px solid #edf0f5',
-                background: '#f3f8ff',
-                boxShadow: alertCount > 0 ? '0 8px 24px rgba(250, 173, 20, 0.10)' : 'none',
-                minHeight: 'calc(90vh - 80px)',
+                height: '100%',
+                width: '100%',
+                minWidth: 0,
+                marginBottom: 20,
+                borderRadius: 16,
+                border: '1px solid #e5e7eb',
+                borderLeft: '4px solid #ef4444',
+                background: '#ffffff',
+                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
               }}
-              bodyStyle={{ background: '#f3f8ff', padding: 12 }}
+              styles={{ body: { padding: '0 20px 16px', flex: 1, minHeight: 0, display: 'flex' } }}
             >
               <div
                 style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 10,
-                  padding: '6px 8px',
-                  background: '#f8fbff',
-                  border: '1px solid #dbeafe',
-                  borderRadius: 6,
-                  color: '#64748b',
-                  fontSize: 12,
+                  flexDirection: 'column',
+                  flex: 1,
+                  minHeight: 0,
+                  width: '100%',
                 }}
               >
-                <span>监听中</span>
-                <span>更新 {currentTime || '--:--:--'}</span>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    margin: '12px 0 14px',
+                    padding: '0',
+                    color: token.colorTextTertiary,
+                    fontSize: 12,
+                    flexShrink: 0,
+                  }}
+                >
+                  {selectedImportRunJob && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        flexWrap: 'wrap',
+                        padding: '12px 14px',
+                        borderRadius: 14,
+                        border: '1px solid #fda4af',
+                        background:
+                          'linear-gradient(135deg, rgba(254, 242, 242, 0.96) 0%, rgba(255, 255, 255, 1) 100%)',
+                        marginBottom: 10,
+                        // boxShadow: '0 8px 20px rgba(239, 68, 68, 0.08)',
+                      }}
+                    >
+                      <div
+                        style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}
+                      >
+                        <span style={{ color: '#b91c1c', fontSize: 12, fontWeight: 600 }}>
+                          当前联动任务
+                        </span>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            flexWrap: 'wrap',
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: '#7f1d1d',
+                              fontSize: 13,
+                              fontWeight: 600,
+                              maxWidth: 220,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={selectedImportRunJob.name}
+                          >
+                            {selectedImportRunJob.name}
+                          </span>
+                          <Tag color="red" style={{ margin: 0, borderRadius: 999 }}>
+                            {selectedImportRunJob.dataSourceName}
+                          </Tag>
+                          <Tag color="default" style={{ margin: 0, borderRadius: 999 }}>
+                            {getTriggerTypeLabel(selectedImportRunJob.triggerType)}
+                          </Tag>
+                        </div>
+                        {/* <span style={{ color: '#9f1239', fontSize: 12 }}>
+                          左侧再次点击当前任务，也可取消联动
+                        </span> */}
+                      </div>
+                      <Button
+                        size="small"
+                        danger
+                        type="primary"
+                        onClick={() => setImportRunAlertTaskId(undefined)}
+                      >
+                        取消联动
+                      </Button>
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <Space size={6} wrap>
+                      <Select
+                        allowClear
+                        placeholder="触发方式"
+                        value={importRunAlertTriggerType}
+                        style={{ width: 112 }}
+                        size="small"
+                        options={[
+                          { label: '手动触发', value: 'MANUAL' },
+                          { label: '定时触发', value: 'CRON' },
+                        ]}
+                        onChange={(value) => {
+                          setImportRunAlertPageNo(1);
+                          setImportRunAlertTriggerType(value);
+                        }}
+                      />
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        maxTagCount={1}
+                        placeholder="状态"
+                        value={importRunAlertStatus}
+                        style={{ width: 160 }}
+                        size="small"
+                        options={[
+                          { label: '失败', value: 'FAILED' },
+                          { label: '部分成功', value: 'PARTIAL' },
+                          { label: '已取消', value: 'CANCELLED' },
+                        ]}
+                        onChange={(value) => {
+                          setImportRunAlertPageNo(1);
+                          setImportRunAlertStatus(value as string[]);
+                        }}
+                      />
+                      {hasAlertFilter && (
+                        <Button size="small" icon={<ReloadOutlined />} onClick={resetAlertFilters}>
+                          重置筛选
+                        </Button>
+                      )}
+                    </Space>
+                  </div>
+                  <span style={{ lineHeight: '18px', whiteSpace: 'nowrap' }}>
+                    共 {importRunAlertTotal} 条告警
+                  </span>
+                </div>
+                <div style={{ flex: 1, minHeight: 0, width: '100%' }}>{renderAlerts()}</div>
               </div>
-              {renderAlerts()}
             </Card>
           </Col>
         </Row>
@@ -6300,7 +6650,6 @@ export default function MonitorPage() {
         )}
       </Drawer>
 
-      
       <Drawer
         title="导入结果汇总"
         width={720}
@@ -6315,13 +6664,27 @@ export default function MonitorPage() {
             <>
               <Descriptions bordered size="small" column={2}>
                 <Descriptions.Item label="任务">{taskResultDetail.taskName}</Descriptions.Item>
-                <Descriptions.Item label="数据源">{taskResultDetail.dataSourceName || '-'}</Descriptions.Item>
-                <Descriptions.Item label="累计落地条数">{taskResultDetail.totalRecordCount || 0}</Descriptions.Item>
-                <Descriptions.Item label="最近状态">{taskResultDetail.lastRunStatus || '-'}</Descriptions.Item>
-                <Descriptions.Item label="最近读取">{taskResultDetail.lastReadCount || 0}</Descriptions.Item>
-                <Descriptions.Item label="最近写入">{taskResultDetail.lastWriteCount || 0}</Descriptions.Item>
-                <Descriptions.Item label="最近失败">{taskResultDetail.lastFailCount || 0}</Descriptions.Item>
-                <Descriptions.Item label="落地字节">{formatDataSize(taskResultDetail.lastByteCount)}</Descriptions.Item>
+                <Descriptions.Item label="数据源">
+                  {taskResultDetail.dataSourceName || '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="累计落地条数">
+                  {taskResultDetail.totalRecordCount || 0}
+                </Descriptions.Item>
+                <Descriptions.Item label="最近状态">
+                  {taskResultDetail.lastRunStatus || '-'}
+                </Descriptions.Item>
+                <Descriptions.Item label="最近读取">
+                  {taskResultDetail.lastReadCount || 0}
+                </Descriptions.Item>
+                <Descriptions.Item label="最近写入">
+                  {taskResultDetail.lastWriteCount || 0}
+                </Descriptions.Item>
+                <Descriptions.Item label="最近失败">
+                  {taskResultDetail.lastFailCount || 0}
+                </Descriptions.Item>
+                <Descriptions.Item label="落地字节">
+                  {formatDataSize(taskResultDetail.lastByteCount)}
+                </Descriptions.Item>
               </Descriptions>
               <Divider>按对象统计</Divider>
               <Table
@@ -6347,7 +6710,7 @@ export default function MonitorPage() {
         </Spin>
       </Drawer>
 
-<style>{`
+      <style>{`
         @keyframes slideInFromRight {
           from {
             opacity: 0;
@@ -6416,14 +6779,30 @@ export default function MonitorPage() {
         }
         .source-asset-row {
           cursor: pointer;
-          transition: background-color 0.2s ease, box-shadow 0.2s ease;
+          transition:
+            background-color 0.2s ease,
+            box-shadow 0.2s ease,
+            transform 0.2s ease;
         }
         .source-asset-row:hover > td {
-          background: rgba(37, 99, 235, 0.08) !important;
+          background: rgba(37, 99, 235, 0.04) !important;
         }
         .source-asset-row-selected > td {
-          background: rgba(37, 99, 235, 0.14) !important;
-          box-shadow: inset 3px 0 0 #2563eb;
+          background: rgba(37, 99, 235, 0.06) !important;
+          border-top: 1px solid rgba(59, 130, 246, 0.12);
+          border-bottom: 1px solid rgba(59, 130, 246, 0.12);
+        }
+        .source-asset-row-selected > td:first-child {
+          border-left: 3px solid #2563eb;
+          border-top-left-radius: 10px;
+          border-bottom-left-radius: 10px;
+        }
+        .source-asset-row-selected > td:last-child {
+          border-top-right-radius: 10px;
+          border-bottom-right-radius: 10px;
+        }
+        .source-asset-row-selected:hover > td {
+          background: rgba(37, 99, 235, 0.08) !important;
         }
       `}</style>
     </div>
