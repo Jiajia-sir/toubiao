@@ -2069,7 +2069,7 @@ export default function GraphPage() {
             style={{
               position: "absolute",
               top: 16,
-              left: 16,
+              left: leftPanelCollapsed ? 60 : 16,
               zIndex: 100,
               backgroundColor: "rgba(255, 255, 255, 0.95)",
               backdropFilter: "blur(4px)",
