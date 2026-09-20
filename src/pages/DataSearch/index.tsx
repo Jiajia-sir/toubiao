@@ -67,6 +67,55 @@ type CustomCondition = {
   rightBracket: boolean;
 };
 
+const fixedCustomFieldOptions = [
+  { label: '文件名', value: 'name' },
+  { label: '关键词', value: 'keywordsList' },
+  { label: '实体名称', value: 'entities.entityName' },
+  { label: '实体类型', value: 'entities.entityType' },
+  { label: '正文', value: 'oriContent,transContent' },
+  { label: '上传人', value: 'creatorName' },
+];
+const customOperatorOptions = [
+  { label: '等于', value: '=' },
+  { label: '包含', value: 'CONTAINS' },
+  { label: '不包含', value: 'NOT_CONTAINS' },
+];
+
+const DEFAULT_CUSTOM_FIELD = 'keywordsList';
+const DEFAULT_CUSTOM_OPERATOR = '=';
+
+/**
+ * 兼容详情页返回时 sessionStorage 中保存的旧版中文值，避免字段无法命中选项后被错误显示为“文件名”。
+ */
+const normalizeCustomField = (field: unknown) => {
+  const value = typeof field === 'string' ? field : '';
+  const legacyFieldMap: Record<string, string> = {
+    标签: 'keywordsList',
+    '鏍囩': 'keywordsList',
+    对象名称: 'entities.entityName',
+    正文: 'oriContent,transContent',
+  };
+  const normalizedValue = legacyFieldMap[value] ?? value;
+  return fixedCustomFieldOptions.some((option) => option.value === normalizedValue)
+    ? normalizedValue
+    : DEFAULT_CUSTOM_FIELD;
+};
+
+/** 将界面中文运算符迁移为后端 EsUtil 词法解析器约定的英文运算符。 */
+const normalizeCustomOperator = (operator: unknown) => {
+  const value = typeof operator === 'string' ? operator : '';
+  const legacyOperatorMap: Record<string, string> = {
+    等于: '=',
+    绛変簬: '=',
+    包含: 'CONTAINS',
+    不包含: 'NOT_CONTAINS',
+  };
+  const normalizedValue = legacyOperatorMap[value] ?? value;
+  return customOperatorOptions.some((option) => option.value === normalizedValue)
+    ? normalizedValue
+    : DEFAULT_CUSTOM_OPERATOR;
+};
+
 type SearchResult = {
   id: string;
   esId: string;
@@ -142,8 +191,8 @@ const DEFAULT_SEARCH_PAGE_STATE: SearchPageState = {
     {
       id: 1,
       logic: 'AND',
-      field: '鏍囩',
-      operator: '绛変簬',
+      field: DEFAULT_CUSTOM_FIELD,
+      operator: DEFAULT_CUSTOM_OPERATOR,
       value: '',
       leftBracket: false,
       rightBracket: false,
@@ -185,14 +234,8 @@ const normalizeSearchPageState = (parsed: any): SearchPageState => ({
       ? parsed.customConditions.map((item: any, index: number) => ({
           id: Number(item?.id) || index + 1,
           logic: item?.logic === 'OR' || item?.logic === 'NOT' ? item.logic : 'AND',
-          field:
-            typeof item?.field === 'string' && item.field
-              ? item.field
-              : DEFAULT_SEARCH_PAGE_STATE.customConditions[0].field,
-          operator:
-            typeof item?.operator === 'string' && item.operator
-              ? item.operator
-              : DEFAULT_SEARCH_PAGE_STATE.customConditions[0].operator,
+          field: normalizeCustomField(item?.field),
+          operator: normalizeCustomOperator(item?.operator),
           value: typeof item?.value === 'string' ? item.value : '',
           leftBracket: Boolean(item?.leftBracket),
           rightBracket: Boolean(item?.rightBracket),
@@ -282,28 +325,12 @@ const customFieldOptions = [
   { label: '对象备注信息', value: '对象备注信息' },
   { label: '正文', value: '正文' },
 ];
-const customOperatorOptions = [
-  { label: '等于', value: '等于' },
-  { label: '包含', value: '包含' },
-  { label: '不包含', value: '不包含' },
-];
 const entityOptions = {
   公司: ['特斯拉', '英伟达', '比亚迪', '华为'],
   人名: ['马斯克', '任正非', '黄仁勋'],
   地点: ['中国', '美国', '欧洲'],
   技术: ['自动驾驶', '电池技术', '芯片', '大模型'],
 };
-
-const fixedCustomFieldOptions = [
-  { label: '文件名', value: 'name' },
-  { label: '关键词', value: 'keywordsList' },
-  { label: '实体名称', value: 'entities.entityName' },
-  { label: '实体类型', value: 'entities.entityType' },
-  { label: '正文', value: 'oriContent,transContent' },
-  { label: '上传人', value: 'creatorName' },
-];
-
-const DEFAULT_CUSTOM_FIELD = 'name';
 
 const relatedSearches = [
   '特斯拉商业模式分析',
@@ -727,18 +754,12 @@ export default function DataSearchPage() {
   );
   const [fuzzyWeights, setFuzzyWeights] = useState(initialState.fuzzyWeights);
   const [slop, setSlop] = useState(initialState.slop);
-  const [customConditions, setCustomConditions] = useState<CustomCondition[]>([
-    {
-      id: 1,
-      logic: 'AND',
-      field: '标签',
-      operator: '等于',
-      value: '',
-      leftBracket: false,
-      rightBracket: false,
-    },
-  ]);
-  const [activeConditionId, setActiveConditionId] = useState<number>(1);
+  const [customConditions, setCustomConditions] = useState<CustomCondition[]>(
+    initialState.customConditions,
+  );
+  const [activeConditionId, setActiveConditionId] = useState<number>(
+    initialState.customConditions[0]?.id || 1,
+  );
   const [appliedStrategyLabel, setAppliedStrategyLabel] = useState('模糊匹配');
 
   useEffect(() => {
@@ -843,22 +864,35 @@ export default function DataSearchPage() {
     [currentEntityOptions, entityKeyword],
   );
 
-  const buildAdvanceSearch = () =>
-    customConditions
-      .filter((item) => item.field && item.operator && item.value.trim())
+  const buildAdvanceSearch = () => {
+    const validConditions = customConditions.filter((item) => item.value.trim());
+
+    return validConditions
       .map((item, index) => {
-        const logicMap: Record<CustomCondition['logic'], string> = {
-          AND: '且',
-          OR: '或',
-          NOT: '非',
-        };
-        const resolvedField = fixedCustomFieldOptions.some((option) => option.value === item.field)
-          ? item.field
-          : DEFAULT_CUSTOM_FIELD;
-        const expression = `${item.leftBracket ? '(' : ''}${resolvedField} ${item.operator} "${item.value.trim()}"${item.rightBracket ? ')' : ''}`;
-        return index === 0 ? expression : `${logicMap[item.logic]} ${expression}`;
+        // 连接符显示在上一行末尾，因此第 N 条条件应读取第 N-1 条条件保存的 logic。
+        const previousLogic = index > 0 ? validConditions[index - 1].logic : undefined;
+        const shouldNegate = previousLogic === 'NOT';
+        const operator = normalizeCustomOperator(item.operator);
+        const effectiveOperator = shouldNegate
+          ? { '=': '!=', CONTAINS: 'NOT_CONTAINS', NOT_CONTAINS: 'CONTAINS' }[operator]
+          : operator;
+        const value = item.value.trim().replace(/"/g, '\\"');
+        const fields = normalizeCustomField(item.field).split(',');
+
+        // “正文”对应原文和转换后正文两个 ES 字段；正向查询取 OR，NOT 查询按德摩根律取 AND。
+        const fieldExpression = fields
+          .map((field) => `${field} ${effectiveOperator} "${value}"`)
+          .join(shouldNegate ? ' AND ' : ' OR ');
+        const groupedExpression = fields.length > 1 ? `(${fieldExpression})` : fieldExpression;
+        const expression = `${item.leftBracket ? '(' : ''}${groupedExpression}${item.rightBracket ? ')' : ''}`;
+
+        if (index === 0) {
+          return expression;
+        }
+        return `${previousLogic === 'OR' ? 'OR' : 'AND'} ${expression}`;
       })
       .join(' ');
+  };
 
   const buildQueryPayload = (
     pageNo: number,
@@ -1166,8 +1200,8 @@ export default function DataSearchPage() {
       {
         id,
         logic: 'AND',
-        field: '标签',
-        operator: '等于',
+        field: DEFAULT_CUSTOM_FIELD,
+        operator: DEFAULT_CUSTOM_OPERATOR,
         value: '',
         leftBracket: false,
         rightBracket: false,
@@ -1220,8 +1254,8 @@ export default function DataSearchPage() {
       {
         id: 1,
         logic: 'AND',
-        field: '标签',
-        operator: '等于',
+        field: DEFAULT_CUSTOM_FIELD,
+        operator: DEFAULT_CUSTOM_OPERATOR,
         value: '',
         leftBracket: false,
         rightBracket: false,
