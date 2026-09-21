@@ -327,6 +327,24 @@ const normalizePreviewHtml = (value: string) => {
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const parseHighlightKeywords = (value: string | null, fallbackKeyword = ''): string[] => {
+  if (value) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return Array.from(
+          new Set(parsed.map((item) => String(item ?? '').trim()).filter(Boolean)),
+        );
+      }
+    } catch (error) {
+      console.warn('解析详情高亮关键词失败，将回退到 keyword', error);
+    }
+  }
+  const fallback = fallbackKeyword.trim();
+  // 兼容上一版本以空格拼接多个高亮词的详情链接；新链接通过 JSON 参数保留英文短语边界。
+  return fallback ? Array.from(new Set(fallback.split(/\s+/).filter(Boolean))) : [];
+};
+
 const renderHighlightedText = (text: string, keyword: string) => {
   const plainText = stripHtml(String(text ?? ''));
   const normalizedKeyword = keyword.trim();
@@ -733,6 +751,12 @@ export default function DataDetailPage() {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphData, setGraphData] = useState<DocumentKnowledgeGraphResult | null>(null);
   const [previewKeyword, setPreviewKeyword] = useState(searchParams.get('keyword') || '');
+  const [previewHighlightKeywords, setPreviewHighlightKeywords] = useState<string[]>(() =>
+    parseHighlightKeywords(
+      searchParams.get('highlightKeywords'),
+      searchParams.get('keyword') || '',
+    ),
+  );
   const [previewMode, setPreviewMode] = useState<'parsed' | 'original'>(initialPreviewMode);
   const [labelMaxLength, setLabelMaxLength] = useState(6);
   const [detailData, setDetailData] = useState<any>(null);
@@ -824,8 +848,11 @@ export default function DataDetailPage() {
 
   useEffect(() => {
     setPreviewKeyword(sourceKeyword || '');
+    setPreviewHighlightKeywords(
+      parseHighlightKeywords(searchParams.get('highlightKeywords'), sourceKeyword || ''),
+    );
     setPreviewMode(sourcePreviewMode === 'original' ? 'original' : 'parsed');
-  }, [sourceKeyword, sourcePreviewMode, params.id]);
+  }, [sourceKeyword, sourcePreviewMode, params.id, location.search]);
 
   useEffect(() => {
     fetchDetail();
@@ -923,7 +950,7 @@ export default function DataDetailPage() {
     setPreviewChunks([]);
     previewLoadingRef.current = false;
     previewScrollLockRef.current = false;
-  }, [params.id, detailData?.id, previewKeyword]);
+  }, [params.id, detailData?.id, previewKeyword, previewHighlightKeywords]);
 
   useEffect(() => {
     setGraphOpen(false);
@@ -942,6 +969,7 @@ export default function DataDetailPage() {
           pageSize: PREVIEW_PAGE_SIZE,
           docId: params.id || detailData?.id || 0,
           keyword: previewKeyword.trim(),
+          keywords: previewHighlightKeywords,
           contextSize: 1,
         });
 
@@ -1011,7 +1039,7 @@ export default function DataDetailPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [params.id, detailData?.id, previewKeyword, previewPageNo]);
+  }, [params.id, detailData?.id, previewKeyword, previewHighlightKeywords, previewPageNo]);
 
   const document = useMemo(
     () => buildDocumentDetail(baseDocument, detailData, sourceTitle, sourceType),
@@ -1670,7 +1698,12 @@ export default function DataDetailPage() {
                       <Input
                         allowClear
                         value={previewKeyword}
-                        onChange={(event) => setPreviewKeyword(event.target.value)}
+                        onChange={(event) => {
+                          const nextKeyword = event.target.value;
+                          setPreviewKeyword(nextKeyword);
+                          // 用户在详情页手动输入时，将整段输入视为一个完整词组，禁止再次按空格或 IK 子词拆分高亮。
+                          setPreviewHighlightKeywords(nextKeyword.trim() ? [nextKeyword.trim()] : []);
+                        }}
                         placeholder="搜索内容"
                         prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
                         style={{ width: 220 }}

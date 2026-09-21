@@ -894,6 +894,28 @@ export default function DataSearchPage() {
       .join(' ');
   };
 
+  /**
+   * 汇总列表及详情页需要高亮的完整检索词。
+   * 顶部关键词始终保留；多条件模式仅收集正向条件，避免把 NOT/不包含的排除词错误标亮。
+   */
+  const buildHighlightKeywords = () => {
+    const validConditions = customConditions.filter((item) => item.value.trim());
+    const customHighlightKeywords =
+      queryStrategyMode === 'custom'
+        ? validConditions
+            .filter((item, index) => {
+              const previousLogic = index > 0 ? validConditions[index - 1].logic : undefined;
+              return (
+                normalizeCustomOperator(item.operator) !== 'NOT_CONTAINS' &&
+                previousLogic !== 'NOT'
+              );
+            })
+            .map((item) => item.value.trim())
+        : [];
+
+    return Array.from(new Set([searchText.trim(), ...customHighlightKeywords].filter(Boolean)));
+  };
+
   const buildQueryPayload = (
     pageNo: number,
     size: number,
@@ -914,6 +936,7 @@ export default function DataSearchPage() {
           ]
         : [],
     advanceSearch: queryStrategyMode === 'custom' ? buildAdvanceSearch() : '',
+    highlightKeywords: buildHighlightKeywords(),
     sortField,
     sortOrder,
     knowledgeBaseId: knowledgeBaseFilter,
@@ -1143,8 +1166,13 @@ export default function DataSearchPage() {
     if (result.esId) {
       detailQuery.set('esId', result.esId);
     }
-    if (searchText.trim()) {
-      detailQuery.set('keyword', searchText.trim());
+    // 详情页与列表共用同一组完整高亮词，避免两个页面的高亮口径不一致。
+    const uniqueDetailKeywords = buildHighlightKeywords();
+    if (uniqueDetailKeywords.length > 0) {
+      // keyword 用于兼容详情页现有搜索框展示，完整词边界由 highlightKeywords 单独传递。
+      detailQuery.set('keyword', uniqueDetailKeywords.join(' '));
+      // 单独保留完整词边界，详情正文不能依赖空格拆分，否则英文短语会被错误拆成多个子词。
+      detailQuery.set('highlightKeywords', JSON.stringify(uniqueDetailKeywords));
     }
     if (result.name) {
       detailQuery.set('title', result.name);
