@@ -35,6 +35,11 @@ export default {
       target: 'http://192.168.31.55:7860',
       changeOrigin: true,
     },
+    //算法-消融
+    '/ablation/': {
+      target: 'http://192.168.31.55:50011',
+      changeOrigin: true,
+    },
     ...communityApiProxy,
   },
 
