@@ -169,3 +169,10 @@ export function deleteAblationTask(taskId: number | string) {
     { method: 'DELETE' },
   );
 }
+
+export function retryAblationTask(taskId: number | string) {
+  return request<AblationApiResponse>(
+    `${ABLATION_API_PREFIX}/graph/ablation/${encodeURIComponent(String(taskId))}/retry`,
+    { method: 'POST' },
+  );
+}

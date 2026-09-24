@@ -36,6 +36,7 @@ import {
   LoadingOutlined,
   PlusOutlined,
   ReloadOutlined,
+  RetweetOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
 import {
@@ -43,6 +44,7 @@ import {
   deleteAblationTask,
   getAblationTaskPage,
   getAblationTaskResult,
+  retryAblationTask,
   type AblationEntity,
   type AblationGlobalEntity,
   type AblationRelation,
@@ -347,6 +349,7 @@ export default function AblationIndexPage() {
   const [taskPageSize, setTaskPageSize] = useState(20);
   const [taskLoading, setTaskLoading] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<number | string>();
+  const [retryingTaskId, setRetryingTaskId] = useState<number | string>();
 
   const [selectedTask, setSelectedTask] = useState<AblationTask | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<number | string>();
@@ -456,6 +459,37 @@ export default function AblationIndexPage() {
       }
     },
     [fetchTasks, selectedTaskId, taskPage, taskPageSize, tasks.length],
+  );
+
+  const handleRetryTask = useCallback(
+    async (task: AblationTask) => {
+      const taskId = getTaskId(task);
+      if (typeof taskId === 'undefined' || taskId === null || taskId === '') {
+        message.warning('当前任务缺少任务 ID，无法重试');
+        return;
+      }
+      if (getTaskStatusCode(task) !== 2) {
+        message.warning('仅支持重试消融失败的任务');
+        return;
+      }
+
+      setRetryingTaskId(taskId);
+      try {
+        const response = await retryAblationTask(taskId);
+        const apiError = getApiErrorMessage(response);
+        if (apiError) {
+          throw new Error(apiError);
+        }
+
+        await fetchTasks(taskPage, taskPageSize);
+        message.success('消融任务已提交重试');
+      } catch (error) {
+        message.error(`重试消融任务失败：${getErrorMessage(error)}`);
+      } finally {
+        setRetryingTaskId(undefined);
+      }
+    },
+    [fetchTasks, taskPage, taskPageSize],
   );
 
   const handleBeforeUpload: UploadProps['beforeUpload'] = (file) => {
@@ -751,13 +785,15 @@ export default function AblationIndexPage() {
     {
       title: '操作',
       key: 'action',
-      width: 190,
+      width: 260,
       render: (_value, record) => {
         const taskId = getTaskId(record);
         const statusCode = getTaskStatusCode(record);
         const isLoading = resultLoading && String(selectedTaskId) === String(taskId);
         const isDeleting =
           deletingTaskId !== undefined && String(deletingTaskId) === String(taskId);
+        const isRetrying =
+          retryingTaskId !== undefined && String(retryingTaskId) === String(taskId);
         const canViewResult = statusCode === 1 || typeof statusCode === 'undefined';
         const actionHint =
           statusCode === 0
@@ -776,6 +812,17 @@ export default function AblationIndexPage() {
             >
               查看结果
             </Button>
+            {statusCode === 2 && (
+              <Button
+                type="link"
+                icon={<RetweetOutlined />}
+                loading={isRetrying}
+                disabled={typeof taskId === 'undefined' || isRetrying}
+                onClick={() => void handleRetryTask(record)}
+              >
+                重试
+              </Button>
+            )}
             <Popconfirm
               title="确认删除该消融任务？"
               description="删除后任务及其结果将无法在列表中查看。"
