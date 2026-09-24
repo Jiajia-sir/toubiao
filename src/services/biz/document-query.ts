@@ -14,6 +14,7 @@ export interface DocumentQueryParams {
   slop: number;
   fieldWeights: DocumentQueryFieldWeight[];
   advanceSearch: string;
+  highlightKeywords: string[];
   sortField: "_score" | "createTime";
   sortOrder: "asc" | "desc";
   knowledgeBaseId: Array<number | string>;
@@ -59,6 +60,7 @@ export interface DocumentHtmlChunkPageParams {
   pageSize: number;
   docId: number | string;
   keyword: string;
+  keywords: string[];
   contextSize: number;
 }
 
