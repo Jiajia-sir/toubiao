@@ -33,6 +33,12 @@ export default [
     component: './Dashboard',
   },
   {
+    name: '采购数据驾驶舱',
+    icon: 'dashboard',
+    path: '/procurement-cockpit',
+    component: './ProcurementCockpit',
+  },
+  {
     name: '知识库',
     icon: 'book',
     path: '/knowledge',

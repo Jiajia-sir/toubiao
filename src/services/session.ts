@@ -80,6 +80,41 @@ const componentSegmentAliasMap: Record<string, string> = {
   Operatelog: 'Operlog',
 };
 
+const LOCAL_PROCUREMENT_COCKPIT_MENU = {
+  path: '/procurement-cockpit',
+  name: '采购数据驾驶舱',
+  icon: createIcon('dashboard'),
+  component: 'ProcurementCockpit',
+  hideInMenu: false,
+  hideChildrenInMenu: false,
+  flatMenu: false,
+  meta: {
+    title: '采购数据驾驶舱',
+    icon: 'dashboard',
+  },
+};
+
+function hasMenuPath(items: any[], path: string): boolean {
+  return items.some((item) => {
+    if (item?.path === path) {
+      return true;
+    }
+    const children = Array.isArray(item?.routes)
+      ? item.routes
+      : Array.isArray(item?.children)
+        ? item.children
+        : [];
+    return children.length > 0 && hasMenuPath(children, path);
+  });
+}
+
+function appendLocalFeatureMenus(items: any[]): any[] {
+  if (hasMenuPath(items, LOCAL_PROCUREMENT_COCKPIT_MENU.path)) {
+    return items;
+  }
+  return [...items, { ...LOCAL_PROCUREMENT_COCKPIT_MENU }];
+}
+
 export function getRemoteMenu() {
   return remoteMenu;
 }
@@ -104,10 +139,14 @@ export function setRemoteMenu(data: any) {
 
 export async function ensureRemoteMenu() {
   if (Array.isArray(remoteMenu) && remoteMenu.length > 0) {
-    return remoteMenu;
+    const menus = appendLocalFeatureMenus(remoteMenu);
+    if (menus !== remoteMenu) {
+      setRemoteMenu(menus);
+    }
+    return menus;
   }
-  const menus = await getRoutersInfo();
-  setRemoteMenu(Array.isArray(menus) && menus.length > 0 ? menus : null);
+  const menus = appendLocalFeatureMenus(await getRoutersInfo());
+  setRemoteMenu(menus.length > 0 ? menus : null);
   return menus;
 }
 
@@ -343,12 +382,12 @@ export async function getRoutersInfo(): Promise<MenuDataItem[]> {
   try {
     const res = await getUserInfo();
     if (res.code === 200 && res.data?.menus) {
-      return transformMenus(res.data.menus);
+      return appendLocalFeatureMenus(transformMenus(res.data.menus));
     }
-    return [];
+    return [LOCAL_PROCUREMENT_COCKPIT_MENU] as unknown as MenuDataItem[];
   } catch (error) {
     console.error('获取路由菜单失败:', error);
-    return [];
+    return [LOCAL_PROCUREMENT_COCKPIT_MENU] as unknown as MenuDataItem[];
   }
 }
 
