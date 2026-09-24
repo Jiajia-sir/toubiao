@@ -33,7 +33,7 @@ export default [
     component: './Dashboard',
   },
   {
-    name: '采购数据驾驶舱',
+    name: '采购运行态势',
     icon: 'dashboard',
     path: '/procurement-cockpit',
     component: './ProcurementCockpit',
@@ -277,5 +277,3 @@ export default [
     component: './404',
   },
 ];
-
-

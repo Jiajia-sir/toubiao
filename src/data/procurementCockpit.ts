@@ -77,8 +77,19 @@ const METHOD_DAYS: Record<string, number> = {
   单一来源: 25,
 };
 
+const PROJECT_UNIT_NAMES: Record<string, string> = {
+  市教育局: '教育条线',
+  市卫健委: '卫生健康条线',
+  市交通局: '交通运输条线',
+  市水务局: '水务运行条线',
+  市公安局: '公共安全条线',
+  市文旅局: '文体旅条线',
+  市城管局: '城市治理条线',
+  市财政局: '财务保障条线',
+};
+
 /**
- * 与采购数据驾驶舱原页面一致的演示数据生成器。
+ * 面向采购运行态势页面的可替换演示数据生成器。
  * 后续接入真实采购接口时，只需要替换页面中的 ALL_PROJECTS 数据源即可。
  */
 export function generateProcurementProjects(): ProcurementProject[] {
@@ -143,15 +154,15 @@ export function generateProcurementProjects(): ProcurementProject[] {
 
     list.push({
       id: `CG${startDate.getFullYear()}${String(index + 1).padStart(4, '0')}`,
-      name: `${unit.replace('市', '')}${pick([
-        '信息化建设',
-        '设备采购',
-        '维修改造',
-        '物业服务',
-        '办公用品',
-        '安防升级',
-        '咨询服务',
-        '耗材采购',
+      name: `${PROJECT_UNIT_NAMES[unit] ?? unit.replace('市', '')}${pick([
+        '数字化改造',
+        '资产配置',
+        '运维提升',
+        '后勤保障',
+        '综合物资',
+        '安全能力建设',
+        '专业咨询',
+        '运营耗材',
       ])}项目`,
       unit,
       method,

@@ -35,6 +35,86 @@ const RECIPIENTS: Record<string, string> = {
   围标: '纪检监察室',
 };
 
+const UNIT_LABELS: Record<string, string> = {
+  市教育局: '教育条线',
+  市卫健委: '卫生健康条线',
+  市交通局: '交通运输条线',
+  市水务局: '水务运行条线',
+  市公安局: '公共安全条线',
+  市文旅局: '文体旅条线',
+  市城管局: '城市治理条线',
+  市财政局: '财务保障条线',
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  公开招标: '公开竞采',
+  邀请招标: '定向邀请',
+  竞争性谈判: '协商采购',
+  竞争性磋商: '综合磋商',
+  询价: '比价采购',
+  单一来源: '单一渠道',
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  货物: '货品类',
+  工程: '建设类',
+  服务: '服务类',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  已完成: '已结项',
+  进行中: '执行中',
+  已超期: '进度滞后',
+  已终止: '已关闭',
+};
+
+const STAGE_LABELS: Record<string, string> = {
+  需求申报: '需求提出',
+  采购计划: '计划编排',
+  招标公告: '公告发布',
+  开标评标: '评审定标',
+  定标公示: '结果公示',
+  合同签订: '协议签署',
+  履约验收: '履约验收',
+};
+
+const ALERT_LEVEL_LABELS: Record<string, string> = { 高: '重点', 中: '关注' };
+const ALERT_KIND_LABELS: Record<string, string> = {
+  超期: '进度滞后',
+  集中: '成交集中',
+  单一来源: '渠道单一',
+  围标: '共同投标',
+};
+const TIME_GROUP_LABELS = { 月度: '按月', 季度: '按季', 年度: '按年' } as const;
+
+function unitLabel(value: string) {
+  return UNIT_LABELS[value] ?? value.replace('市', '');
+}
+
+function methodLabel(value: string) {
+  return METHOD_LABELS[value] ?? value;
+}
+
+function typeLabel(value: string) {
+  return TYPE_LABELS[value] ?? value;
+}
+
+function statusLabel(value: string) {
+  return STATUS_LABELS[value] ?? value;
+}
+
+function stageLabel(value: string) {
+  return STAGE_LABELS[value] ?? value;
+}
+
+function alertLevelLabel(value: string) {
+  return ALERT_LEVEL_LABELS[value] ?? value;
+}
+
+function alertKindLabel(value: string) {
+  return ALERT_KIND_LABELS[value] ?? value;
+}
+
 type Filters = {
   from: string;
   to: string;
@@ -52,12 +132,12 @@ type AlertItem = {
 };
 
 const SECTION_LIST = [
-  { key: 'unit', label: '单位统计' },
-  { key: 'time', label: '时间节点' },
-  { key: 'process', label: '进程分析' },
-  { key: 'method', label: '采购方式' },
-  { key: 'amount', label: '金额分析' },
-  { key: 'supplier', label: '供应商分析' },
+  { key: 'unit', label: '部门概览' },
+  { key: 'time', label: '时间走势' },
+  { key: 'process', label: '流程效能' },
+  { key: 'method', label: '交易渠道' },
+  { key: 'amount', label: '资金分析' },
+  { key: 'supplier', label: '主体画像' },
 ] as const;
 
 type SectionKey = (typeof SECTION_LIST)[number]['key'];
@@ -102,7 +182,7 @@ function useAnalytics(data: ProcurementProject[]) {
     const units = PROCUREMENT_UNITS.map((unit) => {
       const projects = data.filter((project) => project.unit === unit);
       const result: Record<string, number | string> = {
-        unit: unit.replace('市', ''),
+        unit: unitLabel(unit),
         项目数: projects.length,
         金额: +(projects.reduce((total, project) => total + project.budget, 0) / 10000).toFixed(0),
       };
@@ -147,6 +227,7 @@ function useAnalytics(data: ProcurementProject[]) {
     const yearly = groupBy((key) => key.slice(0, 4));
     const stageAvg = PROCUREMENT_STAGES.map((stage, index) => ({
       stage,
+      label: stageLabel(stage),
       平均耗时: +average(
         data
           .filter((project) => project.stageDays[index]! > 0)
@@ -164,6 +245,7 @@ function useAnalytics(data: ProcurementProject[]) {
     );
     const stageDist = PROCUREMENT_STAGES.map((stage) => ({
       stage,
+      label: stageLabel(stage),
       在途: ongoing.filter((project) => project.stage === stage && project.status === '进行中')
         .length,
       超期: ongoing.filter((project) => project.stage === stage && project.status === '已超期')
@@ -171,7 +253,7 @@ function useAnalytics(data: ProcurementProject[]) {
     }));
     const bottleneck = [...stageAvg].sort((left, right) => right.平均耗时 - left.平均耗时)[0];
     const funnel = PROCUREMENT_STAGES.map((stage, index) => ({
-      name: stage,
+      name: stageLabel(stage),
       value: data.filter((project) => project.stageIndex >= index && project.status !== '已终止')
         .length,
     }));
@@ -181,6 +263,7 @@ function useAnalytics(data: ProcurementProject[]) {
       const completedProjects = projects.filter((project) => project.status === '已完成');
       return {
         method,
+        label: methodLabel(method),
         项目数: projects.length,
         平均周期: +average(completedProjects.map((project) => project.actualDays)).toFixed(1),
         计划周期: +average(projects.map((project) => project.plannedDays)).toFixed(1),
@@ -196,7 +279,7 @@ function useAnalytics(data: ProcurementProject[]) {
       [1000, Infinity],
     ] as const;
     const amountDist = amountRanges.map(([start, end]) => ({
-      range: end === Infinity ? `${start}万以上` : `${start}-${end}万`,
+      range: end === Infinity ? `${start}万以上` : `${start}至${end}万`,
       项目数: data.filter(
         (project) => project.budget / 10000 >= start && project.budget / 10000 < end,
       ).length,
@@ -206,7 +289,7 @@ function useAnalytics(data: ProcurementProject[]) {
       const unitBudget = projects.reduce((total, project) => total + project.budget, 0);
       const unitAmount = projects.reduce((total, project) => total + project.amount, 0);
       return {
-        unit: unit.replace('市', ''),
+        unit: unitLabel(unit),
         执行率: unitBudget ? +((unitAmount / unitBudget) * 100).toFixed(1) : 0,
         节资率: unitBudget ? +((1 - unitAmount / unitBudget) * 100).toFixed(1) : 0,
       };
@@ -236,8 +319,8 @@ function useAnalytics(data: ProcurementProject[]) {
         id: `od-${project.id}`,
         level: project.actualDays - project.plannedDays > 30 ? '高' : '中',
         kind: '超期',
-        title: `${project.name} 超期 ${project.actualDays - project.plannedDays} 天`,
-        detail: `${project.id} · ${project.unit} · 当前阶段：${project.stage}`,
+        title: `${project.name} 进度滞后 ${project.actualDays - project.plannedDays} 天`,
+        detail: `${project.id} · ${unitLabel(project.unit)} · 所处环节：${stageLabel(project.stage)}`,
       });
     });
 
@@ -251,8 +334,8 @@ function useAnalytics(data: ProcurementProject[]) {
           id: `cc-${key}`,
           level: count >= 8 ? '高' : '中',
           kind: '集中',
-          title: `${supplier} 在${unit}累计成交 ${count} 次`,
-          detail: '单一供应商多次成交，存在利益关联风险',
+          title: `${supplier} 在${unitLabel(unit)}已落地 ${count} 笔`,
+          detail: '同一主体多次承接，建议关注关联关系',
         });
       });
 
@@ -265,8 +348,8 @@ function useAnalytics(data: ProcurementProject[]) {
           id: `ss-${unit}`,
           level: '中',
           kind: '单一来源',
-          title: `${unit} 单一来源占比 ${percent(singleSourceRatio)}`,
-          detail: '超过 18% 警戒线',
+          title: `${unitLabel(unit)} 单一渠道占比 ${percent(singleSourceRatio)}`,
+          detail: '超过 18% 关注阈值',
         });
       }
     });
@@ -285,8 +368,8 @@ function useAnalytics(data: ProcurementProject[]) {
           id: `wb-${key}`,
           level: '中',
           kind: '围标',
-          title: `${key} 同时投标 ${count} 次`,
-          detail: '频繁共同参与投标，疑似关联投标',
+          title: `${key} 共同参与 ${count} 次`,
+          detail: '多个主体重复同场参与，建议核查关联投标',
         });
       });
 
@@ -318,11 +401,11 @@ function useAnalytics(data: ProcurementProject[]) {
       execByUnit,
       suppliers,
       typeShare: PROCUREMENT_TYPES.map((type) => ({
-        name: type,
+        name: typeLabel(type),
         value: data.filter((project) => project.type === type).length,
       })),
       statusShare: PROCUREMENT_STATUSES.map((status) => ({
-        name: status,
+        name: statusLabel(status),
         value: data.filter((project) => project.status === status).length,
       })),
       alerts,
@@ -451,14 +534,14 @@ function Panel({
 function Kpis({ analytics }: { analytics: Analytics }) {
   const { kpi } = analytics;
   const items: Array<{ label: string; value: string | number; unit: string; warning?: boolean }> = [
-    { label: '项目总数', value: kpi.total, unit: '个' },
-    { label: '预算总额', value: formatWan(kpi.budget), unit: '万元' },
-    { label: '成交金额', value: formatWan(kpi.amount), unit: '万元' },
-    { label: '在途项目', value: kpi.ongoing, unit: '个' },
-    { label: '超期项目', value: kpi.overdue, unit: '个', warning: true },
-    { label: '完成率', value: percent(kpi.completion), unit: '' },
-    { label: '节资率', value: percent(kpi.saving), unit: '' },
-    { label: '平均周期', value: kpi.avgCycle.toFixed(1), unit: '天' },
+    { label: '事项规模', value: kpi.total, unit: '笔' },
+    { label: '计划金额', value: formatWan(kpi.budget), unit: '万元' },
+    { label: '已落地金额', value: formatWan(kpi.amount), unit: '万元' },
+    { label: '执行中事项', value: kpi.ongoing, unit: '笔' },
+    { label: '进度滞后', value: kpi.overdue, unit: '笔', warning: true },
+    { label: '结项比例', value: percent(kpi.completion), unit: '' },
+    { label: '资金优化率', value: percent(kpi.saving), unit: '' },
+    { label: '平均办理', value: kpi.avgCycle.toFixed(1), unit: '天' },
   ];
 
   return (
@@ -480,26 +563,26 @@ function UnitSection({ analytics, height }: { analytics: Analytics; height: numb
   const labels = analytics.units.map((item) => String(item.unit));
   return (
     <div className="cockpit-grid cockpit-grid-3">
-      <Panel title="各单位项目数量与金额（万元）" className="cockpit-span-2">
+      <Panel title="各责任条线事项量与计划金额（万元）" className="cockpit-span-2">
         <Chart
           height={height}
           option={baseChart({
             legend: { top: 0, textStyle: { color: mutedText } },
             xAxis: axisOptions(labels),
             yAxis: [
-              valueAxis({ name: '项目数' }),
-              valueAxis({ name: '金额', splitLine: { show: false } }),
+              valueAxis({ name: '事项笔数' }),
+              valueAxis({ name: '计划金额', splitLine: { show: false } }),
             ],
             series: [
               {
-                name: '项目数',
+                name: '事项笔数',
                 type: 'bar',
                 barMaxWidth: 28,
                 data: analytics.units.map((item) => Number(item.项目数)),
                 itemStyle: { color: COLORS[0], borderRadius: [4, 4, 0, 0] },
               },
               {
-                name: '金额（万元）',
+                name: '计划金额（万元）',
                 type: 'line',
                 yAxisIndex: 1,
                 smooth: true,
@@ -511,10 +594,10 @@ function UnitSection({ analytics, height }: { analytics: Analytics; height: numb
           })}
         />
       </Panel>
-      <Panel title="项目类型占比">
+      <Panel title="业务类别构成">
         <Chart height={height} option={pieOption(analytics.typeShare)} />
       </Panel>
-      <Panel title="各单位项目状态" className="cockpit-span-2">
+      <Panel title="各责任条线执行状态" className="cockpit-span-2">
         <Chart
           height={height}
           option={baseChart({
@@ -522,7 +605,7 @@ function UnitSection({ analytics, height }: { analytics: Analytics; height: numb
             xAxis: axisOptions(labels),
             yAxis: valueAxis(),
             series: PROCUREMENT_STATUSES.map((status, index) => ({
-              name: status,
+              name: statusLabel(status),
               type: 'bar',
               stack: 'status',
               barMaxWidth: 28,
@@ -532,7 +615,7 @@ function UnitSection({ analytics, height }: { analytics: Analytics; height: numb
           })}
         />
       </Panel>
-      <Panel title="项目状态占比">
+      <Panel title="当前执行状态分布">
         <Chart height={height} option={pieOption(analytics.statusShare)} />
       </Panel>
     </div>
@@ -550,7 +633,7 @@ function TimeSection({ analytics, height }: { analytics: Analytics; height: numb
   return (
     <div className="cockpit-grid cockpit-grid-3">
       <Panel
-        title={`${group}趋势`}
+        title={`${TIME_GROUP_LABELS[group]}走势`}
         className="cockpit-span-3"
         extra={
           <Space size={4}>
@@ -561,7 +644,7 @@ function TimeSection({ analytics, height }: { analytics: Analytics; height: numb
                 type={group === item ? 'primary' : 'text'}
                 onClick={() => setGroup(item)}
               >
-                {item}
+                {TIME_GROUP_LABELS[item]}
               </Button>
             ))}
           </Space>
@@ -573,12 +656,12 @@ function TimeSection({ analytics, height }: { analytics: Analytics; height: numb
             legend: { top: 0, textStyle: { color: mutedText } },
             xAxis: axisOptions(trend.map((item) => item.k)),
             yAxis: [
-              valueAxis({ name: '项目数' }),
-              valueAxis({ name: '金额', splitLine: { show: false } }),
+              valueAxis({ name: '事项笔数' }),
+              valueAxis({ name: '计划金额', splitLine: { show: false } }),
             ],
             series: [
               {
-                name: '项目数',
+                name: '事项笔数',
                 type: 'line',
                 smooth: true,
                 data: trend.map((item) => item.项目数),
@@ -587,7 +670,7 @@ function TimeSection({ analytics, height }: { analytics: Analytics; height: numb
                 itemStyle: { color: COLORS[0] },
               },
               {
-                name: '金额（万元）',
+                name: '计划金额（万元）',
                 type: 'line',
                 yAxisIndex: 1,
                 smooth: true,
@@ -599,15 +682,15 @@ function TimeSection({ analytics, height }: { analytics: Analytics; height: numb
           })}
         />
       </Panel>
-      <Panel title="各阶段平均耗时（天）" className="cockpit-span-2">
+      <Panel title="各环节平均办理时长（天）" className="cockpit-span-2">
         <Chart
           height={height}
           option={baseChart({
-            xAxis: axisOptions(analytics.stageAvg.map((item) => item.stage)),
+            xAxis: axisOptions(analytics.stageAvg.map((item) => item.label)),
             yAxis: valueAxis(),
             series: [
               {
-                name: '平均耗时',
+                name: '平均办理时长',
                 type: 'bar',
                 barMaxWidth: 34,
                 data: analytics.stageAvg.map((item) => ({
@@ -622,21 +705,22 @@ function TimeSection({ analytics, height }: { analytics: Analytics; height: numb
           })}
         />
       </Panel>
-      <Panel title={`超期预警（${analytics.overdue.length}）`}>
+      <Panel title={`进度滞后事项（${analytics.overdue.length}）`}>
         <div className="cockpit-overdue-list" style={{ height }}>
           {analytics.overdue.slice(0, 20).map((project) => (
             <div key={project.id} className="cockpit-overdue-item">
               <div>
                 <strong>{project.name}</strong>
-                <span>+{project.actualDays - project.plannedDays}天</span>
+                <span>超出计划 {project.actualDays - project.plannedDays} 天</span>
               </div>
               <p>
-                {project.unit} · {project.stage} · 计划{project.plannedDays}天
+                {unitLabel(project.unit)} · {stageLabel(project.stage)} · 计划 {project.plannedDays}{' '}
+                天
               </p>
             </div>
           ))}
           {!analytics.overdue.length && (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无超期项目" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无进度滞后事项" />
           )}
         </div>
       </Panel>
@@ -647,23 +731,23 @@ function TimeSection({ analytics, height }: { analytics: Analytics; height: numb
 function ProcessSection({ analytics, height }: { analytics: Analytics; height: number }) {
   return (
     <div className="cockpit-grid cockpit-grid-3">
-      <Panel title="在途项目阶段分布" className="cockpit-span-2">
+      <Panel title="执行中事项环节分布" className="cockpit-span-2">
         <Chart
           height={height}
           option={baseChart({
             legend: { top: 0, textStyle: { color: mutedText } },
-            xAxis: axisOptions(analytics.stageDist.map((item) => item.stage)),
+            xAxis: axisOptions(analytics.stageDist.map((item) => item.label)),
             yAxis: valueAxis(),
             series: [
               {
-                name: '在途',
+                name: '执行中',
                 type: 'bar',
                 stack: 'process',
                 data: analytics.stageDist.map((item) => item.在途),
                 itemStyle: { color: COLORS[0] },
               },
               {
-                name: '超期',
+                name: '滞后',
                 type: 'bar',
                 stack: 'process',
                 data: analytics.stageDist.map((item) => item.超期),
@@ -673,7 +757,7 @@ function ProcessSection({ analytics, height }: { analytics: Analytics; height: n
           })}
         />
       </Panel>
-      <Panel title="流程转化漏斗">
+      <Panel title="流程推进漏斗">
         <Chart
           height={height}
           option={baseChart({
@@ -701,14 +785,14 @@ function ProcessSection({ analytics, height }: { analytics: Analytics; height: n
           })}
         />
       </Panel>
-      <Panel title="流程瓶颈分析" className="cockpit-span-2">
+      <Panel title="环节耗时画像" className="cockpit-span-2">
         <Chart
           height={height}
           option={baseChart({
             radar: {
               center: ['50%', '52%'],
               radius: '68%',
-              indicator: analytics.stageAvg.map((item) => ({ name: item.stage, max: 20 })),
+              indicator: analytics.stageAvg.map((item) => ({ name: item.label, max: 20 })),
               axisName: { color: mutedText, fontSize: 11 },
               splitLine: { lineStyle: { color: gridLine } },
               splitArea: { areaStyle: { color: ['rgba(34,211,238,.03)', 'rgba(34,211,238,.07)'] } },
@@ -718,7 +802,10 @@ function ProcessSection({ analytics, height }: { analytics: Analytics; height: n
               {
                 type: 'radar',
                 data: [
-                  { value: analytics.stageAvg.map((item) => item.平均耗时), name: '平均耗时' },
+                  {
+                    value: analytics.stageAvg.map((item) => item.平均耗时),
+                    name: '环节平均时长',
+                  },
                 ],
                 lineStyle: { color: COLORS[3], width: 2 },
                 itemStyle: { color: COLORS[3] },
@@ -728,12 +815,12 @@ function ProcessSection({ analytics, height }: { analytics: Analytics; height: n
           })}
         />
       </Panel>
-      <Panel title="完成率与转化率">
+      <Panel title="结项与落地表现">
         <div className="cockpit-progress-list" style={{ minHeight: height }}>
           {[
-            ['项目完成率', analytics.kpi.completion, COLORS[1]],
-            ['成交转化率', analytics.kpi.conversion, COLORS[0]],
-            ['超期率', analytics.kpi.overdue / (analytics.kpi.total || 1), COLORS[4]],
+            ['结项比例', analytics.kpi.completion, COLORS[1]],
+            ['落地转化率', analytics.kpi.conversion, COLORS[0]],
+            ['进度滞后率', analytics.kpi.overdue / (analytics.kpi.total || 1), COLORS[4]],
           ].map(([label, value, color]) => (
             <div key={String(label)}>
               <div className="cockpit-progress-title">
@@ -749,8 +836,8 @@ function ProcessSection({ analytics, height }: { analytics: Analytics; height: n
             </div>
           ))}
           <p>
-            瓶颈环节：<span>{analytics.bottleneck?.stage || '暂无数据'}</span>（平均{' '}
-            {analytics.bottleneck?.平均耗时?.toFixed(1) || '0.0'} 天）
+            重点耗时环节：<span>{stageLabel(analytics.bottleneck?.stage || '') || '暂无数据'}</span>
+            （平均 {analytics.bottleneck?.平均耗时?.toFixed(1) || '0.0'} 天）
           </p>
         </div>
       </Panel>
@@ -761,31 +848,31 @@ function ProcessSection({ analytics, height }: { analytics: Analytics; height: n
 function MethodSection({ analytics, height }: { analytics: Analytics; height: number }) {
   return (
     <div className="cockpit-grid cockpit-grid-3">
-      <Panel title="采购方式使用占比">
+      <Panel title="交易渠道构成">
         <Chart
           height={height}
           option={pieOption(
-            analytics.methods.map((item) => ({ name: item.method, value: item.项目数 })),
+            analytics.methods.map((item) => ({ name: item.label, value: item.项目数 })),
           )}
         />
       </Panel>
-      <Panel title="平均周期对比（天）" className="cockpit-span-2">
+      <Panel title="办理时长对比（天）" className="cockpit-span-2">
         <Chart
           height={height}
           option={baseChart({
             legend: { top: 0, textStyle: { color: mutedText } },
-            xAxis: axisOptions(analytics.methods.map((item) => item.method)),
+            xAxis: axisOptions(analytics.methods.map((item) => item.label)),
             yAxis: valueAxis(),
             series: [
               {
-                name: '计划周期',
+                name: '计划天数',
                 type: 'bar',
                 barMaxWidth: 30,
                 data: analytics.methods.map((item) => item.计划周期),
                 itemStyle: { color: COLORS[5], borderRadius: [4, 4, 0, 0] },
               },
               {
-                name: '实际平均周期',
+                name: '实际均值',
                 type: 'bar',
                 barMaxWidth: 30,
                 data: analytics.methods.map((item) => item.平均周期),
@@ -802,7 +889,7 @@ function MethodSection({ analytics, height }: { analytics: Analytics; height: nu
 function AmountSection({ analytics, height }: { analytics: Analytics; height: number }) {
   return (
     <div className="cockpit-grid cockpit-grid-3">
-      <Panel title="金额区间分布">
+      <Panel title="计划金额梯度">
         <Chart
           height={height}
           option={baseChart({
@@ -814,7 +901,7 @@ function AmountSection({ analytics, height }: { analytics: Analytics; height: nu
             ),
             series: [
               {
-                name: '项目数',
+                name: '事项笔数',
                 type: 'bar',
                 data: analytics.amountDist.map((item, index) => ({
                   value: item.项目数,
@@ -826,11 +913,11 @@ function AmountSection({ analytics, height }: { analytics: Analytics; height: nu
         />
       </Panel>
       <Panel
-        title="各单位预算执行率与节资率（%）"
+        title="各责任条线资金执行与优化（%）"
         className="cockpit-span-2"
         extra={
           <span className="cockpit-panel-extra">
-            总执行率 <b>{percent(analytics.kpi.exec)}</b> · 总节资率{' '}
+            总体落地率 <b>{percent(analytics.kpi.exec)}</b> · 总体优化率{' '}
             <b>{percent(analytics.kpi.saving)}</b>
           </span>
         }
@@ -843,14 +930,14 @@ function AmountSection({ analytics, height }: { analytics: Analytics; height: nu
             yAxis: [valueAxis({ min: 70, max: 100 }), valueAxis({ splitLine: { show: false } })],
             series: [
               {
-                name: '执行率',
+                name: '资金落地率',
                 type: 'bar',
                 barMaxWidth: 30,
                 data: analytics.execByUnit.map((item) => item.执行率),
                 itemStyle: { color: COLORS[0], borderRadius: [4, 4, 0, 0] },
               },
               {
-                name: '节资率',
+                name: '优化率',
                 type: 'line',
                 yAxisIndex: 1,
                 smooth: true,
@@ -873,7 +960,7 @@ function SupplierSection({ analytics, height }: { analytics: Analytics; height: 
   );
   return (
     <div className="cockpit-grid cockpit-grid-3">
-      <Panel title="中标供应商分布（金额·万元）">
+      <Panel title="成交主体金额构成（万元）">
         <Chart
           height={height}
           option={pieOption(
@@ -882,7 +969,7 @@ function SupplierSection({ analytics, height }: { analytics: Analytics; height: 
           )}
         />
       </Panel>
-      <Panel title="供应商参与频次 / 中标次数" className="cockpit-span-2">
+      <Panel title="供应商参与与落地次数" className="cockpit-span-2">
         <Chart
           height={height}
           option={baseChart({
@@ -901,14 +988,14 @@ function SupplierSection({ analytics, height }: { analytics: Analytics; height: 
             yAxis: valueAxis(),
             series: [
               {
-                name: '参与次数',
+                name: '参与笔数',
                 type: 'bar',
                 barMaxWidth: 28,
                 data: topSuppliers.map((item) => item.参与次数),
                 itemStyle: { color: COLORS[5], borderRadius: [4, 4, 0, 0] },
               },
               {
-                name: '中标次数',
+                name: '落地笔数',
                 type: 'bar',
                 barMaxWidth: 28,
                 data: topSuppliers.map((item) => item.中标次数),
@@ -918,9 +1005,9 @@ function SupplierSection({ analytics, height }: { analytics: Analytics; height: 
           })}
         />
       </Panel>
-      <Panel title={`关联预警（${relationAlerts.length}）`} className="cockpit-span-3">
+      <Panel title={`关联风险提示（${relationAlerts.length}）`} className="cockpit-span-3">
         <div className="cockpit-relation-alerts">
-          {relationAlerts.length === 0 && <p className="cockpit-muted">暂无关联风险</p>}
+          {relationAlerts.length === 0 && <p className="cockpit-muted">暂无关联风险提示</p>}
           {relationAlerts.map((item) => (
             <div key={item.id} className="cockpit-relation-alert">
               <strong>{item.title}</strong>
@@ -956,34 +1043,37 @@ function AlertCenter({
 }) {
   return (
     <Panel
-      title={`异常预警中心（${alerts.length}）`}
+      title={`风险提示中心（${alerts.length}）`}
       extra={
         <Button danger size="small" icon={<SendOutlined />} onClick={() => onPush(alerts)}>
-          全部推送
+          批量通知
         </Button>
       }
     >
       <div className="cockpit-alert-list">
         {alerts.map((item) => (
           <div key={item.id} className="cockpit-alert-item">
-            <Tag color={item.level === '高' ? 'error' : 'warning'}>{item.level}</Tag>
+            <Tag color={item.level === '高' ? 'error' : 'warning'}>
+              {alertLevelLabel(item.level)}
+            </Tag>
             <div className="cockpit-alert-content">
               <strong>{item.title}</strong>
               <span>
-                {item.detail} · 推送至：{RECIPIENTS[item.kind] || '相关责任人'}
+                【{alertKindLabel(item.kind)}】{item.detail} · 通知至：
+                {RECIPIENTS[item.kind] || '相关责任人'}
               </span>
             </div>
             {pushed.has(item.id) ? (
-              <span className="cockpit-pushed">已推送</span>
+              <span className="cockpit-pushed">已通知</span>
             ) : (
               <Button type="link" size="small" onClick={() => onPush([item])}>
-                推送
+                通知
               </Button>
             )}
           </div>
         ))}
         {!alerts.length && (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无异常预警" />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无风险提示" />
         )}
       </div>
     </Panel>
@@ -1049,32 +1139,32 @@ function ProcurementCockpitPage() {
     if (!highRisk.length) return undefined;
     const timer = window.setTimeout(() => {
       notification.warning({
-        message: `检测到 ${highRisk.length} 条高风险异常`,
-        description: '已自动推送至相关责任人',
+        message: `检测到 ${highRisk.length} 条重点风险提示`,
+        description: '已自动通知相关责任人',
         placement: 'topRight',
       });
       setPushed((current) => new Set([...current, ...highRisk.map((item) => item.id)]));
     }, 800);
     return () => window.clearTimeout(timer);
-    // 首次加载时提醒高风险预警，筛选变化由用户手动推送。
+    // 首次加载时提醒重点风险，筛选变化由用户手动通知。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pushAlerts = (items: AlertItem[]) => {
     const fresh = items.filter((item) => !pushed.has(item.id));
     if (!fresh.length) {
-      message.info('所选预警均已推送');
+      message.info('所选风险均已通知');
       return;
     }
     setPushed((current) => new Set([...current, ...fresh.map((item) => item.id)]));
     fresh.slice(0, 3).forEach((item) => {
       notification.error({
         message: item.title,
-        description: `已推送至：${RECIPIENTS[item.kind] || '相关责任人'}`,
+        description: `已通知至：${RECIPIENTS[item.kind] || '相关责任人'}`,
         placement: 'topRight',
       });
     });
-    if (fresh.length > 3) message.success(`共推送 ${fresh.length} 条预警消息`);
+    if (fresh.length > 3) message.success(`共通知 ${fresh.length} 条风险提示`);
   };
 
   const toggleBigScreen = async () => {
@@ -1083,7 +1173,7 @@ function ProcurementCockpitPage() {
       try {
         await rootRef.current?.requestFullscreen?.();
       } catch {
-        message.info('当前浏览器不支持全屏，将使用页面大屏模式');
+        message.info('当前浏览器不支持全屏，将使用页面展示模式');
       }
       setBigScreen(true);
       return;
@@ -1102,60 +1192,112 @@ function ProcurementCockpitPage() {
         XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), name);
       };
       const { kpi } = analytics;
-      addSheet('核心指标', [
+      addSheet('指标总览', [
         {
-          项目总数: kpi.total,
-          '预算总额(万元)': Number(formatWan(kpi.budget).replace(/,/g, '')),
-          '成交金额(万元)': Number(formatWan(kpi.amount).replace(/,/g, '')),
-          在途项目: kpi.ongoing,
-          超期项目: kpi.overdue,
-          完成率: percent(kpi.completion),
-          预算执行率: percent(kpi.exec),
-          节资率: percent(kpi.saving),
-          '平均周期(天)': +kpi.avgCycle.toFixed(1),
+          事项规模: kpi.total,
+          '计划金额(万元)': Number(formatWan(kpi.budget).replace(/,/g, '')),
+          '已落地金额(万元)': Number(formatWan(kpi.amount).replace(/,/g, '')),
+          执行中事项: kpi.ongoing,
+          进度滞后: kpi.overdue,
+          结项比例: percent(kpi.completion),
+          资金落地率: percent(kpi.exec),
+          资金优化率: percent(kpi.saving),
+          平均办理天数: +kpi.avgCycle.toFixed(1),
         },
       ]);
-      addSheet('单位统计', analytics.units);
-      addSheet('月度趋势', analytics.monthly);
-      addSheet('季度趋势', analytics.quarterly);
-      addSheet('年度趋势', analytics.yearly);
-      addSheet('阶段耗时', analytics.stageAvg);
-      addSheet('在途阶段分布', analytics.stageDist);
-      addSheet('采购方式', analytics.methods);
-      addSheet('金额区间', analytics.amountDist);
-      addSheet('执行率与节资率', analytics.execByUnit);
-      addSheet('供应商', analytics.suppliers);
       addSheet(
-        '异常预警',
+        '责任条线概览',
+        analytics.units.map((item) => ({
+          责任条线: item.unit,
+          事项笔数: item.项目数,
+          '计划金额(万元)': item.金额,
+          已结项: item.已完成,
+          执行中: item.进行中,
+          进度滞后: item.已超期,
+          已关闭: item.已终止,
+          货品类: item.货物,
+          建设类: item.工程,
+          服务类: item.服务,
+        })),
+      );
+      const trendRows = (rows: typeof analytics.monthly) =>
+        rows.map((item) => ({ 周期: item.k, 事项笔数: item.项目数, '计划金额(万元)': item.金额 }));
+      addSheet('按月走势', trendRows(analytics.monthly));
+      addSheet('按季走势', trendRows(analytics.quarterly));
+      addSheet('按年走势', trendRows(analytics.yearly));
+      addSheet(
+        '环节时长',
+        analytics.stageAvg.map((item) => ({ 环节: item.label, 平均办理时长: item.平均耗时 })),
+      );
+      addSheet(
+        '执行中环节',
+        analytics.stageDist.map((item) => ({
+          环节: item.label,
+          执行中: item.在途,
+          滞后: item.超期,
+        })),
+      );
+      addSheet(
+        '交易渠道',
+        analytics.methods.map((item) => ({
+          交易渠道: item.label,
+          事项笔数: item.项目数,
+          计划天数: item.计划周期,
+          实际均值: item.平均周期,
+        })),
+      );
+      addSheet(
+        '金额梯度',
+        analytics.amountDist.map((item) => ({ 金额梯度: item.range, 事项笔数: item.项目数 })),
+      );
+      addSheet(
+        '资金执行',
+        analytics.execByUnit.map((item) => ({
+          责任条线: item.unit,
+          资金落地率: item.执行率,
+          优化率: item.节资率,
+        })),
+      );
+      addSheet(
+        '成交主体',
+        analytics.suppliers.map((item) => ({
+          主体: item.supplier,
+          参与笔数: item.参与次数,
+          落地笔数: item.中标次数,
+          '落地金额(万元)': item.中标金额,
+        })),
+      );
+      addSheet(
+        '风险提示',
         analytics.alerts.map((item) => ({
-          等级: item.level,
-          类型: item.kind,
-          预警: item.title,
+          等级: alertLevelLabel(item.level),
+          类型: alertKindLabel(item.kind),
+          提示: item.title,
           说明: item.detail,
-          推送对象: RECIPIENTS[item.kind] || '相关责任人',
+          通知对象: RECIPIENTS[item.kind] || '相关责任人',
         })),
       );
       addSheet(
-        '项目明细',
+        '事项明细',
         filteredData.map((project) => ({
-          编号: project.id,
-          名称: project.name,
-          单位: project.unit,
-          方式: project.method,
-          类型: project.type,
-          状态: project.status,
-          阶段: project.stage,
-          '预算(万元)': project.budget / 10000,
-          '成交(万元)': project.amount / 10000,
-          供应商: project.supplier,
-          立项日期: project.start,
+          事项编号: project.id,
+          事项名称: project.name,
+          责任条线: unitLabel(project.unit),
+          交易渠道: methodLabel(project.method),
+          业务类别: typeLabel(project.type),
+          执行状态: statusLabel(project.status),
+          当前环节: stageLabel(project.stage),
+          '计划金额(万元)': project.budget / 10000,
+          '落地金额(万元)': project.amount / 10000,
+          成交主体: project.supplier,
+          立项时间: project.start,
         })),
       );
-      XLSX.writeFile(workbook, `采购数据驾驶舱报表_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      message.success('Excel 报表已导出');
+      XLSX.writeFile(workbook, `采购运行态势报表_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      message.success('工作簿已导出');
     } catch (error) {
       console.error('导出 Excel 失败', error);
-      message.error('Excel 报表导出失败');
+      message.error('工作簿导出失败');
     }
   };
 
@@ -1165,7 +1307,7 @@ function ProcurementCockpitPage() {
 
     const messageKey = 'procurement-cockpit-pdf-export';
     setExportingPdf(true);
-    message.loading({ content: '正在生成 PDF 报表…', key: messageKey, duration: 0 });
+    message.loading({ content: '正在生成态势 PDF…', key: messageKey, duration: 0 });
 
     try {
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
@@ -1189,11 +1331,11 @@ function ProcurementCockpitPage() {
         pdf.addImage(image, 'JPEG', 0, -offset, pageWidth, imageHeight);
       }
 
-      pdf.save(`采购数据驾驶舱报表_${new Date().toISOString().slice(0, 10)}.pdf`);
-      message.success({ content: 'PDF 报表已导出', key: messageKey });
+      pdf.save(`采购运行态势报表_${new Date().toISOString().slice(0, 10)}.pdf`);
+      message.success({ content: 'PDF 态势报表已导出', key: messageKey });
     } catch (error) {
       console.error('导出 PDF 失败', error);
-      message.error({ content: 'PDF 报表导出失败', key: messageKey });
+      message.error({ content: '态势 PDF 导出失败', key: messageKey });
     } finally {
       setExportingPdf(false);
     }
@@ -1210,9 +1352,9 @@ function ProcurementCockpitPage() {
   const header = (
     <header className="cockpit-header">
       <div>
-        <h1>采购数据驾驶舱</h1>
+        <h1>采购运行态势驾驶舱</h1>
         <p>
-          数据范围 {filters.from} 至 {filters.to} · 共 {filteredData.length} 个项目
+          统计区间 {filters.from} 至 {filters.to} · 覆盖 {filteredData.length} 笔事项
         </p>
       </div>
       <time>{currentTime}</time>
@@ -1243,18 +1385,18 @@ function ProcurementCockpitPage() {
                 icon={playing ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
                 onClick={() => setPlaying((current) => !current)}
               />
-              <span>轮播间隔</span>
+              <span>轮播周期</span>
               <Select
                 value={intervalSeconds}
-                aria-label="轮播间隔"
+                aria-label="轮播周期"
                 popupClassName="cockpit-interval-dropdown"
                 getPopupContainer={() => rootRef.current || document.body}
                 placement="bottomRight"
                 onChange={(value) => setIntervalSeconds(Number(value))}
-                options={[5, 10, 15, 30].map((value) => ({ value, label: `${value}秒` }))}
+                options={[5, 10, 15, 30].map((value) => ({ value, label: `${value} 秒` }))}
               />
               <Button icon={<FullscreenExitOutlined />} onClick={toggleBigScreen}>
-                退出大屏
+                退出展示
               </Button>
             </Space>
           </div>
@@ -1267,7 +1409,7 @@ function ProcurementCockpitPage() {
           {header}
           <div className="cockpit-toolbar">
             <label>
-              <span>开始日期</span>
+              <span>起始时间</span>
               <input
                 type="date"
                 value={filters.from}
@@ -1277,7 +1419,7 @@ function ProcurementCockpitPage() {
               />
             </label>
             <label>
-              <span>结束日期</span>
+              <span>截止时间</span>
               <input
                 type="date"
                 value={filters.to}
@@ -1287,32 +1429,35 @@ function ProcurementCockpitPage() {
               />
             </label>
             <label>
-              <span>采购单位</span>
+              <span>责任条线</span>
               <Select
                 value={filters.unit || undefined}
-                placeholder="全部"
+                placeholder="不限"
                 allowClear
-                options={PROCUREMENT_UNITS.map((value) => ({ value, label: value }))}
+                options={PROCUREMENT_UNITS.map((value) => ({ value, label: unitLabel(value) }))}
                 onChange={(value) => setFilters((current) => ({ ...current, unit: value || '' }))}
               />
             </label>
             <label>
-              <span>采购方式</span>
+              <span>交易渠道</span>
               <Select
                 value={filters.method || undefined}
-                placeholder="全部"
+                placeholder="不限"
                 allowClear
-                options={PROCUREMENT_METHODS.map((value) => ({ value, label: value }))}
+                options={PROCUREMENT_METHODS.map((value) => ({ value, label: methodLabel(value) }))}
                 onChange={(value) => setFilters((current) => ({ ...current, method: value || '' }))}
               />
             </label>
             <label>
-              <span>项目状态</span>
+              <span>执行状态</span>
               <Select
                 value={filters.status || undefined}
-                placeholder="全部"
+                placeholder="不限"
                 allowClear
-                options={PROCUREMENT_STATUSES.map((value) => ({ value, label: value }))}
+                options={PROCUREMENT_STATUSES.map((value) => ({
+                  value,
+                  label: statusLabel(value),
+                }))}
                 onChange={(value) => setFilters((current) => ({ ...current, status: value || '' }))}
               />
             </label>
@@ -1320,20 +1465,20 @@ function ProcurementCockpitPage() {
               icon={<ReloadOutlined />}
               onClick={() => {
                 setFilters(INITIAL_FILTERS);
-                message.success('筛选条件已重置');
+                message.success('查询条件已恢复');
               }}
             >
-              重置
+              恢复默认
             </Button>
             <div className="cockpit-toolbar-actions">
               <Button icon={<FileExcelOutlined />} onClick={exportExcel}>
-                导出 Excel
+                导出工作簿
               </Button>
               <Button icon={<FilePdfOutlined />} loading={exportingPdf} onClick={exportPdf}>
-                导出 PDF
+                导出态势 PDF
               </Button>
               <Button type="primary" icon={<ExpandOutlined />} onClick={toggleBigScreen}>
-                大屏模式
+                展示模式
               </Button>
             </div>
           </div>
@@ -1341,7 +1486,7 @@ function ProcurementCockpitPage() {
           <div className="cockpit-tabs">
             <Space wrap>
               <Button type={tab === 'all' ? 'primary' : 'default'} onClick={() => setTab('all')}>
-                全部
+                总览
               </Button>
               {SECTION_LIST.map((section) => (
                 <Button
@@ -1354,7 +1499,7 @@ function ProcurementCockpitPage() {
               ))}
             </Space>
             <span className="cockpit-pushed-count">
-              <BellOutlined /> 已推送 {pushed.size} 条预警
+              <BellOutlined /> 已通知 {pushed.size} 条风险
             </span>
           </div>
 
@@ -1363,7 +1508,7 @@ function ProcurementCockpitPage() {
             <AlertCenter alerts={analytics.alerts} pushed={pushed} onPush={pushAlerts} />
             {!filteredData.length ? (
               <div className="cockpit-empty">
-                <WarningOutlined /> 当前筛选条件下暂无数据
+                <WarningOutlined /> 当前条件下没有匹配事项
               </div>
             ) : (
               visibleSections.map((section) => (

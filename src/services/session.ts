@@ -82,14 +82,14 @@ const componentSegmentAliasMap: Record<string, string> = {
 
 const LOCAL_PROCUREMENT_COCKPIT_MENU = {
   path: '/procurement-cockpit',
-  name: '采购数据驾驶舱',
+  name: '采购运行态势',
   icon: createIcon('dashboard'),
   component: 'ProcurementCockpit',
   hideInMenu: false,
   hideChildrenInMenu: false,
   flatMenu: false,
   meta: {
-    title: '采购数据驾驶舱',
+    title: '采购运行态势',
     icon: 'dashboard',
   },
 };
@@ -127,10 +127,7 @@ export function setRemoteMenu(data: any) {
   }
 
   if (Array.isArray(data) && data.length > 0) {
-    window.sessionStorage.setItem(
-      REMOTE_MENU_STORAGE_KEY,
-      JSON.stringify(sanitizeMenuCache(data)),
-    );
+    window.sessionStorage.setItem(REMOTE_MENU_STORAGE_KEY, JSON.stringify(sanitizeMenuCache(data)));
     return;
   }
 
