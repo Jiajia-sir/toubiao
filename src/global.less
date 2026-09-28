@@ -58,6 +58,23 @@ body,
   padding: 10px !important;
 }
 
+/* 采购原型使用项目顶部菜单，页面内容不再显示原型左侧菜单。 */
+body.procurement-mode .ant-pro-sider,
+body.procurement-mode .ant-pro-sider-fixed,
+body.procurement-mode .ant-layout-sider {
+  display: none !important;
+}
+
+body.procurement-mode .ant-pro-layout-container,
+body.procurement-mode .ant-pro-layout-content {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+body.procurement-mode .ant-pro-layout-content {
+  padding-right: 0 !important;
+}
+
 canvas {
   display: block;
 }

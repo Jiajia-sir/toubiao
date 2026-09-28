@@ -80,39 +80,107 @@ const componentSegmentAliasMap: Record<string, string> = {
   Operatelog: 'Operlog',
 };
 
-const LOCAL_PROCUREMENT_COCKPIT_MENU = {
-  path: '/procurement-cockpit',
-  name: '采购运行态势',
-  icon: createIcon('dashboard'),
-  component: 'ProcurementCockpit',
-  hideInMenu: false,
-  hideChildrenInMenu: false,
-  flatMenu: false,
-  meta: {
-    title: '采购运行态势',
-    icon: 'dashboard',
+const LOCAL_PROJECT_MENUS = [
+  {
+    path: '/procurement-cockpit',
+    name: '采购运行态势',
+    icon: createIcon('dashboard'),
+    component: 'ProcurementCockpit',
+    hideInMenu: false,
+    hideChildrenInMenu: false,
+    flatMenu: false,
+    meta: { title: '采购运行态势', icon: 'dashboard' },
   },
-};
+  {
+    path: '/procurement',
+    name: '工作台',
+    icon: createIcon('dashboard'),
+    component: 'ProcurementPortal',
+    hideInMenu: false,
+    hideChildrenInMenu: true,
+    flatMenu: true,
+    meta: { title: '工作台', icon: 'dashboard' },
+  },
+  {
+    path: '/procurement/projects',
+    name: '项目管理',
+    icon: createIcon('project'),
+    component: 'ProcurementPortal',
+    hideInMenu: false,
+    hideChildrenInMenu: true,
+    flatMenu: true,
+    meta: { title: '项目管理', icon: 'project' },
+  },
+  {
+    path: '/procurement/requirements',
+    name: '采购需求',
+    icon: createIcon('form'),
+    component: 'ProcurementPortal',
+    hideInMenu: false,
+    hideChildrenInMenu: true,
+    flatMenu: true,
+    meta: { title: '采购需求', icon: 'form' },
+  },
+  {
+    path: '/procurement/suppliers',
+    name: '寻源管理',
+    icon: createIcon('search'),
+    component: 'ProcurementPortal',
+    hideInMenu: false,
+    hideChildrenInMenu: true,
+    flatMenu: true,
+    meta: { title: '寻源管理', icon: 'search' },
+  },
+  {
+    path: '/procurement/suppliers/risk',
+    name: '供应商管理',
+    icon: createIcon('team'),
+    component: 'ProcurementPortal',
+    hideInMenu: false,
+    hideChildrenInMenu: true,
+    flatMenu: true,
+    meta: { title: '供应商管理', icon: 'team' },
+  },
+  {
+    path: '/procurement/contracts',
+    name: '合同管理',
+    icon: createIcon('file-done'),
+    component: 'ProcurementPortal',
+    hideInMenu: false,
+    hideChildrenInMenu: true,
+    flatMenu: true,
+    meta: { title: '合同管理', icon: 'file-done' },
+  },
+  {
+    path: '/procurement/reports',
+    name: '数据报表',
+    icon: createIcon('bar-chart'),
+    component: 'ProcurementPortal',
+    hideInMenu: false,
+    hideChildrenInMenu: true,
+    flatMenu: true,
+    meta: { title: '数据报表', icon: 'bar-chart' },
+  },
+];
 
-function hasMenuPath(items: any[], path: string): boolean {
-  return items.some((item) => {
-    if (item?.path === path) {
-      return true;
-    }
-    const children = Array.isArray(item?.routes)
-      ? item.routes
-      : Array.isArray(item?.children)
-        ? item.children
-        : [];
-    return children.length > 0 && hasMenuPath(children, path);
-  });
-}
+const LOCAL_PROJECT_MENU_PATHS = [
+  '/procurement-cockpit',
+  '/procurement',
+  '/procurement/projects',
+  '/procurement/requirements',
+  '/procurement/suppliers',
+  '/procurement/suppliers/risk',
+  '/procurement/contracts',
+  '/procurement/records',
+  '/procurement/reports',
+  '/platform-overview',
+  '/platform-models',
+];
 
 function appendLocalFeatureMenus(items: any[]): any[] {
-  if (hasMenuPath(items, LOCAL_PROCUREMENT_COCKPIT_MENU.path)) {
-    return items;
-  }
-  return [...items, { ...LOCAL_PROCUREMENT_COCKPIT_MENU }];
+  const localPaths = new Set(LOCAL_PROJECT_MENU_PATHS);
+  const remoteItems = items.filter((item) => !localPaths.has(item?.path));
+  return [...LOCAL_PROJECT_MENUS.map((menu) => ({ ...menu })), ...remoteItems];
 }
 
 export function getRemoteMenu() {
@@ -381,10 +449,10 @@ export async function getRoutersInfo(): Promise<MenuDataItem[]> {
     if (res.code === 200 && res.data?.menus) {
       return appendLocalFeatureMenus(transformMenus(res.data.menus));
     }
-    return [LOCAL_PROCUREMENT_COCKPIT_MENU] as unknown as MenuDataItem[];
+    return LOCAL_PROJECT_MENUS as unknown as MenuDataItem[];
   } catch (error) {
     console.error('获取路由菜单失败:', error);
-    return [LOCAL_PROCUREMENT_COCKPIT_MENU] as unknown as MenuDataItem[];
+    return LOCAL_PROJECT_MENUS as unknown as MenuDataItem[];
   }
 }
 
