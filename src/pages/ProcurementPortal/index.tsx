@@ -21,7 +21,6 @@ import {
   Row,
   Select,
   Space,
-  Steps,
   Switch,
   Table,
   Tag,
@@ -111,6 +110,111 @@ type Project = {
   status: '进行中' | '已完成' | '待审核';
 };
 
+type NewProjectFormValues = {
+  name: string;
+  type: '货物' | '服务' | '工程';
+  category: string;
+  owner: string;
+  department: string;
+  funding?: string;
+  budget: string;
+  quantity?: string;
+  planDate?: unknown;
+  urgency: 'normal' | 'urgent' | 'critical';
+  intention?: string;
+};
+
+type ProjectDetailData = {
+  id: string;
+  name: string;
+  type: '货物' | '服务' | '工程';
+  category: string;
+  budget: string;
+  usedBudget: string;
+  budgetUsedPercent: number;
+  method: string;
+  planDate: string;
+  owner: string;
+  department: string;
+  funding: string;
+  quantity: string;
+  intention: string;
+  urgency: 'normal' | 'urgent' | 'critical';
+  createdAt: string;
+};
+
+const PROCUREMENT_METHOD_OPTIONS = [
+  { value: '公开招标', match: 96, description: '预算金额达到公开招标限额，竞争充分且符合制度要求。' },
+  { value: '竞争性磋商', match: 68, description: '适用于技术方案需要进一步磋商、比选的采购项目。' },
+  { value: '询价采购', match: 52, description: '适用于标准明确、市场价格相对透明的采购项目。' },
+  { value: '单一来源采购', match: 36, description: '仅在符合单一来源法定条件时采用，需补充专项依据。' },
+] as const;
+
+const RECOMMENDED_METHOD = PROCUREMENT_METHOD_OPTIONS[0].value;
+
+const DEFAULT_PROJECT_DETAIL: ProjectDetailData = {
+  id: 'PRJ-2024-012',
+  name: '2024年度办公设备集中采购',
+  type: '货物',
+  category: '计算机及办公设备',
+  budget: '¥280,000',
+  usedBudget: '¥182,000',
+  budgetUsedPercent: 65,
+  method: '公开招标',
+  planDate: '2024-08-30',
+  owner: '张明',
+  department: '行政部',
+  funding: '年度财政预算',
+  quantity: '120 台 / 套',
+  intention: '拟采购一批办公电脑、打印机及配套设备，用于新办公区员工办公使用。要求主流品牌、整机三年质保，支持批量部署与统一管理，交付周期不超过 45 天。',
+  urgency: 'urgent',
+  createdAt: '2024-05-08',
+};
+
+function parseBudget(value: unknown) {
+  const amount = Number(String(value ?? '').replace(/[^\d.]/g, ''));
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function formatBudget(value: unknown) {
+  const amount = parseBudget(value);
+  return amount > 0 ? `¥${amount.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}` : '¥0';
+}
+
+function formatDateValue(value: unknown) {
+  if (value && typeof value === 'object' && 'format' in value && typeof value.format === 'function') {
+    return value.format('YYYY-MM-DD');
+  }
+  return typeof value === 'string' ? value : '';
+}
+
+function urgencyLabel(value: ProjectDetailData['urgency']) {
+  return value === 'critical' ? '特急' : value === 'urgent' ? '紧急' : '普通';
+}
+
+function createProjectDetail(values: NewProjectFormValues, method: string): ProjectDetailData {
+  const budget = parseBudget(values.budget);
+  const projectNumber = String(Date.now()).slice(-4).padStart(4, '0');
+  return {
+    id: `PRJ-${new Date().getFullYear()}-${projectNumber}`,
+    name: values.name.trim(),
+    type: values.type,
+    category: values.category,
+    budget: formatBudget(budget),
+    usedBudget: '¥0',
+    budgetUsedPercent: 0,
+    method,
+    planDate: formatDateValue(values.planDate),
+    owner: values.owner,
+    department: values.department,
+    funding: values.funding || '未填写',
+    quantity: values.quantity || '未填写',
+    intention: values.intention?.trim() || '暂未填写采购意向',
+    urgency: values.urgency,
+    createdAt: new Date().toISOString().slice(0, 10),
+  };
+}
+
 const projectRows: Project[] = [
   {
     id: 'PRJ-2024-012',
@@ -169,6 +273,32 @@ const projectRows: Project[] = [
   },
 ];
 
+const initialWorkflow: ProjectWorkflow = {
+  currentStage: 2,
+  completedStages: [0, 1],
+  materialsReady: false,
+};
+
+type ProjectContextKey = 'default' | 'new';
+
+type ProjectRuntimeContext = {
+  project: ProjectDetailData;
+  workflow: ProjectWorkflow;
+};
+
+type ProcurementRuntime = {
+  projects: Project[];
+  defaultContext: ProjectRuntimeContext;
+  newContext?: ProjectRuntimeContext;
+};
+
+// Existing project detail and the newly-created project's initial state are kept separate.
+let activeProjectContextKey: ProjectContextKey = 'default';
+let procurementRuntime: ProcurementRuntime = {
+  projects: projectRows,
+  defaultContext: { project: DEFAULT_PROJECT_DETAIL, workflow: initialWorkflow },
+};
+
 const processSteps = [
   { title: '立项审批', count: 3, percent: 72, color: '#2f66eb', desc: '平均耗时 2.1 天' },
   { title: '需求确认', count: 3, percent: 62, color: '#2f66eb', desc: '平均耗时 1.4 天' },
@@ -178,6 +308,14 @@ const processSteps = [
 ];
 
 const stages = ['项目启动', '需求拟制', '文件形成', '供应商核查', '合同建议', '履约验收', '数据复盘'];
+
+const detailStages = [
+  { title: '立项审批', date: '05-10' },
+  { title: '需求确认', date: '05-16' },
+  { title: '采购执行', date: '' },
+  { title: '合同签订', date: '' },
+  { title: '验收结算', date: '' },
+];
 
 type WorkflowStage = {
   key: string;
@@ -205,6 +343,7 @@ type ProjectWorkflow = {
 
 type ProjectWorkflowContextValue = {
   workflow: ProjectWorkflow;
+  project: ProjectDetailData;
   markMaterialsReady: () => void;
   completeStage: (stageIndex?: number) => boolean;
 };
@@ -289,7 +428,30 @@ const recordItems = [
   { title: '验收完成', type: '履约验收', tone: 'green', detail: '完成现场验收：到货 120 台、续航实测 12.5 小时、IP67 通过，验收结论合格，并生成验收报告与供应商履约评价。', date: '2024-08-18 15:30', user: '张明、王强' },
 ];
 
+function getProjectContextKey(search: string): ProjectContextKey {
+  return new URLSearchParams(search).get('context') === 'new' && procurementRuntime.newContext ? 'new' : 'default';
+}
+
+function getRuntimeContext(contextKey: ProjectContextKey): ProjectRuntimeContext {
+  return contextKey === 'new' && procurementRuntime.newContext ? procurementRuntime.newContext : procurementRuntime.defaultContext;
+}
+
+const projectWorkflowRoutes = [
+  '/procurement/projects/detail',
+  '/procurement/requirements',
+  '/procurement/documents',
+  '/procurement/suppliers',
+  '/procurement/contracts',
+  '/procurement/acceptance',
+  '/procurement/records',
+];
+
 function go(path: string) {
+  const isWorkflowRoute = projectWorkflowRoutes.some((route) => path === route || path.startsWith(`${route}/`));
+  if (activeProjectContextKey === 'new' && isWorkflowRoute && !path.includes('?')) {
+    history.push(`${path}?context=new`);
+    return;
+  }
   history.push(path);
 }
 
@@ -412,7 +574,9 @@ function PageTabs({
   );
 }
 
-function Workbench({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
+function Workbench({ onOpenModal, projects }: { onOpenModal: (key: ModalKey) => void; projects: Project[] }) {
+  const [projectFilter, setProjectFilter] = useState<'all' | 'doing' | 'done'>('all');
+  const visibleProjects = useMemo(() => projectFilter === 'all' ? projects : projects.filter((item) => projectFilter === 'doing' ? item.status === '进行中' : item.status === '已完成'), [projectFilter, projects]);
   return (
     <>
       <PageTitle
@@ -421,7 +585,7 @@ function Workbench({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
         actions={
           <>
             <Button icon={<TeamOutlined />} onClick={() => go('/procurement/roles')}>切换角色</Button>
-            <Button icon={<DownloadOutlined />}>导出报表</Button>
+            <Button icon={<DownloadOutlined />} onClick={() => message.success('报表已生成，正在下载')}>导出报表</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => onOpenModal('new-project')}>
               新建采购项目
             </Button>
@@ -460,20 +624,20 @@ function Workbench({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
         <Col xs={24} xl={17}>
           <Panel
             title={<><FolderOpenOutlined /> 我的项目列表</>}
-            extra={<Space><Button type="primary" size="small">全部</Button><Button size="small">进行中</Button><Button size="small">已完成</Button></Space>}
+            extra={<Space><Button type={projectFilter === 'all' ? 'primary' : 'default'} size="small" onClick={() => setProjectFilter('all')}>全部</Button><Button type={projectFilter === 'doing' ? 'primary' : 'default'} size="small" onClick={() => setProjectFilter('doing')}>进行中</Button><Button type={projectFilter === 'done' ? 'primary' : 'default'} size="small" onClick={() => setProjectFilter('done')}>已完成</Button></Space>}
           >
             <Table<Project>
               rowKey="id"
               pagination={false}
               columns={projectColumns}
-              dataSource={projectRows}
-              onRow={(record) => ({ onClick: () => go('/procurement/projects/detail') })}
+              dataSource={visibleProjects}
+              onRow={(record) => ({ onClick: () => go(record.id === procurementRuntime.newContext?.project.id ? '/procurement/projects/detail?context=new' : '/procurement/projects/detail?context=default') })}
               className="clickable-table"
             />
           </Panel>
         </Col>
         <Col xs={24} xl={7}>
-          <Panel title={<><AuditOutlined /> 我的待办 <Badge count={8} /></>} extra={<Button type="link">查看全部</Button>}>
+          <Panel title={<><AuditOutlined /> 我的待办 <Badge count={8} /></>} extra={<Button type="link" onClick={() => go('/procurement/projects')}>查看全部</Button>}>
             <div className="todo-list">
               {['审批《办公设备采购申请》', '确认供应商资质审核结果', '填写第三季度采购计划', '审阅服务器采购合同条款'].map((item, index) => (
                 <div className="todo-item" key={item}>
@@ -503,17 +667,19 @@ const projectColumns: ColumnsType<Project> = [
   { title: '预算金额', dataIndex: 'budget', render: (value) => <strong>{value}</strong> },
   { title: '当前阶段', dataIndex: 'stage', render: (value, record) => <StatusPill tone={record.color === '#10b981' ? 'green' : record.color === '#f59e0b' ? 'orange' : 'purple'}>{value}</StatusPill> },
   { title: '进度', dataIndex: 'progress', render: (value, record) => <div className="table-progress"><Progress percent={value} showInfo={false} strokeColor={record.color} /><span>{value}%</span></div> },
-  { title: '操作', render: () => <Button type="link">查看</Button> },
+  { title: '操作', render: (_, record) => <Button type="link" onClick={(event) => { event.stopPropagation(); go(record.id === procurementRuntime.newContext?.project.id ? '/procurement/projects/detail?context=new' : '/procurement/projects/detail?context=default'); }}>查看</Button> },
 ];
 
-function ProjectsPage({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
+function ProjectsPage({ onOpenModal, projects }: { onOpenModal: (key: ModalKey) => void; projects: Project[] }) {
   const [keyword, setKeyword] = useState('');
   const [filter, setFilter] = useState('all');
-  const data = useMemo(() => projectRows.filter((item) => {
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const data = useMemo(() => projects.filter((item) => {
     const matchKeyword = !keyword || `${item.name}${item.id}${item.unit}`.includes(keyword);
     const matchStatus = filter === 'all' || (filter === 'doing' && item.status === '进行中') || (filter === 'done' && item.status === '已完成');
-    return matchKeyword && matchStatus;
-  }), [filter, keyword]);
+    const matchCategory = categoryFilter === 'all' || item.category.includes(categoryFilter === 'goods' ? '货物' : categoryFilter === 'service' ? '服务' : '工程');
+    return matchKeyword && matchStatus && matchCategory;
+  }), [categoryFilter, filter, keyword, projects]);
   return (
     <>
       <PageTitle title="项目管理" subtitle="统一管理采购项目全生命周期，实时掌握项目进度与风险" actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => onOpenModal('new-project')}>新建采购项目</Button>} />
@@ -521,78 +687,191 @@ function ProjectsPage({ onOpenModal }: { onOpenModal: (key: ModalKey) => void })
         <div className="filter-bar">
           <Input prefix={<SearchOutlined />} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索项目名称 / 编号 / 部门" allowClear />
           <Select value={filter} onChange={setFilter} options={[{ value: 'all', label: '全部状态' }, { value: 'doing', label: '进行中' }, { value: 'done', label: '已完成' }]} />
-          <Select defaultValue="all" options={[{ value: 'all', label: '全部品类' }, { value: 'goods', label: '货物类' }, { value: 'service', label: '服务类' }, { value: 'engineering', label: '工程类' }]} />
-          <Button icon={<DownloadOutlined />}>导出列表</Button>
+          <Select value={categoryFilter} onChange={setCategoryFilter} options={[{ value: 'all', label: '全部品类' }, { value: 'goods', label: '货物类' }, { value: 'service', label: '服务类' }, { value: 'engineering', label: '工程类' }]} />
+          <Button icon={<DownloadOutlined />} onClick={() => message.success(`已导出 ${data.length} 个项目`)}>导出列表</Button>
         </div>
-        <Table<Project> rowKey="id" columns={projectColumns} dataSource={data} pagination={{ pageSize: 8, showTotal: (total) => `共 ${total} 个项目` }} onRow={() => ({ onClick: () => go('/procurement/projects/detail') })} className="clickable-table" />
+        <Table<Project> rowKey="id" columns={projectColumns} dataSource={data} pagination={{ pageSize: 8, showTotal: (total) => `共 ${total} 个项目` }} onRow={(record) => ({ onClick: () => go(record.id === procurementRuntime.newContext?.project.id ? '/procurement/projects/detail?context=new' : '/procurement/projects/detail?context=default') })} className="clickable-table" />
       </Panel>
     </>
   );
 }
 
-function ProjectWorkflowTimeline({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
-  const { workflow, completeStage } = useProjectWorkflow();
-  const [selectedStage, setSelectedStage] = useState(workflow.currentStage);
+function ProjectDetailStageTimeline() {
+  const { workflow } = useProjectWorkflow();
+  const currentStage = workflow.currentStage >= 5 ? 4 : workflow.currentStage >= 3 ? 3 : workflow.currentStage;
+  return (
+    <Panel className="detail-stage-panel" title={<><SyncOutlined /> 项目阶段时间线</>}>
+      <div className="detail-stage-timeline" role="list" aria-label="项目阶段时间线">
+        {detailStages.map((stage, index) => {
+          const isDone = index < currentStage;
+          const isCurrent = index === currentStage;
+          const status = isDone ? `已完成 · ${stage.date}` : isCurrent ? (index === 2 ? '进行中 · 已完成 3 个环节' : '进行中') : '待开始';
+          return (
+            <div className={`detail-stage-item ${isDone ? 'done' : isCurrent ? 'current' : 'pending'} ${index < detailStages.length - 1 ? 'has-connector' : ''}`} role="listitem" key={stage.title}>
+              <span className="detail-stage-node">{isDone ? <CheckOutlined /> : isCurrent ? <i /> : ''}</span>
+              <strong>{stage.title}</strong>
+              <small>{status}</small>
+              {index < detailStages.length - 1 && <span className={`detail-stage-connector ${index < currentStage ? 'done' : ''}`} aria-hidden="true" />}
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
 
-  useEffect(() => {
-    setSelectedStage(workflow.currentStage);
-  }, [workflow.currentStage]);
-
-  const selected = workflowStages[selectedStage];
-  const isCurrent = selectedStage === workflow.currentStage;
-  const handleStageChange = (stageIndex: number) => {
-    setSelectedStage(stageIndex);
+function ProjectInitialStatePage({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
+  const { workflow, project, completeStage } = useProjectWorkflow();
+  const handleProcessStageChange = (stageIndex: number) => {
     if (stageIndex > workflow.currentStage) {
       message.info(`请先完成“${workflowStages[workflow.currentStage].title}”，再进入下一阶段`);
       return;
     }
-    if (stageIndex !== workflow.currentStage) {
-      go(workflowStages[stageIndex].route);
+    if (stageIndex === workflow.currentStage) {
+      message.info(`当前正在办理：${workflowStages[stageIndex].title}`);
+      return;
     }
+    if (stageIndex < workflow.currentStage) go(workflowStages[stageIndex].route);
+  };
+  return (
+    <>
+      <PageTitle
+        breadcrumb={['项目管理', '我的项目', project.name]}
+        title={project.name}
+        subtitle={`${project.id} · ${project.department} · 预算 ${project.budget} · 负责人：${project.owner}`}
+        actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/projects')}>返回列表</Button><Button icon={<FolderOpenOutlined />} onClick={() => go('/procurement/records')}>项目档案</Button></>}
+      />
+      <ProjectProcessTimeline onStageChange={handleProcessStageChange} />
+      <Row gutter={[16, 16]} className="initial-state-grid">
+        <Col xs={24} xl={6}><InitialTaskCard onOpenModal={onOpenModal} onCompleteStage={completeStage} /></Col>
+        <Col xs={24} xl={12}><InitialMaterialsCard onOpenModal={onOpenModal} /></Col>
+        <Col xs={24} xl={6}><InitialGuidance /></Col>
+      </Row>
+    </>
+  );
+}
+
+function InitialTaskCard({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage: (stageIndex?: number) => boolean }) {
+  const { workflow, project } = useProjectWorkflow();
+  const currentStage = workflowStages[workflow.currentStage];
+  const taskNodes = workflow.currentStage === 0
+    ? [{ label: '确认项目基础信息', status: 'current' }, { label: '完成项目启动', status: 'pending' }, { label: '进入需求拟制', status: 'pending' }]
+    : workflow.currentStage === 1
+      ? [{ label: '填写采购需求说明', status: 'done' }, { label: '上传项目立项依据', status: workflow.materialsReady ? 'done' : 'current' }, { label: '提交需求准备', status: workflow.materialsReady ? 'current' : 'pending' }]
+      : workflow.currentStage === 2
+        ? [{ label: '补充项目立项依据', status: workflow.materialsReady ? 'done' : 'current' }, { label: '编制采购文件', status: workflow.materialsReady ? 'current' : 'pending' }, { label: '提交采购文件', status: 'pending' }]
+        : [{ label: currentStage.title, status: 'current' }, { label: currentStage.action, status: 'pending' }, { label: '完成本阶段', status: 'pending' }];
+  const handlePrimaryAction = () => {
+    if (workflow.currentStage === 0) {
+      if (onCompleteStage(0)) go('/procurement/requirements');
+      return;
+    }
+    if (workflow.currentStage === 2 && !workflow.materialsReady) {
+      onOpenModal('upload');
+      return;
+    }
+    go(currentStage.route);
+  };
+  const actionLabel = workflow.currentStage === 0
+    ? '确认项目启动并进入需求拟制'
+    : workflow.currentStage === 2 && !workflow.materialsReady
+      ? '补充项目立项依据'
+      : currentStage.action;
+  return (
+    <Panel className="initial-task-panel" title={<><SettingOutlined /> 当前任务</>}>
+      <div className="initial-task-focus">
+        <span>第 {String(workflow.currentStage + 1).padStart(2, '0')} 阶段 · 进行中</span>
+        <h2>{currentStage.title}</h2>
+        <p>{workflow.currentStage === 0 ? '请确认项目基础信息，完成项目启动后进入需求拟制。' : currentStage.summary}</p>
+      </div>
+      <div className="initial-task-meta">
+        <div><CalendarOutlined /><span>办理时限</span><strong>{project.planDate || '待定'}</strong></div>
+        <div><ClockCircleOutlined /><span>剩余时间</span><strong className="warning-text">待办理</strong></div>
+        <div><UserOutlined /><span>任务负责人</span><strong><Avatar size="small">{project.owner.slice(0, 1)}</Avatar>{project.owner}</strong></div>
+      </div>
+      <div className="initial-task-nodes">
+        {taskNodes.map((node) => <div className={node.status} key={node.label}><span>{node.status === 'done' ? <CheckCircleFilled /> : node.status === 'current' ? <i /> : ''}</span>{node.label}</div>)}
+      </div>
+      <Button block type="primary" onClick={handlePrimaryAction}>{actionLabel}</Button>
+      {workflow.currentStage === 2 && !workflow.materialsReady && <div className="initial-task-error"><WarningFilled /> 必备材料缺失 1 项，暂时无法提交</div>}
+    </Panel>
+  );
+}
+
+function InitialMaterialsCard({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
+  const { workflow } = useProjectWorkflow();
+  const uploadedCount = workflow.materialsReady ? 3 : 2;
+  const progress = Math.round((uploadedCount / 3) * 100);
+  return (
+    <Panel className="initial-material-panel" title={<><FolderOpenOutlined /> 材料清单</>} extra={<StatusPill tone={workflow.materialsReady ? 'green' : 'orange'}>必备材料 {uploadedCount} / 3 已上传</StatusPill>}>
+      <div className="initial-material-progress"><Progress percent={progress} showInfo={false} /><span>{progress}%</span></div>
+      <div className="initial-material-summary">共 4 项材料 · 已上传 {uploadedCount} 项 · 缺失 {workflow.materialsReady ? 0 : 1} 项 · 待完善 1 项</div>
+      <div className="initial-material-list">
+        {fileMaterials.map((item) => {
+          const isUploaded = item.status === '已上传' || (item.name === '项目立项依据' && workflow.materialsReady);
+          const isMissing = item.name === '项目立项依据' && !workflow.materialsReady;
+          return <div className={`initial-material-item ${isMissing ? 'missing' : item.status === '待完善' ? 'incomplete' : ''}`} key={item.name}>
+            <span className="initial-material-icon">{isMissing ? <FileProtectOutlined /> : item.status === '待完善' ? <EditOutlined /> : <FileTextOutlined />}</span>
+            <div><strong>{item.name} {item.required && <em>必备</em>}</strong><small>{isUploaded ? `${item.file || '项目立项依据.pdf'} · 已上传` : isMissing ? '尚未上传 · 请上传正式批复文件或立项决议原件扫描件' : `${item.file} · 已填写 60%，待补充技术参数`}</small></div>
+            {isUploaded ? <StatusPill tone="green">已上传</StatusPill> : isMissing ? <><StatusPill tone="red">缺失</StatusPill><Button size="small" type="primary" onClick={() => onOpenModal('upload')}>补充材料</Button></> : <><StatusPill tone="orange">待完善</StatusPill><Button size="small" onClick={() => workflow.currentStage >= 1 ? go('/procurement/requirements') : message.info('请先完成项目启动，再继续完善采购需求')}>继续完善</Button></>}
+          </div>;
+        })}
+      </div>
+    </Panel>
+  );
+}
+
+function InitialGuidance() {
+  const policies = ['集团采购管理办法', '采购需求管理规定', '供应商准入与核查办法', '招标文件编制指引'];
+  return (
+    <div className="initial-guidance-column">
+      <Panel title={<><InfoCircleOutlined /> 办理提示</>}>
+        <ul className="initial-guidance-list"><li>请确保所有必备材料完整有效后再提交需求准备</li><li>项目立项依据需为正式批复文件或立项决议原件扫描件</li><li>支持 PDF、Word、Excel、JPG、PNG 格式，单个文件不超过 50 MB</li><li>上传新版本时可勾选“设为当前版本”，将替换原有材料</li></ul>
+        <div className="initial-average-time"><ClockCircleOutlined /> 本阶段平均办理时长约 1.4 天</div>
+      </Panel>
+      <Panel title={<><FileTextOutlined /> 相关制度</>}>
+        <div className="initial-policy-list">{policies.map((policy) => <button type="button" key={policy} onClick={() => message.info(`已打开${policy}`)}><FileTextOutlined />{policy}<ArrowRightOutlined /></button>)}</div>
+        <Button type="link" block onClick={() => message.info('已打开制度库，共 12 项制度可供查阅')}>查看全部 12 项制度 <ArrowRightOutlined /></Button>
+      </Panel>
+    </div>
+  );
+}
+
+function ProjectProcessTimeline({ onStageChange }: { onStageChange: (stageIndex: number) => void }) {
+  const { workflow, project } = useProjectWorkflow();
+  const currentStageStatus = ['进行中 · 待确认', '进行中 · 待提交', '进行中 · 待补材料', '进行中 · 待核查', '进行中 · 待确认', '进行中 · 待验收', '进行中 · 待复盘'];
+  const getStageStatus = (stageIndex: number) => {
+    if (stageIndex < workflow.currentStage) return '已完成';
+    if (stageIndex === workflow.currentStage) return currentStageStatus[stageIndex];
+    return '待开始';
   };
 
   return (
-    <Panel title={<><SyncOutlined /> 项目阶段时间线</>} extra={<StatusPill tone="blue">已完成 {workflow.completedStages.length} / {workflowStages.length}</StatusPill>}>
-      <Steps
-        current={workflow.currentStage}
-        onChange={handleStageChange}
-        items={workflowStages.map((stage, index) => ({
-          title: stage.title,
-          description: index < workflow.currentStage ? '已完成' : index === workflow.currentStage ? '进行中' : '待开始',
-          status: index < workflow.currentStage ? 'finish' : index === workflow.currentStage ? 'process' : 'wait',
-          disabled: index > workflow.currentStage,
-        }))}
-      />
-      <div className={`workflow-stage-card ${isCurrent ? 'current' : 'history'}`}>
-        <div>
-          <div className="workflow-stage-kicker">
-            <span>阶段 {String(selectedStage + 1).padStart(2, '0')}</span>
-            <StatusPill tone={selectedStage < workflow.currentStage ? 'green' : isCurrent ? 'blue' : 'gray'}>
-              {selectedStage < workflow.currentStage ? '已完成' : isCurrent ? '当前阶段' : '待开始'}
-            </StatusPill>
-          </div>
-          <h3>{selected.title}</h3>
-          <p>{selected.summary}</p>
-          {isCurrent && selectedStage === 2 && (
-            <div className={`workflow-material-state ${workflow.materialsReady ? 'ready' : 'missing'}`}>
-              {workflow.materialsReady ? <CheckCircleFilled /> : <WarningFilled />}
-              <span>{workflow.materialsReady ? '必备材料已齐全，可以进入文件编制。' : '还缺少“项目立项依据”，需补充材料后才能进入文件编制。'}</span>
-            </div>
-          )}
-        </div>
-        <Space wrap>
-          {isCurrent && selectedStage === 0 && <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => { if (completeStage()) go('/procurement/requirements'); }}>确认项目启动并进入需求拟制</Button>}
-          {isCurrent && selectedStage === 2 && !workflow.materialsReady && <Button onClick={() => onOpenModal('missing')}>查看材料任务</Button>}
-          {isCurrent && selectedStage === 2 && !workflow.materialsReady && <Button type="primary" icon={<CloudUploadOutlined />} onClick={() => onOpenModal('upload')}>补充材料</Button>}
-          {isCurrent && selectedStage === 2 && workflow.materialsReady && <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => go(selected.route)}>进入文件编制</Button>}
-          {isCurrent && selectedStage !== 0 && selectedStage !== 2 && <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => go(selected.route)}>{selected.action}</Button>}
-          {selectedStage < workflow.currentStage && <Button onClick={() => go(selected.route)}>查看该阶段</Button>}
-          {selectedStage > workflow.currentStage && <Button disabled>完成当前阶段后解锁</Button>}
-        </Space>
-      </div>
-      <div className="workflow-next-hint">
-        <span><CheckCircleFilled /> 已完成阶段可点击回看，未开始阶段需按顺序解锁。</span>
-        {workflow.currentStage < workflowStages.length - 1 && <span>下一阶段：{workflowStages[workflow.currentStage + 1].title}</span>}
+    <Panel
+      className="project-workflow-panel"
+      title={<><SyncOutlined /> 项目流程</>}
+      extra={<div className="workflow-panel-extra"><StatusPill tone="blue">当前：第 {workflow.currentStage + 1} / {workflowStages.length} 阶段</StatusPill><span>预计 {project.planDate || '待定'} 完成全部流程</span></div>}
+    >
+      <div className="project-stage-timeline" role="list" aria-label="项目阶段时间线">
+        {workflowStages.map((stage, index) => {
+          const isDone = index < workflow.currentStage;
+          const isStageCurrent = index === workflow.currentStage;
+          return (
+            <button
+              type="button"
+              role="listitem"
+              key={stage.key}
+              className={`project-stage-item ${isDone ? 'done' : isStageCurrent ? 'current' : 'locked'} ${index < workflowStages.length - 1 ? 'has-connector' : ''}`}
+              aria-current={isStageCurrent ? 'step' : undefined}
+            onClick={() => onStageChange(index)}
+            >
+              <span className="project-stage-node">{isDone ? <CheckOutlined /> : index + 1}</span>
+              <strong>{stage.title}</strong>
+              <small>{getStageStatus(index)}</small>
+              {index < workflowStages.length - 1 && <span className={`project-stage-connector ${index < workflow.currentStage ? 'done' : ''}`} aria-hidden="true" />}
+            </button>
+          );
+        })}
       </div>
     </Panel>
   );
@@ -604,7 +883,7 @@ function ProjectFlowBar() {
     <div className="project-flow-bar">
       <div className="project-flow-bar-head">
         <div><SyncOutlined /><span>项目流程</span><strong>{workflowStages[workflow.currentStage].title}</strong><StatusPill tone="blue">阶段 {workflow.currentStage + 1} / {workflowStages.length}</StatusPill></div>
-        <Button size="small" onClick={() => go('/procurement/projects/detail')}>返回项目流程</Button>
+        <Button size="small" onClick={() => go('/procurement/projects/detail')}>返回项目详情</Button>
       </div>
       <div className="project-flow-mini-steps">
         {workflowStages.map((stage, index) => (
@@ -613,7 +892,7 @@ function ProjectFlowBar() {
             key={stage.key}
             className={index < workflow.currentStage ? 'done' : index === workflow.currentStage ? 'current' : ''}
             disabled={index > workflow.currentStage}
-            onClick={() => index <= workflow.currentStage && go(stage.route)}
+            onClick={() => index < workflow.currentStage ? go(stage.route) : index === workflow.currentStage ? message.info(`当前正在办理：${stage.title}`) : message.info(`请先完成“${workflowStages[workflow.currentStage].title}”`)}
           >
             <span>{index < workflow.currentStage ? <CheckOutlined /> : index + 1}</span>
             {stage.title}
@@ -624,53 +903,50 @@ function ProjectFlowBar() {
   );
 }
 
-function ProjectDetail({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
-  const { workflow } = useProjectWorkflow();
-  const materialsReady = workflow.materialsReady;
-  const currentStage = workflowStages[workflow.currentStage];
+function ProjectDetail() {
+  const { workflow, project } = useProjectWorkflow();
+  const detailStageIndex = workflow.currentStage >= 5 ? 4 : workflow.currentStage >= 3 ? 3 : workflow.currentStage;
   const workflowProgress = [15, 30, 55, 68, 80, 92, 100][workflow.currentStage];
+  const budgetRemaining = formatBudget(Math.max(parseBudget(project.budget) - parseBudget(project.usedBudget), 0));
   const [tab, setTab] = useState('basic');
   return (
     <>
-      {workflow.currentStage === 0 && workflow.completedStages.length === 0 && <Alert className="success-banner" type="info" showIcon message="项目创建成功，开始项目启动" description="请确认项目基础信息后进入需求拟制，后续阶段将按顺序解锁。" />}
-      {materialsReady && <Alert className="success-banner" type="success" showIcon message="材料补充成功" description="「项目立项依据」已上传并设为当前版本，必备材料已齐全，现在可以提交需求准备。" closable />}
       <PageTitle
-        breadcrumb={['项目管理', '我的项目', '2024年度办公设备集中采购']}
-        title="2024年度办公设备集中采购"
-        subtitle="PRJ-2024-012 · 行政部 · 创建于 2024-05-08 · 负责人：张明"
-        actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/projects')}>返回列表</Button><Button icon={<FolderOpenOutlined />}>项目档案</Button><Button type="primary" icon={<EditOutlined />}>编辑项目</Button></>}
+        breadcrumb={['项目管理', '我的项目', project.name]}
+        title={project.name}
+        subtitle={`${project.id} · ${project.department} · 创建于 ${project.createdAt} · 负责人：${project.owner}`}
+        actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/projects')}>返回列表</Button><Button icon={<FolderOpenOutlined />} onClick={() => go('/procurement/records')}>项目档案</Button><Button type="primary" icon={<EditOutlined />} onClick={() => message.info('项目已进入编辑模式，可从需求拟制阶段继续调整')}>编辑项目</Button></>}
       />
       <Panel className="project-summary-panel">
         <div className="project-summary-top">
-          <div className="project-heading"><div className="large-project-icon"><ProjectOutlined /></div><div><h2>2024年度办公设备集中采购</h2><Space><StatusPill tone={workflow.currentStage >= 5 ? 'green' : workflow.currentStage === 2 && !materialsReady ? 'purple' : 'blue'}>{currentStage.title}</StatusPill><StatusPill tone="orange">紧急</StatusPill></Space></div></div>
-          <Space><Button icon={<ShareIcon />}>分享</Button><Button icon={<MoreOutlined />} /><Button type="primary" icon={<EditOutlined />}>编辑项目</Button></Space>
+          <div className="project-heading"><div className="large-project-icon"><ProjectOutlined /></div><div><h2>{project.name}</h2><Space><StatusPill tone={detailStageIndex >= 4 ? 'green' : 'blue'}>{detailStages[detailStageIndex].title}</StatusPill><StatusPill tone={project.urgency === 'normal' ? 'gray' : 'orange'}>{urgencyLabel(project.urgency)}</StatusPill></Space></div></div>
+          <Space><Button icon={<ShareIcon />} onClick={() => message.success('项目链接已复制，可分享给项目成员')}>分享</Button><Button icon={<MoreOutlined />} onClick={() => message.info('更多操作：归档、关注和导出项目摘要')} /><Button type="primary" icon={<EditOutlined />} onClick={() => message.info('项目已进入编辑模式，可从需求拟制阶段继续调整')}>编辑项目</Button></Space>
         </div>
         <div className="summary-metrics">
-          <div><span>采购预算</span><strong>¥280,000</strong></div><div><span>已使用金额</span><strong>¥182,000</strong></div><div><span>采购方式</span><strong>公开招标 <ThunderboltFilled /></strong></div><div><span>计划完成时间</span><strong>2024-08-30</strong></div><div><span>整体进度</span><div className="summary-progress"><Progress percent={materialsReady ? 70 : 65} showInfo={false} /><b>{materialsReady ? 70 : 65}%</b></div></div>
+          <div><span>采购预算</span><strong>{project.budget}</strong></div><div><span>已使用金额</span><strong>{project.usedBudget}</strong></div><div><span>采购方式</span><strong>{project.method} <ThunderboltFilled /></strong></div><div><span>计划完成时间</span><strong>{project.planDate || '待定'}</strong></div><div><span>整体进度</span><div className="summary-progress"><Progress percent={Math.max(project.budgetUsedPercent, workflowProgress)} showInfo={false} /><b>{Math.max(project.budgetUsedPercent, workflowProgress)}%</b></div></div>
         </div>
       </Panel>
+      <ProjectDetailStageTimeline />
       <PageTabs active={tab} onChange={setTab} items={[{ key: 'basic', label: '基本信息' }, { key: 'requirements', label: '需求明细' }, { key: 'method', label: '采购方式' }, { key: 'supplier', label: '供应商' }, { key: 'contract', label: '合同与订单' }, { key: 'docs', label: '文档资料' }]} />
       {tab === 'basic' && (
         <Row gutter={[16, 16]}>
           <Col xs={24} xl={17}>
             <Panel title={<><FileTextOutlined /> 项目基本信息</>}>
-              <div className="info-grid"><InfoCell label="项目类型" value="货物类" /><InfoCell label="采购品类" value="计算机及办公设备" /><InfoCell label="采购数量" value="120 台 / 套" /><InfoCell label="需求部门" value="行政部" /><InfoCell label="项目负责人" value="张明" avatar="张" /><InfoCell label="资金来源" value="年度财政预算" /></div>
-              <div className="info-description"><span>采购意向</span><p>拟采购一批办公电脑、打印机及配套设备，用于新办公区员工办公使用。要求主流品牌、整机三年质保，支持批量部署与统一管理，交付周期不超过 45 天。</p></div>
+              <div className="info-grid"><InfoCell label="项目类型" value={`${project.type}类`} /><InfoCell label="采购品类" value={project.category} /><InfoCell label="采购数量" value={project.quantity} /><InfoCell label="需求部门" value={project.department} /><InfoCell label="项目负责人" value={project.owner} avatar={project.owner.slice(0, 1)} /><InfoCell label="资金来源" value={project.funding} /></div>
+              <div className="info-description"><span>采购意向</span><p>{project.intention}</p></div>
             </Panel>
-            <ProjectWorkflowTimeline onOpenModal={onOpenModal} />
-            <Panel title={<><FileDoneOutlined /> 需求明细</>} extra={<Button type="link">共 4 项</Button>}>
+            <Panel title={<><FileDoneOutlined /> 需求明细</>} extra={<Button type="link" onClick={() => setTab('requirements')}>共 4 项</Button>}>
               <Table pagination={false} rowKey="name" dataSource={[{ name: '商用台式计算机', spec: 'i5-13500 / 16G / 512G SSD', qty: '80 台', price: '¥2,600' }, { name: '激光多功能一体机', spec: '黑白 / 自动双面 / 网络', qty: '20 台', price: '¥1,800' }, { name: '显示器', spec: '27 英寸 / 2K / IPS', qty: '80 台', price: '¥900' }, { name: '办公桌椅套装', spec: '人体工学 / 1.4m 桌面', qty: '40 套', price: '¥1,200' }]} columns={[{ title: '物料名称', dataIndex: 'name' }, { title: '规格型号', dataIndex: 'spec' }, { title: '数量', dataIndex: 'qty' }, { title: '预估单价', dataIndex: 'price', render: (value) => <strong>{value}</strong> }]} />
             </Panel>
           </Col>
           <Col xs={24} xl={7}>
-            <Panel title={<><FundOutlined /> 预算执行</>} extra={<StatusPill tone="orange">执行 65%</StatusPill>}><div className="budget-circle"><Progress type="circle" percent={65} strokeColor="#2f66eb" trailColor="#e5e9f1" size={130} /><span>已使用 ¥182,000</span></div><div className="budget-legend"><span><i className="blue-dot" /> 已使用金额 <b>¥182,000</b></span><span><i className="gray-dot" /> 可用余额 <b>¥98,000</b></span></div></Panel>
+            <Panel title={<><FundOutlined /> 预算执行</>} extra={<StatusPill tone={project.budgetUsedPercent ? 'orange' : 'blue'}>执行 {project.budgetUsedPercent}%</StatusPill>}><div className="budget-circle"><Progress type="circle" percent={project.budgetUsedPercent} strokeColor="#2f66eb" trailColor="#e5e9f1" size={130} /><span>已使用 {project.usedBudget}</span></div><div className="budget-legend"><span><i className="blue-dot" /> 已使用金额 <b>{project.usedBudget}</b></span><span><i className="gray-dot" /> 可用余额 <b>{budgetRemaining}</b></span></div></Panel>
             <Panel title={<><TeamOutlined /> 项目团队</>}><div className="team-list">{[['张', '张明', '采购经理 · 项目负责人', '负责人'], ['李', '李静', '采购专员 · 需求对接', '成员'], ['王', '王强', '财务专员 · 预算审核', '成员']].map(([avatar, name, role, badge]) => <div className="team-item" key={name}><Avatar>{avatar}</Avatar><div><strong>{name}</strong><span>{role}</span></div><StatusPill tone={badge === '负责人' ? 'blue' : 'gray'}>{badge}</StatusPill></div>)}</div></Panel>
-            <Panel title={<><HistoryOutlined /> 操作记录</>}><div className="activity-list">{['提交采购执行申请', '确认采购方式为公开招标', '创建采购项目'].map((item, index) => <div key={item}><i className={`activity-dot ${index === 0 ? 'blue' : index === 1 ? 'green' : 'purple'}`} /><div><strong>{item}</strong><span>张明 · 2024-05-{20 - index * 2} 14:32</span></div></div>)}</div></Panel>
+            <Panel title={<><HistoryOutlined /> 操作记录</>}><div className="activity-list">{['提交采购执行申请', `确认采购方式为${project.method}`, '创建采购项目'].map((item, index) => <div key={item}><i className={`activity-dot ${index === 0 ? 'blue' : index === 1 ? 'green' : 'purple'}`} /><div><strong>{item}</strong><span>{project.owner} · {project.createdAt}</span></div></div>)}</div></Panel>
           </Col>
         </Row>
       )}
-      {tab !== 'basic' && <Panel title={tab === 'requirements' ? '需求明细' : tab === 'method' ? '采购方式' : tab === 'supplier' ? '供应商' : tab === 'contract' ? '合同与订单' : '文档资料'}><Empty description="该模块已纳入采购流程演示，可从左侧流程节点进入详细办理页面" /></Panel>}
-      {!materialsReady && <div className="project-quick-actions"><Button type="primary" onClick={() => onOpenModal('missing')}>查看当前任务</Button><Button onClick={() => onOpenModal('upload')}>补充材料</Button></div>}
+      {tab !== 'basic' && <Panel title={tab === 'requirements' ? '需求明细' : tab === 'method' ? '采购方式' : tab === 'supplier' ? '供应商' : tab === 'contract' ? '合同与订单' : '文档资料'} extra={<Button type="primary" onClick={() => go(tab === 'requirements' ? '/procurement/requirements' : tab === 'supplier' ? '/procurement/suppliers' : tab === 'contract' ? '/procurement/contracts' : tab === 'docs' ? '/procurement/documents' : '/procurement/requirements')}>进入办理</Button>}><Empty description="该模块已纳入采购流程演示，可从左侧流程节点进入详细办理页面" /></Panel>}
     </>
   );
 }
@@ -682,69 +958,150 @@ function InfoCell({ label, value, avatar }: { label: string; value: string; avat
 function ShareIcon() { return <LinkOutlined />; }
 
 function RequirementPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
+  const { project } = useProjectWorkflow();
   const [checkOpen, setCheckOpen] = useState(false);
   const [resolved, setResolved] = useState<Record<number, string>>({});
+  const [technicalItems, setTechnicalItems] = useState(requirementCards);
+  const [assistantRevision, setAssistantRevision] = useState(0);
   const handledCount = Object.keys(resolved).length;
+  const saveDraft = () => message.success('需求草稿已保存，稍后可继续编辑');
+  const addTechnicalRequirement = () => {
+    const index = technicalItems.length - requirementCards.length + 1;
+    setTechnicalItems((items) => [...items, { title: `新增技术要求 ${index}`, text: '请补充该项技术指标、验收方式及判定标准。', tone: 'gray' }]);
+    message.success('已新增一项技术要求');
+  };
+  const addAiRequirements = () => {
+    if (technicalItems.some((item) => item.title === 'AI 补充建议')) {
+      message.info('AI 识别内容已加入需求文档');
+      return;
+    }
+    setTechnicalItems((items) => [...items, { title: 'AI 补充建议', text: '已将 AI 识别到的接口兼容性与环境适应性要求加入文档。', tone: 'purple' }]);
+    message.success('AI 识别内容已加入需求文档');
+  };
+  const regenerateAssistant = () => {
+    setAssistantRevision((revision) => revision + 1);
+    message.success('AI 已重新生成需求建议');
+  };
   const submitRequirement = () => {
     if (onCompleteStage && !onCompleteStage()) return;
     go('/procurement/documents');
   };
   return (
     <>
-      <PageTitle breadcrumb={['采购需求', '需求拟制', '2024年度办公设备集中采购']} title="采购需求拟制" subtitle="PRJ-2024-012 · 移动终端设备采购需求 · 负责人 张明" actions={<><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('similar')}>查找相似案例</Button><Button icon={<DownloadOutlined />}>保存草稿</Button><Button icon={<ThunderboltFilled />} className="purple-button" onClick={() => setCheckOpen(true)}>智能检查</Button><Button type="primary" icon={<SendOutlined />} onClick={submitRequirement}>提交审核并进入文件编制</Button></>} />
+      <PageTitle breadcrumb={['采购需求', '需求拟制', project.name]} title="采购需求拟制" subtitle={`${project.id} · ${project.category}采购需求 · 负责人 ${project.owner}`} actions={<><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('similar')}>查找相似案例</Button><Button icon={<DownloadOutlined />} onClick={saveDraft}>保存草稿</Button><Button icon={<ThunderboltFilled />} className="purple-button" onClick={() => setCheckOpen(true)}>智能检查</Button><Button type="primary" icon={<SendOutlined />} onClick={submitRequirement}>提交审核并进入文件编制</Button></>} />
       <Row gutter={[16, 16]} align="top">
         <Col xs={24} xl={checkOpen ? 15 : 17}>
           <Panel title={<><InfoCircleOutlined /> 需求基本信息</>}>
             <Form layout="vertical" className="requirement-form">
-              <Form.Item label="采购意向" required><Input.TextArea rows={3} defaultValue="拟为新建办公区采购一批便携式移动终端设备，用于外勤巡检、现场数据采集与移动办公，替代现有老旧设备，提升一线作业效率。" /></Form.Item>
-              <Row gutter={16}><Col span={12}><Form.Item label="使用环境" required><Input defaultValue="室外车间，-10℃ ~ 45℃" /></Form.Item></Col><Col span={12}><Form.Item label="数量" required><Select defaultValue="120 台" options={[{ value: '120 台', label: '120 台' }, { value: '80 台', label: '80 台' }, { value: '200 台', label: '200 台' }]} /></Form.Item></Col><Col span={12}><Form.Item label="预算" required><Input prefix="¥" defaultValue="480,000" /></Form.Item></Col><Col span={12}><Form.Item label="交付日期" required><DatePicker defaultValue={undefined} placeholder="2024-08-30" style={{ width: '100%' }} /></Form.Item></Col><Col span={24}><Form.Item label="交付地点" required><Input defaultValue="总部园区 B 座一层收货区（含卸货与上楼搬运）" /></Form.Item></Col></Row>
+              <Form.Item label="采购意向" required><Input.TextArea rows={3} defaultValue={project.intention} /></Form.Item>
+              <Row gutter={16}><Col span={12}><Form.Item label="使用环境" required><Input defaultValue="室外车间，-10℃ ~ 45℃" /></Form.Item></Col><Col span={12}><Form.Item label="数量" required><Input defaultValue={project.quantity} /></Form.Item></Col><Col span={12}><Form.Item label="预算" required><Input prefix="¥" defaultValue={project.budget.replace(/^¥/, '')} /></Form.Item></Col><Col span={12}><Form.Item label="交付日期" required><DatePicker defaultValue={undefined} placeholder={project.planDate || '请选择日期'} style={{ width: '100%' }} /></Form.Item></Col><Col span={24}><Form.Item label="交付地点" required><Input defaultValue="总部园区 B 座一层收货区（含卸货与上楼搬运）" /></Form.Item></Col></Row>
             </Form>
           </Panel>
           <Panel title={<><ToolOutlined /> 技术要求 <StatusPill tone="purple">含 3 项 AI 识别内容</StatusPill></>}>
-            <div className="requirement-card-list">{requirementCards.map((item) => <div className={`requirement-card ${item.tone}`} key={item.title}><div><strong>{item.title}</strong><p>{item.text}</p></div><StatusPill tone={item.tone === 'purple' ? 'purple' : 'gray'}>{item.tone === 'purple' ? 'AI 识别' : '手动填写'}</StatusPill></div>)}</div><Button block type="dashed" icon={<PlusOutlined />}>添加技术要求</Button>
+            <div className="requirement-card-list">{technicalItems.map((item) => <div className={`requirement-card ${item.tone}`} key={item.title}><div><strong>{item.title}</strong><p>{item.text}</p></div><StatusPill tone={item.tone === 'purple' ? 'purple' : 'gray'}>{item.tone === 'purple' ? 'AI 识别' : '手动填写'}</StatusPill></div>)}</div><Button block type="dashed" icon={<PlusOutlined />} onClick={addTechnicalRequirement}>添加技术要求</Button>
           </Panel>
           <Panel title={<><FileTextOutlined /> 商务要求</>}><Input.TextArea rows={4} defaultValue={'1. 整机质保不少于 3 年，提供原厂授权及售后承诺函；\n2. 报价含运输、安装、调试及首年上门维护费用；\n3. 付款方式为验收合格后 30 日内支付 90%，质保期满支付 10%。'} /><div className="chip-row"><Tag>质保 3 年</Tag><Tag>含运输安装</Tag><Tag>30 天账期</Tag></div></Panel>
           <Panel title={<><SafetyCertificateOutlined /> 验收要求</>}><Input.TextArea rows={3} defaultValue="到货后按 10% 比例抽检外观与配件完整性；全数设备进行开机功能测试与续航实测，测试结果需满足技术要求约定指标。" /><div className="completion-line"><span>需求完整度</span><Progress percent={handledCount ? 96 : 85} strokeColor="#10b981" /><b>{handledCount ? 96 : 85}%</b></div></Panel>
         </Col>
-        {checkOpen && <Col xs={24} xl={9}><AuditPanel resolved={resolved} onResolve={(index, action) => setResolved((current) => ({ ...current, [index]: action }))} onClose={() => setCheckOpen(false)} onOpenModal={onOpenModal} /></Col>}
-        {!checkOpen && <Col xs={24} xl={7}><AiAssistant onOpenSimilar={() => onOpenModal('similar')} onCheck={() => setCheckOpen(true)} /></Col>}
+        {checkOpen && <Col xs={24} xl={9}><AuditPanel resolved={resolved} onResolve={(index, action) => setResolved((current) => ({ ...current, [index]: action }))} onRecheck={() => { setResolved({}); message.success('已重新检查需求文档'); }} onViewBasis={() => message.info('已定位到相关采购制度与历史案例依据')} onClose={() => setCheckOpen(false)} onOpenModal={onOpenModal} /></Col>}
+        {!checkOpen && <Col xs={24} xl={7}><AiAssistant onOpenSimilar={() => onOpenModal('similar')} onCheck={() => setCheckOpen(true)} onAddRequirements={addAiRequirements} onRegenerate={regenerateAssistant} assistantRevision={assistantRevision} /></Col>}
       </Row>
     </>
   );
 }
 
-function AiAssistant({ onOpenSimilar, onCheck }: { onOpenSimilar: () => void; onCheck: () => void }) {
-  return <Panel title={<><ThunderboltFilled /> AI 需求助手 <StatusPill tone="green">在线</StatusPill></>} className="assistant-panel"><div className="assistant-message">续航不少于12小时，IP67，支持标准数据接口。</div><div className="assistant-result"><strong><ThunderboltFilled /> 已识别到 3 项可结构化需求点</strong>{['续航 ≥ 12 小时', '防护等级 IP67', '支持标准 API 接口'].map((item, index) => <div className="assistant-item" key={item}><b>{item}</b><StatusPill tone={index === 2 ? 'orange' : 'green'}>置信度 {98 - index * 4}%</StatusPill><span>归类：技术要求 / {index === 1 ? '环境适应性' : '性能指标'}</span></div>)}<Space><Button type="primary" icon={<PlusOutlined />}>加入需求文档</Button><Button icon={<SyncOutlined />}>重新生成</Button></Space></div><div className="quick-command">快捷指令{['检查技术参数是否设置不合理门槛', '按同类项目补全验收标准', '检查是否存在品牌倾向性表述'].map((item) => <Button key={item} block icon={<SafetyCertificateOutlined />} onClick={onCheck}>{item}</Button>)}</div><Input.Search placeholder="输入技术要求，AI 将自动结构化并归类..." enterButton={<ThunderboltFilled />} onSearch={onCheck} /></Panel>;
+function AiAssistant({ onOpenSimilar, onCheck, onAddRequirements, onRegenerate, assistantRevision }: { onOpenSimilar: () => void; onCheck: () => void; onAddRequirements: () => void; onRegenerate: () => void; assistantRevision: number }) {
+  return <Panel title={<><ThunderboltFilled /> AI 需求助手 <StatusPill tone="green">在线</StatusPill></>} className="assistant-panel"><div className="assistant-message">续航不少于12小时，IP67，支持标准数据接口。{assistantRevision > 0 && <span>（已重新生成第 {assistantRevision + 1} 版）</span>}</div><div className="assistant-result"><strong><ThunderboltFilled /> 已识别到 3 项可结构化需求点</strong>{['续航 ≥ 12 小时', '防护等级 IP67', '支持标准 API 接口'].map((item, index) => <div className="assistant-item" key={item}><b>{item}</b><StatusPill tone={index === 2 ? 'orange' : 'green'}>置信度 {98 - index * 4}%</StatusPill><span>归类：技术要求 / {index === 1 ? '环境适应性' : '性能指标'}</span></div>)}<Space><Button type="primary" icon={<PlusOutlined />} onClick={onAddRequirements}>加入需求文档</Button><Button icon={<SyncOutlined />} onClick={onRegenerate}>重新生成</Button></Space></div><div className="quick-command">快捷指令{['检查技术参数是否设置不合理门槛', '按同类项目补全验收标准', '检查是否存在品牌倾向性表述'].map((item) => <Button key={item} block icon={<SafetyCertificateOutlined />} onClick={onCheck}>{item}</Button>)}</div><Input.Search placeholder="输入技术要求，AI 将自动结构化并归类..." enterButton={<ThunderboltFilled />} onSearch={onCheck} /></Panel>;
 }
 
-function AuditPanel({ resolved, onResolve, onClose, onOpenModal }: { resolved: Record<number, string>; onResolve: (index: number, action: string) => void; onClose: () => void; onOpenModal: (key: ModalKey) => void }) {
-  return <Panel title={<><ThunderboltFilled /> 智能检查结果 <StatusPill tone="purple">{4 - Object.keys(resolved).length} 项问题</StatusPill></>} extra={<Button type="text" icon={<CloseCircleFilled />} onClick={onClose} />} className="audit-panel"><div className="audit-summary"><span>🔴 高风险 {auditProblems.filter((item) => item.level === '高风险').length - Object.keys(resolved).filter((key) => auditProblems[Number(key)].level === '高风险').length}</span><span>🟠 中风险 {auditProblems.filter((item) => item.level === '中风险').length - Object.keys(resolved).filter((key) => auditProblems[Number(key)].level === '中风险').length}</span></div>{auditProblems.map((item, index) => { const status = resolved[index]; return <div className={`audit-card ${status ? 'resolved' : item.level === '高风险' ? 'high' : 'medium'}`} key={item.title}><div className="audit-card-head"><strong>{index + 1} {item.title}</strong><StatusPill tone={status ? 'green' : item.level === '高风险' ? 'red' : 'orange'}>{status ? '已处理' : item.level}</StatusPill></div>{status ? <><p className="audit-resolution">处理方式：{status === '采纳' ? '采纳建议' : status === '人工修改' ? '人工修改' : '人工保留'}</p><div className="audit-suggestion">{status === '人工保留' ? '已记录人工处理意见，将保留原文并在提交审核时提示。' : item.suggestion}</div></> : <><span className="audit-label">原文</span><div className="audit-original">“{item.original}”</div><span className="audit-label">问题原因</span><p>{item.reason}</p><div className="audit-suggestion"><strong>💡 修改建议</strong><br />{item.suggestion}</div><div className="audit-actions"><Button type="primary" size="small" onClick={() => onResolve(index, '采纳')}>采纳</Button><Button size="small" onClick={() => onResolve(index, '人工修改')}>人工修改</Button><Button size="small" onClick={() => { onResolve(index, '人工保留'); onOpenModal('ignore'); }}>忽略</Button><Button size="small" icon={<LinkOutlined />}>查看依据</Button></div></>}</div>; })}<Space direction="vertical" style={{ width: '100%' }}><Button block className="purple-button" icon={<SyncOutlined />} onClick={() => message.success('已重新检查需求文档')}>重新检查</Button><Button block icon={<DownloadOutlined />}>生成检查报告</Button></Space></Panel>;
+function AuditPanel({ resolved, onResolve, onRecheck, onViewBasis, onClose, onOpenModal }: { resolved: Record<number, string>; onResolve: (index: number, action: string) => void; onRecheck: () => void; onViewBasis: (index: number) => void; onClose: () => void; onOpenModal: (key: ModalKey) => void }) {
+  return <Panel title={<><ThunderboltFilled /> 智能检查结果 <StatusPill tone="purple">{4 - Object.keys(resolved).length} 项问题</StatusPill></>} extra={<Button type="text" icon={<CloseCircleFilled />} onClick={onClose} />} className="audit-panel"><div className="audit-summary"><span>🔴 高风险 {auditProblems.filter((item) => item.level === '高风险').length - Object.keys(resolved).filter((key) => auditProblems[Number(key)].level === '高风险').length}</span><span>🟠 中风险 {auditProblems.filter((item) => item.level === '中风险').length - Object.keys(resolved).filter((key) => auditProblems[Number(key)].level === '中风险').length}</span></div>{auditProblems.map((item, index) => { const status = resolved[index]; return <div className={`audit-card ${status ? 'resolved' : item.level === '高风险' ? 'high' : 'medium'}`} key={item.title}><div className="audit-card-head"><strong>{index + 1} {item.title}</strong><StatusPill tone={status ? 'green' : item.level === '高风险' ? 'red' : 'orange'}>{status ? '已处理' : item.level}</StatusPill></div>{status ? <><p className="audit-resolution">处理方式：{status === '采纳' ? '采纳建议' : status === '人工修改' ? '人工修改' : '人工保留'}</p><div className="audit-suggestion">{status === '人工保留' ? '已记录人工处理意见，将保留原文并在提交审核时提示。' : item.suggestion}</div></> : <><span className="audit-label">原文</span><div className="audit-original">“{item.original}”</div><span className="audit-label">问题原因</span><p>{item.reason}</p><div className="audit-suggestion"><strong>💡 修改建议</strong><br />{item.suggestion}</div><div className="audit-actions"><Button type="primary" size="small" onClick={() => onResolve(index, '采纳')}>采纳</Button><Button size="small" onClick={() => onResolve(index, '人工修改')}>人工修改</Button><Button size="small" onClick={() => { onResolve(index, '人工保留'); onOpenModal('ignore'); }}>忽略</Button><Button size="small" icon={<LinkOutlined />} onClick={() => onViewBasis(index)}>查看依据</Button></div></>}</div>; })}<Space direction="vertical" style={{ width: '100%' }}><Button block className="purple-button" icon={<SyncOutlined />} onClick={onRecheck}>重新检查</Button><Button block icon={<DownloadOutlined />} onClick={() => onOpenModal('ai-record')}>生成检查报告</Button></Space></Panel>;
 }
 
 function DocumentsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
   const chapters = ['采购公告', '投标人须知', '采购需求', '技术要求', '商务要求', '评分标准', '合同条款', '验收要求'];
-  const { workflow } = useProjectWorkflow();
+  const { workflow, project } = useProjectWorkflow();
+  const [aiContinuation, setAiContinuation] = useState(false);
+  const runQualityCheck = () => message.success('文件质量检查已完成，发现 3 项待处理问题');
+  const exportDocument = () => message.success('采购文件 Word 已生成，正在下载');
   const submitForReview = () => {
     if (onCompleteStage && !onCompleteStage()) return;
     go('/procurement/suppliers');
   };
   return <>
-    <PageTitle breadcrumb={['采购需求', '采购文件', '公开招标文件']} title="采购文件编制" subtitle="基于《货物类公开招标标准采购文件》生成 · 最后保存 11:06" actions={<><Button icon={<DiffOutlined />} onClick={() => onOpenModal('template')}>从模板生成</Button><Button icon={<SafetyCertificateOutlined />} className="purple-button">质量检查</Button><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('version')}>版本记录</Button><Button icon={<DownloadOutlined />}>导出 Word</Button><Button type="primary" icon={<SendOutlined />} onClick={submitForReview}>提交审核并进入供应商核查</Button></>} />
+    <PageTitle breadcrumb={['采购需求', '采购文件', `${project.method}文件`]} title="采购文件编制" subtitle={`基于《${project.type}类${project.method}标准采购文件》生成 · 最后保存 11:06`} actions={<><Button icon={<DiffOutlined />} onClick={() => onOpenModal('template')}>从模板生成</Button><Button icon={<SafetyCertificateOutlined />} className="purple-button" onClick={runQualityCheck}>质量检查</Button><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('version')}>版本记录</Button><Button icon={<DownloadOutlined />} onClick={exportDocument}>导出 Word</Button><Button type="primary" icon={<SendOutlined />} onClick={submitForReview}>提交审核并进入供应商核查</Button></>} />
     {!workflow.materialsReady && <Alert className="workflow-gate-alert" type="warning" showIcon message="当前阶段还缺少项目立项依据" description="请先返回项目流程补充必备材料，材料齐全后才能提交采购文件并进入供应商核查。" action={<Button onClick={() => go('/procurement/projects/detail')}>返回项目补充材料</Button>} />}
-    <Row gutter={[16, 16]} align="top"><Col xs={24} lg={5}><Panel title={<>☷ 章节 <StatusPill tone="gray">8 章</StatusPill></>}><Progress percent={75} showInfo={false} /><span className="muted-text">已完成 6 / 8 章</span><div className="chapter-list">{chapters.map((chapter, index) => <div className={index === 2 ? 'active' : index === 5 ? 'warning' : ''} key={chapter}><span>{index < 5 ? <CheckCircleFilled /> : index === 5 ? <WarningFilled /> : <span className="chapter-dot" />}</span>{chapter}{index === 5 && <StatusPill tone="red">缺失</StatusPill>}</div>)}</div></Panel><Panel className="current-project-card"><strong>当前项目</strong><h3>2024年度办公设备集中采购</h3><span>PRJ-2024-012 · 公开招标</span><Progress percent={62} showInfo={false} /></Panel></Col><Col xs={24} lg={14}><Panel className="document-editor"><div className="editor-toolbar"><Space><Button type="text" icon={<ArrowLeftOutlined />} /><Button type="text" icon={<ArrowRightOutlined />} /><Divider type="vertical" /><Select defaultValue="正文" options={[{ value: '正文', label: '正文' }, { value: '标题 1', label: '标题 1' }]} /><Select defaultValue="14" options={['12', '14', '16'].map((value) => ({ value, label: value }))} /><Button type="text"><strong>B</strong></Button><Button type="text"><u>U</u></Button><Button type="text" icon={<LinkOutlined />} /><Button type="text" className="purple-button" icon={<ThunderboltFilled />}>AI 续写</Button></Space></div><article className="document-body"><h1>2024 年度办公设备集中采购<br />公开招标文件</h1><p className="document-meta">项目编号：PRJ-2024-012　采购人：某某集团有限公司　编制日期：2024-06-15</p><h2>第一章 采购公告</h2><h3>一、项目基本情况</h3><p>项目编号：<b>PRJ-2024-012</b></p><p>项目名称：<b>2024 年度办公设备集中采购</b></p><p>预算金额：<b>人民币 480,000 元</b></p><p>采购方式：<b>公开招标</b></p><h3>二、投标人资格要求</h3><ol><li>具有独立承担民事责任的能力，持有有效营业执照；</li><li>具有良好的商业信誉和健全的财务会计制度；</li><li>具有履行合同所必需的设备和专业技术能力；</li><li>近三年内在经营活动中没有重大违法记录。</li></ol><h3>三、获取招标文件</h3><p>凡有意参加投标者，请于 2024 年 6 月 20 日至 2024 年 6 月 27 日，登录集团电子采购平台下载招标文件，逾期不予受理。</p><h3>四、投标截止时间及开标时间</h3><p>投标截止时间：2024 年 7 月 8 日 09:30（北京时间）</p><p>开标时间：2024 年 7 月 8 日 09:30（北京时间）</p><p className="editor-placeholder">继续输入内容，或将鼠标移至下方添加新章节...</p></article><div className="editor-footer"><span>字数 2,486</span><span>共 6 页</span><span>自动保存</span><span>张明 正在编辑</span></div></Panel></Col><Col xs={24} lg={5}><Panel title={<><SafetyCertificateOutlined /> 文件质量检查</>}><div className="quality-circle"><Progress type="circle" percent={82} strokeColor="#f59e0b" /><span>质量评分 / 100</span></div><div className="quality-list"><span>🔴 完整性 <b>6 / 8</b></span><span>🟠 合规性 <b>5 / 6</b></span><span>🟢 一致性 <b>4 / 4</b></span><span>🟠 规范性 <b>2 / 3</b></span></div><Divider /><strong>待处理问题 <Badge count={3} /></strong>{['评分标准章节缺失', '合同条款未引用最新模板', '验收要求与技术指标表述不一致'].map((item, index) => <div className={`quality-problem ${index === 0 ? 'danger' : ''}`} key={item}><strong>{item}</strong><span>建议补充或调整相关内容</span></div>)}<Button type="link">查看全部检查项 <ArrowRightOutlined /></Button></Panel></Col></Row>
+    <Row gutter={[16, 16]} align="top">
+      <Col xs={24} lg={5}>
+        <Panel title={<>☷ 章节 <StatusPill tone="gray">8 章</StatusPill></>}>
+          <Progress percent={75} showInfo={false} />
+          <span className="muted-text">已完成 6 / 8 章</span>
+          <div className="chapter-list">{chapters.map((chapter, index) => <div className={index === 2 ? 'active' : index === 5 ? 'warning' : ''} key={chapter}><span>{index < 5 ? <CheckCircleFilled /> : index === 5 ? <WarningFilled /> : <span className="chapter-dot" />}</span>{chapter}{index === 5 && <StatusPill tone="red">缺失</StatusPill>}</div>)}</div>
+        </Panel>
+        <Panel className="current-project-card"><strong>当前项目</strong><h3>{project.name}</h3><span>{project.id} · {project.method}</span><Progress percent={62} showInfo={false} /></Panel>
+      </Col>
+      <Col xs={24} lg={14}>
+        <Panel className="document-editor">
+          <div className="editor-toolbar">
+            <Space>
+              <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => message.info('已撤销上一处编辑')} />
+              <Button type="text" icon={<ArrowRightOutlined />} onClick={() => message.info('已恢复下一处编辑')} />
+              <Divider type="vertical" />
+              <Select defaultValue="正文" options={[{ value: '正文', label: '正文' }, { value: '标题 1', label: '标题 1' }]} />
+              <Select defaultValue="14" options={['12', '14', '16'].map((value) => ({ value, label: value }))} />
+              <Button type="text" onClick={() => message.info('已应用粗体格式')}><strong>B</strong></Button>
+              <Button type="text" onClick={() => message.info('已应用下划线格式')}><u>U</u></Button>
+              <Button type="text" icon={<LinkOutlined />} onClick={() => message.info('请选择文本后插入链接')} />
+              <Button type="text" className="purple-button" icon={<ThunderboltFilled />} onClick={() => { setAiContinuation(true); message.success('AI 续写内容已插入文档'); }}>AI 续写</Button>
+            </Space>
+          </div>
+          <article className="document-body"><h1>{project.name}<br />{project.method}文件</h1><p className="document-meta">项目编号：{project.id}　采购人：某某集团有限公司　编制日期：{project.createdAt}</p><h2>第一章 采购公告</h2><h3>一、项目基本情况</h3><p>项目编号：<b>{project.id}</b></p><p>项目名称：<b>{project.name}</b></p><p>预算金额：<b>{project.budget}</b></p><p>采购方式：<b>{project.method}</b></p><h3>二、投标人资格要求</h3><ol><li>具有独立承担民事责任的能力，持有有效营业执照；</li><li>具有良好的商业信誉和健全的财务会计制度；</li><li>具有履行合同所必需的设备和专业技术能力；</li><li>近三年内在经营活动中没有重大违法记录。</li></ol><h3>三、获取招标文件</h3><p>凡有意参加投标者，请于 2024 年 6 月 20 日至 2024 年 6 月 27 日，登录集团电子采购平台下载采购文件，逾期不予受理。</p><h3>四、投标截止时间及开标时间</h3><p>投标截止时间：2024 年 7 月 8 日 09:30（北京时间）</p><p>开标时间：2024 年 7 月 8 日 09:30（北京时间）</p><p className="editor-placeholder">继续输入内容，或将鼠标移至下方添加新章节...</p>{aiContinuation && <p className="ai-generated-copy">AI 续写：供应商应在合同签订后 45 日内完成供货、安装与调试，并提交完整的产品合格证明及售后服务承诺。</p>}</article>
+          <div className="editor-footer"><span>字数 {aiContinuation ? '2,542' : '2,486'}</span><span>共 6 页</span><span>自动保存</span><span>{project.owner} 正在编辑</span></div>
+        </Panel>
+      </Col>
+      <Col xs={24} lg={5}>
+        <Panel title={<><SafetyCertificateOutlined /> 文件质量检查</>}>
+          <div className="quality-circle"><Progress type="circle" percent={82} strokeColor="#f59e0b" /><span>质量评分 / 100</span></div>
+          <div className="quality-list"><span>🔴 完整性 <b>6 / 8</b></span><span>🟠 合规性 <b>5 / 6</b></span><span>🟢 一致性 <b>4 / 4</b></span><span>🟠 规范性 <b>2 / 3</b></span></div>
+          <Divider /><strong>待处理问题 <Badge count={3} /></strong>
+          {['评分标准章节缺失', '合同条款未引用最新模板', '验收要求与技术指标表述不一致'].map((item, index) => <div className={`quality-problem ${index === 0 ? 'danger' : ''}`} key={item}><strong>{item}</strong><span>建议补充或调整相关内容</span></div>)}
+          <Button type="link" onClick={runQualityCheck}>查看全部检查项 <ArrowRightOutlined /></Button>
+        </Panel>
+      </Col>
+    </Row>
   </>;
 }
 
 function ContractsPage({ onCompleteStage }: { onCompleteStage?: () => boolean }) {
+  const [writtenTitles, setWrittenTitles] = useState<string[]>([]);
+  const writeContract = (title: string) => {
+    setWrittenTitles((titles) => titles.includes(title) ? titles : [...titles, title]);
+    message.success(`“${title}”条款已写入合同草案`);
+  };
+  const writeAllContracts = () => {
+    setWrittenTitles(contracts.map((item) => item.title));
+    message.success('全部条款已写入合同草案');
+  };
   const createContract = () => {
+    if (writtenTitles.length < contracts.length) {
+      message.info('未写入的条款将按当前建议一并带入合同草案');
+    }
     if (onCompleteStage && !onCompleteStage()) return;
+    message.success('合同草案已生成，正在进入履约管理');
     go('/procurement/contracts/fulfillment');
   };
-  return <><PageTitle breadcrumb={['合同管理', '合同建议', '华科智能设备有限公司']} title="合同建议" subtitle="对比采购文件要求与供应商承诺，生成拟写入合同的条款建议" actions={<><Button icon={<DiffOutlined />}>全部写入合同</Button><Button onClick={() => go('/procurement/contracts/fulfillment')} icon={<FundOutlined />}>履约管理</Button><Button type="primary" icon={<FileDoneOutlined />} onClick={createContract}>生成合同草案并进入履约</Button></>} /><Panel className="contract-summary"><strong>共比对 24 项条款，识别 4 项差异条款</strong><Space><StatusPill tone="green">优于原要求 2</StatusPill><StatusPill tone="blue">新增承诺 1</StatusPill><StatusPill tone="orange">存在偏离 1</StatusPill></Space></Panel><div className="contract-list">{contracts.map((item) => <Card className={`contract-card ${item.color}`} bordered={false} key={item.title}><div className="contract-card-head"><h2><CheckCircleFilled /> {item.title}</h2><StatusPill tone={item.color as any}>{item.kind}</StatusPill><Button type="primary" icon={<FileDoneOutlined />}>写入合同</Button></div><div className="contract-compare"><div><span>采购要求</span><strong>{item.sourceValue}</strong><small>来源：{item.source}</small></div><ArrowRightOutlined /><div><span>供应商承诺</span><strong>{item.result}</strong><small>来源：投标文件·商务承诺</small></div></div><div className="contract-tip">{item.color === 'orange' ? <WarningFilled /> : <InfoCircleOutlined />} {item.color === 'orange' ? '该要求与采购文件不一致，建议提交评标委员会复核后再决定是否写入合同。' : '建议将供应商承诺写入合同，并同步约定违约责任。'}</div></Card>)}</div></>;
+  return (
+    <>
+      <PageTitle breadcrumb={['合同管理', '合同建议', '华科智能设备有限公司']} title="合同建议" subtitle="对比采购文件要求与供应商承诺，生成拟写入合同的条款建议" actions={<><Button icon={<DiffOutlined />} onClick={writeAllContracts}>全部写入合同</Button><Button onClick={() => go('/procurement/contracts/fulfillment')} icon={<FundOutlined />}>履约管理</Button><Button type="primary" icon={<FileDoneOutlined />} onClick={createContract}>生成合同草案并进入履约</Button></>} />
+      <Panel className="contract-summary"><strong>{writtenTitles.length ? `已写入 ${writtenTitles.length} / ${contracts.length} 项条款，识别 4 项差异条款` : '共比对 24 项条款，识别 4 项差异条款'}</strong><Space><StatusPill tone="green">优于原要求 2</StatusPill><StatusPill tone="blue">新增承诺 1</StatusPill><StatusPill tone="orange">存在偏离 1</StatusPill></Space></Panel>
+      <div className="contract-list">{contracts.map((item) => { const written = writtenTitles.includes(item.title); return <Card className={`contract-card ${item.color}`} bordered={false} key={item.title}><div className="contract-card-head"><h2><CheckCircleFilled /> {item.title}</h2><StatusPill tone={written ? 'green' : item.color as any}>{written ? '已写入合同' : item.kind}</StatusPill><Button type={written ? 'default' : 'primary'} disabled={written} icon={written ? <CheckOutlined /> : <FileDoneOutlined />} onClick={() => writeContract(item.title)}>{written ? '已写入' : '写入合同'}</Button></div><div className="contract-compare"><div><span>采购要求</span><strong>{item.sourceValue}</strong><small>来源：{item.source}</small></div><ArrowRightOutlined /><div><span>供应商承诺</span><strong>{item.result}</strong><small>来源：投标文件·商务承诺</small></div></div><div className="contract-tip">{item.color === 'orange' ? <WarningFilled /> : <InfoCircleOutlined />} {item.color === 'orange' ? '该要求与采购文件不一致，建议提交评标委员会复核后再决定是否写入合同。' : '建议将供应商承诺写入合同，并同步约定违约责任。'}</div></Card>; })}</div>
+    </>
+  );
 }
 
 function SuppliersPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
   const [screeningStarted, setScreeningStarted] = useState(false);
+  const [visibleSuppliers, setVisibleSuppliers] = useState(supplierCards);
   const handleScreening = () => {
     if (!screeningStarted) {
       setScreeningStarted(true);
@@ -754,16 +1111,91 @@ function SuppliersPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: Mo
     if (onCompleteStage && !onCompleteStage()) return;
     go('/procurement/contracts');
   };
-  return <><PageTitle breadcrumb={['供应商管理', '风险核查', '候选供应商']} title="候选供应商" subtitle="添加候选企业后可发起联合核查，自动识别企业间关联关系" actions={<><Button icon={<PlusOutlined />} onClick={() => onOpenModal('add-company')}>添加企业</Button><Button type="primary" icon={<SyncOutlined />} onClick={handleScreening}>{screeningStarted ? '完成核查并进入合同建议' : '开始联合核查'}</Button></>} /><Panel className="scope-banner"><SafetyCertificateOutlined /><strong>联合核查范围：企业信息 · 信用风险 · 经营异常 · 司法风险 · 关联企业 · 关联人员 · 供应商关系</strong><span>疑点 1 项　·　上次核查 2024-06-15 10:22</span></Panel><Row gutter={[16, 16]}>{supplierCards.map((supplier) => <Col xs={24} lg={8} key={supplier.name}><Card className="supplier-card" bordered={false}><div className="supplier-head"><Avatar shape="square" size={48} icon={<BankOutlined />} /><div><h2>{supplier.name}</h2><span>统一社会信用代码：{supplier.code}</span></div><StatusPill tone={supplier.tone as any}>{supplier.risk > 40 ? '中风险' : '低风险'}</StatusPill></div><div className="supplier-facts"><div><span>企业类型</span><b>有限责任公司</b></div><div><span>注册资本</span><b>{supplier.capital}</b></div><div><span>成立时间</span><b>{supplier.founded}</b></div></div><div className="supplier-tags"><StatusPill tone="green">合作 3 年</StatusPill><StatusPill tone={supplier.risk > 40 ? 'orange' : 'green'}>{supplier.relation}</StatusPill></div><div className="supplier-risk-line"><span>综合风险分</span><Progress percent={supplier.risk} showInfo={false} strokeColor={supplier.risk > 40 ? '#f59e0b' : '#10b981'} /><strong>{supplier.risk}</strong></div><Space className="supplier-actions"><Button type="primary" block icon={<SafetyCertificateOutlined />} onClick={() => go('/procurement/suppliers/risk')}>查看风险详情</Button><Button>移除</Button></Space></Card></Col>)}<Col xs={24} lg={8}><Card className="add-supplier-card" bordered={false} onClick={() => onOpenModal('add-company')}><PlusOutlined /><h3>添加候选企业</h3><span>支持批量导入或按名称检索</span></Card></Col></Row><Panel title={<><LinkOutlined /> 联合核查机制说明</>}><div className="mechanism-grid">{[['1', '多企业合并核查', '同时核查多家候选企业，统一输出风险对比结果'], ['2', '跨企业关联识别', '识别企业间交叉任职、共同股东、同一控制人等图谱风险线索'], ['3', '结果留痕归档', '核查记录自动关联当前项目，可导出核查报告']].map(([index, title, desc]) => <div key={index}><span>{index}</span><div><strong>{title}</strong><p>{desc}</p></div></div>)}</div></Panel></>;
+  const removeSupplier = (name: string) => {
+    Modal.confirm({
+      title: '移除候选企业',
+      content: `确认将“${name}”从候选供应商列表中移除吗？`,
+      okText: '确认移除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => {
+        setVisibleSuppliers((suppliers) => suppliers.filter((supplier) => supplier.name !== name));
+        message.success('候选企业已移除');
+      },
+    });
+  };
+  return (
+    <>
+      <PageTitle breadcrumb={['供应商管理', '风险核查', '候选供应商']} title="候选供应商" subtitle="添加候选企业后可发起联合核查，自动识别企业间关联关系" actions={<><Button icon={<PlusOutlined />} onClick={() => onOpenModal('add-company')}>添加企业</Button><Button type="primary" icon={<SyncOutlined />} onClick={handleScreening}>{screeningStarted ? '完成核查并进入合同建议' : '开始联合核查'}</Button></>} />
+      <Panel className="scope-banner"><SafetyCertificateOutlined /><strong>联合核查范围：企业信息 · 信用风险 · 经营异常 · 司法风险 · 关联企业 · 关联人员 · 供应商关系</strong><span>疑点 1 项　·　上次核查 2024-06-15 10:22</span></Panel>
+      <Row className="supplier-card-grid" gutter={[16, 16]}>{visibleSuppliers.map((supplier) => <Col xs={24} lg={8} key={supplier.name}><Card className="supplier-card" bordered={false}><div className="supplier-head"><Avatar shape="square" size={48} icon={<BankOutlined />} /><div><h2>{supplier.name}</h2><span>统一社会信用代码：{supplier.code}</span></div><StatusPill tone={supplier.tone as any}>{supplier.risk > 40 ? '中风险' : '低风险'}</StatusPill></div><div className="supplier-facts"><div><span>企业类型</span><b>有限责任公司</b></div><div><span>注册资本</span><b>{supplier.capital}</b></div><div><span>成立时间</span><b>{supplier.founded}</b></div></div><div className="supplier-tags"><StatusPill tone="green">合作 3 年</StatusPill><StatusPill tone={supplier.risk > 40 ? 'orange' : 'green'}>{supplier.relation}</StatusPill></div><div className="supplier-risk-line"><span>综合风险分</span><Progress percent={supplier.risk} showInfo={false} strokeColor={supplier.risk > 40 ? '#f59e0b' : '#10b981'} /><strong>{supplier.risk}</strong></div><Space className="supplier-actions"><Button type="primary" block icon={<SafetyCertificateOutlined />} onClick={() => go('/procurement/suppliers/risk')}>查看风险详情</Button><Button onClick={() => removeSupplier(supplier.name)}>移除</Button></Space></Card></Col>)}<Col xs={24} lg={8}><Card className="add-supplier-card" bordered={false} onClick={() => onOpenModal('add-company')}><PlusOutlined /><h3>添加候选企业</h3><span>支持批量导入或按名称检索</span></Card></Col></Row>
+      <Panel title={<><LinkOutlined /> 联合核查机制说明</>}><div className="mechanism-grid">{[['1', '多企业合并核查', '同时核查多家候选企业，统一输出风险对比结果'], ['2', '跨企业关联识别', '识别企业间交叉任职、共同股东、同一控制人等图谱风险线索'], ['3', '结果留痕归档', '核查记录自动关联当前项目，可导出核查报告']].map(([index, title, desc]) => <div key={index}><span>{index}</span><div><strong>{title}</strong><p>{desc}</p></div></div>)}</div></Panel>
+    </>
+  );
 }
 
 function SupplierRiskPage({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
-  return <><PageTitle breadcrumb={['供应商管理', '风险核查', '供应商风险详情']} title="华科智能设备有限公司" subtitle="91440300MA5F8K2X3D · 有限责任公司 · 法定代表人：张伟 · 成立 2015-03-12" actions={<><Button icon={<SyncOutlined />}>重新查询</Button><Button type="primary" icon={<FileDoneOutlined />}>生成核查报告</Button></>} /><Alert type="warning" showIcon message="第三方关联库暂不可用，关联关系数据为部分结果，其余数据源结果正常保留。" className="warning-banner" /><Row gutter={[16, 16]} className="risk-metrics"><Col xs={24} sm={12} xl={4}><MetricCard icon={<AuditOutlined />} value="2" label="司法风险" accent="red" /></Col><Col xs={24} sm={12} xl={5}><MetricCard icon={<SafetyCertificateOutlined />} value="3" label="信用风险" accent="orange" /></Col><Col xs={24} sm={12} xl={5}><MetricCard icon={<CheckCircleFilled />} value="0" label="经营异常" accent="green" /></Col><Col xs={24} sm={12} xl={5}><MetricCard icon={<ApartmentOutlined />} value="2" label="关联风险" accent="orange" /></Col><Col xs={24} sm={12} xl={5}><MetricCard icon={<FundOutlined />} value="62 / 100" label="综合风险等级" accent="orange" badge="中风险" /></Col></Row><Panel title={<><ApartmentOutlined /> 企业关系图谱 <StatusPill tone="orange">部分结果</StatusPill></>}><div className="relation-graph"><div className="graph-node company left">华科智能设备<br />有限公司<span>候选企业 A</span></div><div className="graph-edge edge-1" /><div className="graph-node person top">张伟<span>董事 · 交叉任职</span></div><div className="graph-edge edge-2" /><div className="graph-node company right">中联数字科技<br />有限公司<span>候选企业 B</span></div><div className="graph-edge edge-3" /><div className="graph-node company middle">恒远科技有限公司<span>关联企业</span></div><div className="graph-warning"><WarningFilled /><div><strong>两家供应商存在交叉任职线索</strong><p>张伟同时担任华科智能设备有限公司董事与恒远科技有限公司监事，而恒远科技与中联数字科技存在同一人员任职，提示两家候选企业可能存在围标风险。</p></div><Button onClick={() => onOpenModal('risk-node')}>查看线索</Button></div></div><div className="graph-help">点击图谱中的任意节点，可查看该节点的详细任职与数据来源信息</div></Panel><div className="bottom-action-bar"><span><ClockCircleOutlined /> 本次核查时间：2024-06-15 10:22 · 核查人：张明 · 部分数据源异常</span><Space><Button icon={<SyncOutlined />}>重新查询</Button><Button>关联当前项目</Button><Button type="primary" icon={<FileDoneOutlined />}>生成核查报告</Button></Space></div></>;
+  const refreshRisk = () => message.success('已重新查询供应商风险，当前为最新核查结果');
+  const generateRiskReport = () => message.success('供应商风险核查报告已生成');
+  return (
+    <>
+      <PageTitle
+        breadcrumb={['供应商管理', '风险核查', '供应商风险详情']}
+        title="华科智能设备有限公司"
+        subtitle="91440300MA5F8K2X3D · 有限责任公司 · 法定代表人：张伟 · 成立 2015-03-12"
+        actions={<><Button icon={<SyncOutlined />} onClick={refreshRisk}>重新查询</Button><Button type="primary" icon={<FileDoneOutlined />} onClick={generateRiskReport}>生成核查报告</Button></>}
+      />
+      <Alert type="warning" showIcon message="第三方关联库暂不可用，关联关系数据为部分结果，其余数据源结果正常保留。" className="warning-banner" />
+      <Row gutter={[16, 16]} className="risk-metrics">
+        <Col xs={24} sm={12} xl={4}><MetricCard icon={<AuditOutlined />} value="2" label="司法风险" accent="red" /></Col>
+        <Col xs={24} sm={12} xl={5}><MetricCard icon={<SafetyCertificateOutlined />} value="3" label="信用风险" accent="orange" /></Col>
+        <Col xs={24} sm={12} xl={5}><MetricCard icon={<CheckCircleFilled />} value="0" label="经营异常" accent="green" /></Col>
+        <Col xs={24} sm={12} xl={5}><MetricCard icon={<ApartmentOutlined />} value="2" label="关联风险" accent="orange" /></Col>
+        <Col xs={24} sm={12} xl={5}><MetricCard icon={<FundOutlined />} value="62 / 100" label="综合风险等级" accent="orange" badge="中风险" /></Col>
+      </Row>
+      <Panel title={<><ApartmentOutlined /> 企业关系图谱 <StatusPill tone="orange">部分结果</StatusPill></>}>
+        <div className="relation-graph">
+          <div className="graph-canvas">
+            <svg className="graph-connections graph-connections-desktop" viewBox="0 0 100 230" preserveAspectRatio="none" aria-hidden="true">
+              <line x1="16" y1="165" x2="30" y2="65" />
+              <line x1="30" y1="65" x2="58" y2="65" />
+              <line x1="58" y1="65" x2="84" y2="165" />
+            </svg>
+            <svg className="graph-connections graph-connections-mobile" viewBox="0 0 100 260" preserveAspectRatio="none" aria-hidden="true">
+              <line x1="28" y1="90" x2="28" y2="126" />
+              <line x1="28" y1="54" x2="72" y2="54" />
+              <line x1="72" y1="90" x2="72" y2="126" />
+            </svg>
+            <button type="button" className="graph-node company left" onClick={() => onOpenModal('risk-node')}>华科智能设备<br />有限公司<span>候选企业 A</span></button>
+            <button type="button" className="graph-node person top" onClick={() => onOpenModal('risk-node')}>张伟<span>董事 · 交叉任职</span></button>
+            <button type="button" className="graph-node company right" onClick={() => onOpenModal('risk-node')}>中联数字科技<br />有限公司<span>候选企业 B</span></button>
+            <button type="button" className="graph-node company middle" onClick={() => onOpenModal('risk-node')}>恒远科技有限公司<span>关联企业</span></button>
+          </div>
+          <div className="graph-warning">
+            <WarningFilled />
+            <div>
+              <strong>两家供应商存在交叉任职线索</strong>
+              <p>张伟同时担任华科智能设备有限公司董事与恒远科技有限公司监事，而恒远科技与中联数字科技存在同一人员任职，提示两家候选企业可能存在围标风险。</p>
+            </div>
+            <Button onClick={() => onOpenModal('risk-node')}>查看线索</Button>
+          </div>
+        </div>
+        <div className="graph-help">点击图谱中的任意节点，可查看该节点的详细任职与数据来源信息</div>
+      </Panel>
+      <div className="bottom-action-bar">
+        <span><ClockCircleOutlined /> 本次核查时间：2024-06-15 10:22 · 核查人：张明 · 部分数据源异常</span>
+        <Space><Button icon={<SyncOutlined />} onClick={refreshRisk}>重新查询</Button><Button onClick={() => message.success('风险核查结果已关联到当前项目')}>关联当前项目</Button><Button type="primary" icon={<FileDoneOutlined />} onClick={generateRiskReport}>生成核查报告</Button></Space>
+      </div>
+    </>
+  );
 }
 
 function ContractsFulfillmentPage({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
   const nodes = ['合同签订', '生产准备', '设备到货', '安装调试', '人员培训', '项目验收', '付款', '质保'];
-  return <><PageTitle breadcrumb={['合同管理', '履约管理', '2024年度办公设备集中采购合同']} title="合同履约管理" subtitle="HT-2024-0126 · 供应商：华科智能设备有限公司 · 合同金额 ¥462,000" actions={<><Button icon={<AuditOutlined />}>履约台账</Button><Button onClick={() => go('/procurement/acceptance')} icon={<SafetyCertificateOutlined />}>进入现场验收</Button><Button type="primary" icon={<DownloadOutlined />}>导出履约报告</Button></>} /><Row gutter={[16, 16]} className="metric-grid"><Col xs={24} sm={12} xl={6}><MetricCard icon={<FundOutlined />} value="68%" label="履约进度" badge="较上周 +6%" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<CheckCircleFilled />} value="5" label="正常节点" accent="green" badge="共 8 个节点" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<WarningFilled />} value="1" label="预警节点" accent="orange" badge="需关注" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<CloseCircleFilled />} value="1" label="逾期节点" accent="red" badge="已逾期" /></Col></Row><Panel title={<><SyncOutlined /> 履约时间轴</>} extra={<span className="timeline-legend"><i className="green-dot" /> 已完成 <i className="orange-dot" /> 即将超期 <i className="red-dot" /> 逾期 <i className="gray-dot" /> 待开始</span>}><div className="fulfillment-timeline">{nodes.map((node, index) => <div className={`fulfillment-node ${index === 1 ? 'overdue' : index === 2 ? 'warning' : index < 1 ? 'done' : ''}`} key={node}><div className="node-circle">{index < 1 ? <CheckOutlined /> : index === 1 ? '×' : index === 2 ? <WarningFilled /> : index + 1}</div><strong>{node}</strong><span>{index < 1 ? '2024-06-18' : index === 1 ? '逾期 2 天' : index === 2 ? '计划 08-20' : '计划 09-' + String(5 + index * 5).padStart(2, '0')}</span></div>)}</div></Panel><Row gutter={[16, 16]}><Col xs={24} xl={17}><Panel title={<><CloudUploadOutlined /> 设备到货 <StatusPill tone="orange">即将超期</StatusPill></>} extra={<Button type="primary" onClick={() => onOpenModal('warning')}>处理预警</Button>} className="fulfillment-focus"><div className="fulfillment-facts"><InfoCell label="计划日期" value="2024-08-20" /><InfoCell label="剩余时间" value="3 天" /><InfoCell label="责任人" value="李强（供应商）" avatar="李" /><InfoCell label="当前状态" value="生产完成待发货" /></div><div className="missing-files"><div className="missing-title"><strong>缺失资料</strong><StatusPill tone="red">2 项</StatusPill></div>{['出厂检测报告', '装箱单与序列号清单'].map((item) => <div className="missing-file" key={item}><FileProtectOutlined /> <strong>{item}</strong><span>未上传 <ArrowRightOutlined /></span></div>)}</div><Alert type="info" showIcon message="预警规则：距计划日期 3 天内未完成交付，系统自动触发「即将超期」预警" /></Panel></Col><Col xs={24} xl={7}><Panel title={<><FileTextOutlined /> 合同信息</>}><DescriptionsList items={[['合同编号', 'HT-2024-0126'], ['供应商', '华科智能设备有限公司'], ['合同金额', '¥462,000'], ['签订日期', '2024-06-18'], ['交付地点', '总部园区 B 座收货区'], ['质保期', '3 年（至 2027-10-15）'], ['逾期违约率', '0.5% / 日']]} /></Panel><Panel title={<><FundOutlined /> 付款进度</>}><div className="payment-list">{[['预付款 30%', '已支付', 'green'], ['到货款 40%', '待触发', 'blue'], ['验收款 20%', '未开始', 'gray'], ['质保金 10%', '未开始', 'gray']].map(([name, status, tone]) => <div key={name}><span className={`payment-dot ${tone}`} />{name}<b className={tone}>{status}</b></div>)}</div></Panel></Col></Row><Panel title={<><FileSearchOutlined /> 履约节点明细</>} extra={<Space><Button type="primary">全部</Button><Button>仅看异常</Button></Space>}><Table pagination={false} rowKey="node" dataSource={nodes.map((node, index) => ({ node, plan: index === 0 ? '2024-06-18' : '2024-08-' + String(20 + index).padStart(2, '0'), actual: index < 2 ? '2024-06-' + String(18 + index * 4).padStart(2, '0') : '—', owner: index < 3 ? '李强（供应商）' : '张明（采购）', status: index === 1 ? '逾期 2 天' : index === 2 ? '即将超期' : index < 1 ? '已完成' : '待开始' }))} columns={[{ title: '节点名称', dataIndex: 'node' }, { title: '计划日期', dataIndex: 'plan' }, { title: '实际日期', dataIndex: 'actual' }, { title: '责任人', dataIndex: 'owner' }, { title: '状态', dataIndex: 'status', render: (value) => <StatusPill tone={value === '已完成' ? 'green' : value === '逾期 2 天' ? 'red' : value === '即将超期' ? 'orange' : 'gray'}>{value}</StatusPill> }, { title: '操作', render: (_, record) => <Button type={record.status === '即将超期' ? 'primary' : 'link'} onClick={() => record.status === '即将超期' && onOpenModal('warning')}>{record.status === '即将超期' ? '处理预警' : '查看详情'}</Button> }]} /></Panel></>;
+  const [nodeFilter, setNodeFilter] = useState<'all' | 'exception'>('all');
+  const nodeRows = nodes.map((node, index) => ({ node, plan: index === 0 ? '2024-06-18' : '2024-08-' + String(20 + index).padStart(2, '0'), actual: index < 2 ? '2024-06-' + String(18 + index * 4).padStart(2, '0') : '—', owner: index < 3 ? '李强（供应商）' : '张明（采购）', status: index === 1 ? '逾期 2 天' : index === 2 ? '即将超期' : index < 1 ? '已完成' : '待开始' }));
+  const visibleNodeRows = nodeFilter === 'all' ? nodeRows : nodeRows.filter((item) => item.status === '逾期 2 天' || item.status === '即将超期');
+  return <><PageTitle breadcrumb={['合同管理', '履约管理', '2024年度办公设备集中采购合同']} title="合同履约管理" subtitle="HT-2024-0126 · 供应商：华科智能设备有限公司 · 合同金额 ¥462,000" actions={<><Button icon={<AuditOutlined />} onClick={() => go('/procurement/records')}>履约台账</Button><Button onClick={() => go('/procurement/acceptance')} icon={<SafetyCertificateOutlined />}>进入现场验收</Button><Button type="primary" icon={<DownloadOutlined />} onClick={() => message.success('履约报告已生成，正在下载')}>导出履约报告</Button></>} /><Row gutter={[16, 16]} className="metric-grid"><Col xs={24} sm={12} xl={6}><MetricCard icon={<FundOutlined />} value="68%" label="履约进度" badge="较上周 +6%" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<CheckCircleFilled />} value="5" label="正常节点" accent="green" badge="共 8 个节点" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<WarningFilled />} value="1" label="预警节点" accent="orange" badge="需关注" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<CloseCircleFilled />} value="1" label="逾期节点" accent="red" badge="已逾期" /></Col></Row><Panel title={<><SyncOutlined /> 履约时间轴</>} extra={<span className="timeline-legend"><i className="green-dot" /> 已完成 <i className="orange-dot" /> 即将超期 <i className="red-dot" /> 逾期 <i className="gray-dot" /> 待开始</span>}><div className="fulfillment-timeline">{nodes.map((node, index) => <div className={`fulfillment-node ${index === 1 ? 'overdue' : index === 2 ? 'warning' : index < 1 ? 'done' : ''}`} key={node}><div className="node-circle">{index < 1 ? <CheckOutlined /> : index === 1 ? '×' : index === 2 ? <WarningFilled /> : index + 1}</div><strong>{node}</strong><span>{index < 1 ? '2024-06-18' : index === 1 ? '逾期 2 天' : index === 2 ? '计划 08-20' : '计划 09-' + String(5 + index * 5).padStart(2, '0')}</span></div>)}</div></Panel><Row gutter={[16, 16]}><Col xs={24} xl={17}><Panel title={<><CloudUploadOutlined /> 设备到货 <StatusPill tone="orange">即将超期</StatusPill></>} extra={<Button type="primary" onClick={() => onOpenModal('warning')}>处理预警</Button>} className="fulfillment-focus"><div className="fulfillment-facts"><InfoCell label="计划日期" value="2024-08-20" /><InfoCell label="剩余时间" value="3 天" /><InfoCell label="责任人" value="李强（供应商）" avatar="李" /><InfoCell label="当前状态" value="生产完成待发货" /></div><div className="missing-files"><div className="missing-title"><strong>缺失资料</strong><StatusPill tone="red">2 项</StatusPill></div>{['出厂检测报告', '装箱单与序列号清单'].map((item) => <div className="missing-file" key={item}><FileProtectOutlined /> <strong>{item}</strong><span>未上传 <ArrowRightOutlined /></span></div>)}</div><Alert type="info" showIcon message="预警规则：距计划日期 3 天内未完成交付，系统自动触发「即将超期」预警" /></Panel></Col><Col xs={24} xl={7}><Panel title={<><FileTextOutlined /> 合同信息</>}><DescriptionsList items={[['合同编号', 'HT-2024-0126'], ['供应商', '华科智能设备有限公司'], ['合同金额', '¥462,000'], ['签订日期', '2024-06-18'], ['交付地点', '总部园区 B 座收货区'], ['质保期', '3 年（至 2027-10-15）'], ['逾期违约率', '0.5% / 日']]} /></Panel><Panel title={<><FundOutlined /> 付款进度</>}><div className="payment-list">{[['预付款 30%', '已支付', 'green'], ['到货款 40%', '待触发', 'blue'], ['验收款 20%', '未开始', 'gray'], ['质保金 10%', '未开始', 'gray']].map(([name, status, tone]) => <div key={name}><span className={`payment-dot ${tone}`} />{name}<b className={tone}>{status}</b></div>)}</div></Panel></Col></Row><Panel title={<><FileSearchOutlined /> 履约节点明细</>} extra={<Space><Button type={nodeFilter === 'all' ? 'primary' : 'default'} onClick={() => setNodeFilter('all')}>全部</Button><Button type={nodeFilter === 'exception' ? 'primary' : 'default'} onClick={() => setNodeFilter('exception')}>仅看异常</Button></Space>}><Table pagination={false} rowKey="node" dataSource={visibleNodeRows} columns={[{ title: '节点名称', dataIndex: 'node' }, { title: '计划日期', dataIndex: 'plan' }, { title: '实际日期', dataIndex: 'actual' }, { title: '责任人', dataIndex: 'owner' }, { title: '状态', dataIndex: 'status', render: (value) => <StatusPill tone={value === '已完成' ? 'green' : value === '逾期 2 天' ? 'red' : value === '即将超期' ? 'orange' : 'gray'}>{value}</StatusPill> }, { title: '操作', render: (_, record) => <Button type={record.status === '即将超期' ? 'primary' : 'link'} onClick={() => record.status === '即将超期' ? onOpenModal('warning') : message.info(`已打开“${record.node}”节点详情`)}>{record.status === '即将超期' ? '处理预警' : '查看详情'}</Button> }]} /></Panel></>;
 }
 
 function DescriptionsList({ items }: { items: Array<[string, string]> }) { return <div className="descriptions-list">{items.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>; }
@@ -794,7 +1226,7 @@ function AcceptancePage({ view, onOpenModal, onCompleteStage }: { view: 'form' |
 
 function CameraIcon() { return <GlobalOutlined />; }
 
-function AcceptanceResult() { return <><PageTitle title="验收提交结果" subtitle="系统已自动生成 2 份材料，可继续补充完善" actions={<Button type="primary" onClick={() => go('/procurement/projects/detail')}>返回项目流程</Button>} /><div className="result-hero"><div className="result-icon"><CheckOutlined /></div><h1>验收提交成功</h1><p>系统已自动生成 2 份材料，可继续补充完善</p></div><Row gutter={[16, 16]}><Col xs={24} md={12}><Panel title="自动生成内容"><ResultFile icon={<FileTextOutlined />} title="验收报告草稿" subtitle="设备到货验收报告 · 编号 YS-2024-0126" metrics={['合格', '120 台', '3 张']} action="查看验收报告" onClick={() => go('/procurement/acceptance/report')} /></Panel></Col><Col xs={24} md={12}><Panel title="供应商履约评价"><ResultFile icon={<StarOutlined />} title="供应商履约评价" subtitle="华科智能设备有限公司 · 综合得分 88" metrics={['及时性 90', '产品质量 92', '服务响应 82']} action="查看履约评价" onClick={() => go('/procurement/acceptance/evaluation')} /></Panel></Col></Row></>; }
+function AcceptanceResult() { return <><PageTitle title="验收提交结果" subtitle="系统已自动生成 2 份材料，可继续补充完善" actions={<Button type="primary" onClick={() => go('/procurement/projects/detail')}>返回项目详情</Button>} /><div className="result-hero"><div className="result-icon"><CheckOutlined /></div><h1>验收提交成功</h1><p>系统已自动生成 2 份材料，可继续补充完善</p></div><Row gutter={[16, 16]}><Col xs={24} md={12}><Panel title="自动生成内容"><ResultFile icon={<FileTextOutlined />} title="验收报告草稿" subtitle="设备到货验收报告 · 编号 YS-2024-0126" metrics={['合格', '120 台', '3 张']} action="查看验收报告" onClick={() => go('/procurement/acceptance/report')} /></Panel></Col><Col xs={24} md={12}><Panel title="供应商履约评价"><ResultFile icon={<StarOutlined />} title="供应商履约评价" subtitle="华科智能设备有限公司 · 综合得分 88" metrics={['及时性 90', '产品质量 92', '服务响应 82']} action="查看履约评价" onClick={() => go('/procurement/acceptance/evaluation')} /></Panel></Col></Row></>; }
 
 function ResultFile({ icon, title, subtitle, metrics, action, onClick }: { icon: React.ReactNode; title: string; subtitle: string; metrics: string[]; action: string; onClick: () => void }) { return <div className="result-file"><div className="result-file-head"><div className="result-file-icon">{icon}</div><div><h3>{title}</h3><p>{subtitle}</p></div></div><div className="result-metrics">{metrics.map((item) => <span key={item}>{item}</span>)}</div><Button block className="result-action" onClick={onClick} icon={<EyeOutlined />}>{action}</Button></div>; }
 
@@ -869,71 +1301,239 @@ function ModelServicesPage() {
   return <div className="platform-page"><PageTitle title="模型与推理服务" subtitle="统一适配多推理框架，管理模型接入、版本与健康状态" actions={<><Button icon={<SyncOutlined />}>同步服务</Button><Button type="primary" icon={<PlusOutlined />}>接入新模型</Button></>} /><Row gutter={[16, 16]} className="metric-grid"><Col xs={24} sm={12} xl={6}><MetricCard icon={<FundOutlined />} value="36" label="在线模型" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<ClockCircleOutlined />} value="284ms" label="平均首字延迟" accent="blue" badge="↓ 较昨日优化 12%" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<ThunderboltFilled />} value="2,840" label="吞吐量" accent="green" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<WarningFilled />} value="1" label="异常告警" accent="red" badge="1 个服务需关注" /></Col></Row><Panel><div className="model-filter"><Space><Button type="primary">全部模型</Button><Button>对话模型</Button><Button>向量模型</Button><Button>多模态</Button><Button>重排序</Button></Space><Space><Button>按调用量排序</Button><Button icon={<EllipsisOutlined />} /></Space></div><Table pagination={false} rowKey="name" dataSource={models.map(([name, framework, version, latency, calls, health]) => ({ name, framework, version, latency, calls, health }))} columns={[{ title: '模型 / 服务', dataIndex: 'name', render: (value, record) => <div className="model-name-cell"><span className="model-dot"><ThunderboltFilled /></span><div><strong>{value}</strong><span>私有部署 · {record.framework}</span></div></div> }, { title: '推理框架', dataIndex: 'framework', render: (value) => <StatusPill tone="blue">{value}</StatusPill> }, { title: '版本', dataIndex: 'version' }, { title: '首字延迟', dataIndex: 'latency' }, { title: '今日调用', dataIndex: 'calls' }, { title: '健康检查', dataIndex: 'health', render: (value) => <span className={value.startsWith('异常') ? 'health-error' : 'health-ok'}><i /> {value}</span> }, { title: '操作', render: (_, record) => <Space><Button size="small">详情</Button><Button size="small">测试</Button>{record.health.startsWith('异常') && <Button size="small" danger>重启</Button>}</Space> }]} /></Panel><Row gutter={[16, 16]}><Col xs={24} md={12}><Panel title="多推理框架适配"><div className="framework-list">{[['vLLM', '高吞吐 · PageAttention', '12 个模型'], ['TGI', 'HF 官方 · 连续批处理', '8 个模型'], ['Ollama / 自定义', '轻量本地 · 私有协议', '16 个模型']].map(([name, desc, count]) => <div key={name}><span><ThunderboltFilled /></span><div><strong>{name}</strong><p>{desc}</p></div><b>{count}<ArrowRightOutlined /></b></div>)}</div></Panel></Col><Col xs={24} md={12}><Panel title="健康检查策略" extra={<Switch defaultChecked />}><div className="health-settings"><div><span>探测间隔</span><b>每 10 秒</b></div><div><span>超时阈值</span><b>3000 ms</b></div><div><span>失败重试</span><b>3 次</b></div><div><span>故障转移</span><StatusPill tone="green">自动切换备用节点</StatusPill></div></div></Panel></Col></Row></div>;
 }
 
-function ProcurementModal({ modal, onClose, onUploaded, onProjectCreated }: { modal: ModalKey; onClose: () => void; onUploaded?: () => void; onProjectCreated?: () => void }) {
+function ProcurementModal({ modal, onClose, onOpenModal, onUploaded, onProjectCreated }: { modal: ModalKey; onClose: () => void; onOpenModal: (key: ModalKey) => void; onUploaded?: () => void; onProjectCreated?: (project: ProjectDetailData) => void }) {
+  const { project } = useProjectWorkflow();
   const [form] = Form.useForm();
   const [selectedReferences, setSelectedReferences] = useState(['技术参数', '验收方式']);
   const [uploadReady, setUploadReady] = useState(false);
   const [ignoreReason, setIgnoreReason] = useState('');
+  const [selectedMethod, setSelectedMethod] = useState<string>(RECOMMENDED_METHOD);
+  const [recommendationValues, setRecommendationValues] = useState<NewProjectFormValues>();
+  const [similarFilter, setSimilarFilter] = useState<'all' | 'goods' | 'recent'>('all');
+  const [similarSorted, setSimilarSorted] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(0);
   if (!modal) return null;
   const close = () => { setUploadReady(false); setIgnoreReason(''); onClose(); };
-  if (modal === 'new-project') return <Modal open title={<ModalTitle icon={<PlusOutlined />} title="新建采购项目" subtitle="填写项目基础信息，系统将智能推荐采购方式" />} width={760} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="draft" onClick={() => message.success('草稿已保存')}>保存草稿</Button>, <Button key="recommend" type="primary" icon={<ThunderboltFilled />} onClick={() => { onClose(); setTimeout(() => (window as any).__openProcurementModal?.('recommend'), 0); }}>智能推荐采购方式</Button>]}><Form form={form} layout="vertical" className="modal-form"><h3 className="form-section-title">项目基础信息</h3><Form.Item name="name" label="项目名称" required><Input placeholder="请输入项目名称，如「2024年度办公设备集中采购」" /></Form.Item><Form.Item label="项目类型"><Radio.Group defaultValue="货物" optionType="button" buttonStyle="solid" options={[{ value: '货物', label: '📦 货物' }, { value: '服务', label: '♢ 服务' }, { value: '工程', label: '▣ 工程' }]} /></Form.Item><Row gutter={16}><Col span={12}><Form.Item label="采购品类" required><Select placeholder="请选择采购品类" options={[{ value: '办公设备', label: '办公设备' }, { value: '移动终端设备', label: '移动终端设备' }]} /></Form.Item></Col><Col span={12}><Form.Item label="项目负责人" required><Select placeholder="请选择负责人" options={[{ value: '张明', label: '张明' }, { value: '李静', label: '李静' }]} /></Form.Item></Col><Col span={12}><Form.Item label="需求部门" required><Select placeholder="请选择需求部门" options={[{ value: '行政部', label: '行政部' }, { value: '信息技术部', label: '信息技术部' }]} /></Form.Item></Col><Col span={12}><Form.Item label="资金来源"><Select placeholder="请选择资金来源" options={[{ value: '年度财政预算', label: '年度财政预算' }, { value: '专项资金', label: '专项资金' }]} /></Form.Item></Col><Col span={12}><Form.Item label="采购预算" required><Input prefix="¥" placeholder="请输入预算金额" /></Form.Item></Col><Col span={12}><Form.Item label="采购数量"><Input placeholder="请输入数量（选填）" /></Form.Item></Col><Col span={12}><Form.Item label="计划完成时间" required><DatePicker style={{ width: '100%' }} /></Form.Item></Col><Col span={12}><Form.Item label="紧急程度"><Radio.Group defaultValue="normal" options={[{ value: 'normal', label: '普通' }, { value: 'urgent', label: '紧急' }, { value: 'critical', label: '特急' }]} /></Form.Item></Col></Row><Form.Item label="采购意向"><Input.TextArea rows={4} placeholder="请描述采购目的、技术要求、期望交付标准等，有助于更精准地推荐采购方式" /></Form.Item><Alert type="info" showIcon message="填写越完整，智能推荐结果越准确" /></Form></Modal>;
-  if (modal === 'recommend') return <Modal open title={<ModalTitle icon={<ThunderboltFilled />} title="智能推荐采购方式" subtitle="基于预算 ¥280,000、品类「办公设备」及 36 个历史项目智能分析" />} width={720} centered onCancel={close} footer={[<Button key="basis" icon={<BookOutlined />}>查看依据</Button>, <Button key="modify" onClick={close}>修改采购方式</Button>, <Button key="confirm" type="primary" icon={<CheckOutlined />} onClick={() => { message.success('项目已创建'); onProjectCreated?.(); close(); go('/procurement/projects/detail'); }}>确认创建项目</Button>]}><div className="recommend-result"><div className="recommend-main"><div><StatusPill tone="blue">推荐采购方式</StatusPill><h2>公开招标</h2><p>预算金额 ≥ ¥200,000，达到公开招标法定限额标准</p></div><strong>96<small>%</small><span>推荐匹配度</span></strong></div><h3>💡 推荐理由</h3><ol><li>采购预算 ¥280,000 超过公开招标限额标准 ¥200,000，依法需采用公开招标方式</li><li>「办公设备」品类市场供应充足，具备 8 家以上潜在合格供应商，竞争充分</li><li>同类历史项目 12 个中，10 个采用公开招标，平均节约成本 8.6%</li></ol><div className="recommend-columns"><div><h3>↻ 历史案例</h3>{['2023年度电脑设备采购', '2023年办公家具集中采购', '2022年服务器采购项目'].map((item) => <p key={item}><strong>{item}</strong><StatusPill tone="green">公开招标 · 节约 9.2%</StatusPill></p>)}</div><div><h3>▣ 制度依据</h3><p>《招标投标法实施条例》<br /><span>第八条 · 公共招标限额标准</span></p><p>《集团采购管理办法》<br /><span>第 12 条 · 采购方式选择</span></p></div></div><h3>☷ 其他可选方式</h3>{['竞争性磋商', '询价采购', '单一来源采购'].map((item, index) => <div className="alternative-method" key={item}><Radio checked={false} /> <strong>{item}</strong><span>匹配度 {68 - index * 16}%</span></div>)}</div></Modal>;
+  const resetNewProject = () => { form.resetFields(); setSelectedMethod(RECOMMENDED_METHOD); setRecommendationValues(undefined); };
+  const cancelNewProject = () => { resetNewProject(); close(); };
+  const openRecommendation = async () => {
+    try {
+      const values = (await form.validateFields()) as NewProjectFormValues;
+      setRecommendationValues(values);
+      setSelectedMethod(RECOMMENDED_METHOD);
+      onOpenModal('recommend');
+    } catch {
+      message.warning('请先补齐项目名称、采购品类、负责人、需求部门、采购预算和计划完成时间');
+    }
+  };
+  const saveDraft = () => {
+    const values = form.getFieldsValue() as Partial<NewProjectFormValues>;
+    if (!values.name?.trim()) {
+      message.warning('请至少填写项目名称后保存草稿');
+      return;
+    }
+    message.success('草稿已保存，可继续完善后智能推荐');
+  };
+  const createProject = async () => {
+    try {
+      const values = recommendationValues || ((await form.validateFields()) as NewProjectFormValues);
+      const project = createProjectDetail(values, selectedMethod);
+      onProjectCreated?.(project);
+      message.success(`项目已创建，采购方式：${selectedMethod}`);
+      resetNewProject();
+      close();
+      go('/procurement/projects/detail?context=new');
+    } catch {
+      message.warning('项目基础信息不完整，请返回补充后再创建');
+    }
+  };
+  if (modal === 'new-project') return (
+    <Modal
+      open
+      title={<ModalTitle icon={<PlusOutlined />} title="新建采购项目" subtitle="填写项目基础信息，系统将智能推荐采购方式" />}
+      width={760}
+      centered
+      onCancel={cancelNewProject}
+      footer={[
+        <Button key="cancel" onClick={cancelNewProject}>取消</Button>,
+        <Button key="draft" onClick={saveDraft}>保存草稿</Button>,
+        <Button key="recommend" type="primary" icon={<ThunderboltFilled />} onClick={openRecommendation}>智能推荐采购方式</Button>,
+      ]}
+    >
+      <Form form={form} layout="vertical" className="modal-form" initialValues={{ type: '货物', urgency: 'normal' }}>
+        <h3 className="form-section-title">项目基础信息</h3>
+        <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
+          <Input placeholder="请输入项目名称，如「2024年度办公设备集中采购」" />
+        </Form.Item>
+        <Form.Item name="type" label="项目类型">
+          <Radio.Group optionType="button" buttonStyle="solid" options={[{ value: '货物', label: '📦 货物' }, { value: '服务', label: '♢ 服务' }, { value: '工程', label: '▣ 工程' }]} />
+        </Form.Item>
+        <Row gutter={16}>
+          <Col span={12}><Form.Item name="category" label="采购品类" rules={[{ required: true, message: '请选择采购品类' }]}><Select placeholder="请选择采购品类" options={[{ value: '办公设备', label: '办公设备' }, { value: '移动终端设备', label: '移动终端设备' }]} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="owner" label="项目负责人" rules={[{ required: true, message: '请选择项目负责人' }]}><Select placeholder="请选择负责人" options={[{ value: '张明', label: '张明' }, { value: '李静', label: '李静' }]} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="department" label="需求部门" rules={[{ required: true, message: '请选择需求部门' }]}><Select placeholder="请选择需求部门" options={[{ value: '行政部', label: '行政部' }, { value: '信息技术部', label: '信息技术部' }]} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="funding" label="资金来源"><Select placeholder="请选择资金来源" options={[{ value: '年度财政预算', label: '年度财政预算' }, { value: '专项资金', label: '专项资金' }]} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="budget" label="采购预算" rules={[{ required: true, message: '请输入采购预算' }, { validator: (_, value) => parseBudget(value) > 0 ? Promise.resolve() : Promise.reject(new Error('请输入有效预算金额')) }]}><Input prefix="¥" placeholder="请输入预算金额" /></Form.Item></Col>
+          <Col span={12}><Form.Item name="quantity" label="采购数量"><Input placeholder="请输入数量（选填）" /></Form.Item></Col>
+          <Col span={12}><Form.Item name="planDate" label="计划完成时间" rules={[{ required: true, message: '请选择计划完成时间' }]}><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="urgency" label="紧急程度"><Radio.Group options={[{ value: 'normal', label: '普通' }, { value: 'urgent', label: '紧急' }, { value: 'critical', label: '特急' }]} /></Form.Item></Col>
+        </Row>
+        <Form.Item name="intention" label="采购意向"><Input.TextArea rows={4} placeholder="请描述采购目的、技术要求、期望交付标准等，有助于更精准地推荐采购方式" /></Form.Item>
+        <Alert type="info" showIcon message="填写越完整，智能推荐结果越准确" />
+      </Form>
+    </Modal>
+  );
+  if (modal === 'recommend') {
+    const budgetText = formatBudget(recommendationValues?.budget || '280000');
+    const categoryText = recommendationValues?.category || '办公设备';
+    return (
+      <Modal
+        open
+        title={<ModalTitle icon={<ThunderboltFilled />} title="智能推荐采购方式" subtitle={`基于预算 ${budgetText}、品类「${categoryText}」及 36 个历史项目智能分析`} />}
+        width={720}
+        centered
+        onCancel={() => { resetNewProject(); close(); }}
+        footer={[
+          <Button key="basis" icon={<BookOutlined />} onClick={() => message.info('推荐依据已根据当前项目基础信息生成')}>查看依据</Button>,
+          <Button key="modify" onClick={() => onOpenModal('new-project')}>修改项目信息</Button>,
+          <Button key="confirm" type="primary" icon={<CheckOutlined />} onClick={createProject}>确认创建项目</Button>,
+        ]}
+      >
+        <div className="recommend-result">
+          <Radio.Group value={selectedMethod} onChange={(event) => setSelectedMethod(event.target.value)} className="recommend-method-group">
+            <div className={`recommend-main ${selectedMethod === RECOMMENDED_METHOD ? 'selected' : ''}`} onClick={() => setSelectedMethod(RECOMMENDED_METHOD)}>
+              <Radio value={RECOMMENDED_METHOD} />
+              <div><StatusPill tone="blue">推荐采购方式</StatusPill><h2>{RECOMMENDED_METHOD}</h2><p>系统结合预算、品类及历史项目分析，推荐匹配度最高的采购方式</p></div>
+              <strong>{PROCUREMENT_METHOD_OPTIONS[0].match}<small>%</small><span>推荐匹配度</span></strong>
+            </div>
+            <h3>💡 推荐理由</h3>
+            <ol><li>采购预算 {budgetText}，系统已结合公开招标限额标准进行合规判断</li><li>「{categoryText}」品类市场供应相对充分，具备多家潜在合格供应商，竞争条件较好</li><li>同类历史项目优先采用规范化竞争方式，便于控制采购风险与综合成本</li></ol>
+            <div className="recommend-columns"><div><h3>↻ 历史案例</h3>{['2023年度电脑设备采购', '2023年办公家具集中采购', '2022年服务器采购项目'].map((item) => <p key={item}><strong>{item}</strong><StatusPill tone="green">公开招标 · 节约 9.2%</StatusPill></p>)}</div><div><h3>▣ 制度依据</h3><p>《招标投标法实施条例》<br /><span>第八条 · 公共招标限额标准</span></p><p>《集团采购管理办法》<br /><span>第 12 条 · 采购方式选择</span></p></div></div>
+            <h3>☷ 其他可选方式</h3>
+            {PROCUREMENT_METHOD_OPTIONS.slice(1).map((option) => <div className={`alternative-method ${selectedMethod === option.value ? 'selected' : ''}`} key={option.value} onClick={() => setSelectedMethod(option.value)}><Radio value={option.value} /><strong>{option.value}</strong><span>匹配度 {option.match}%</span></div>)}
+          </Radio.Group>
+          <Alert className="method-selection-hint" type="info" showIcon message={`当前选择：${selectedMethod}。确认创建后将按该方式进入项目启动阶段。`} />
+        </div>
+      </Modal>
+    );
+  }
   if (modal === 'missing') return <Modal open title={<ModalTitle icon={<WarningFilled />} title="提交失败" subtitle="必备材料不完整，暂时无法提交需求准备，请补充后再提交" />} width={520} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="upload" type="primary" icon={<CloudUploadOutlined />} onClick={() => { onClose(); setTimeout(() => (window as any).__openProcurementModal?.('upload'), 0); }}>立即补充</Button>]}><div className="missing-modal"><Alert type="error" showIcon message="当前缺少 1 项必备材料" /><div className="missing-list"><div><FileProtectOutlined /><strong>项目立项依据</strong><StatusPill tone="red">必备</StatusPill></div></div><div className="other-status"><p><CheckCircleFilled /> 项目立项申请表 <b>已上传</b></p><p><CheckCircleFilled /> 预算审批文件 <b>已上传</b></p><p><LoadingOutlined /> 采购需求说明 <b>待完善（可后补）</b></p></div><p className="muted-text">💡 补充材料后，提交按钮将自动变为可用状态</p></div></Modal>;
   if (modal === 'upload') return <Modal open title={<ModalTitle icon={<CloudUploadOutlined />} title="补充材料" subtitle="上传完成后，材料状态将更新为「已上传」" />} width={620} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="submit" type="primary" icon={<CheckOutlined />} disabled={!uploadReady} onClick={() => { onUploaded?.(); message.success('材料已上传'); close(); }}>确认上传</Button>]}><Form layout="vertical" className="modal-form"><Form.Item label="材料类型" required><Select defaultValue="项目立项依据" options={[{ value: '项目立项依据', label: '项目立项依据 · 必备' }, { value: '其他补充材料', label: '其他补充材料' }]} /></Form.Item><Form.Item label="上传文件" required><Upload.Dragger beforeUpload={() => { setUploadReady(true); return false; }} showUploadList={false}><p className="upload-icon"><UploadOutlined /></p><p>点击上传或拖拽文件到此处</p><span>支持 PDF / Word / Excel / JPG / PNG，单个文件不超过 50 MB</span></Upload.Dragger></Form.Item>{uploadReady && <div className="upload-file-row"><FileTextOutlined /><strong>项目立项依据.pdf</strong><span>1.6 MB · 上传完成</span></div>}<Form.Item label="文件说明"><Input.TextArea rows={3} placeholder="请简要说明本份材料的用途或来源，便于审核人员查阅" /></Form.Item><div className="switch-row"><div><strong>是否设为当前版本</strong><span>开启后，本条材料将替换原有版本作为最新有效版本</span></div><Switch defaultChecked /></div></Form></Modal>;
-  if (modal === 'similar') return <Modal open title={<ModalTitle icon={<HistoryOutlined />} title="相似历史案例" subtitle="基于品类「移动终端设备」与预算 ¥480,000 匹配到 3 个高相似案例" />} width={760} centered onCancel={close} footer={null}><div className="similar-filter"><Space><Button type="primary">全部</Button><Button>货物类</Button><Button>近三年</Button></Space><Button type="link">按相似度排序</Button></div>{['2023 年度移动终端设备采购', '厂区巡检设备采购项目', '手持数据采集终端采购'].map((item, index) => <div className="similar-card" key={item}><div className="similar-head"><h3>{item}</h3><StatusPill tone="green">相似度 {92 - index * 7}%</StatusPill></div><div className="similar-metrics"><span>数量<strong>{100 + index * 50} 台</strong></span><span>成交金额<strong>¥{420 - index * 84},000</strong></span><span>单价区间<strong>¥3,500~¥4,200</strong></span></div><p><b>常见技术参数</b><br />续航 ≥ 10 小时 · IP65 · 支持 4G/5G · 6 英寸屏 · 整机 ≤ 350g</p><p><b>验收方法</b><br />到货抽检 10% + 现场功能测试 + 连续使用 3 天稳定性验证</p><div className="modal-actions"><Button icon={<EyeOutlined />}>查看详情</Button><Button type="primary" icon={<LinkOutlined />} onClick={() => { close(); (window as any).__openProcurementModal?.('reference'); }}>引用案例</Button></div></div>)}<Alert type="info" showIcon message="引用案例时可按需选择「技术参数 / 验收方式 / 交付要求 / 商务要求」四类内容" /></Modal>;
+  if (modal === 'similar') {
+    const similarCases = [
+      { title: '2023 年度移动终端设备采购', type: 'goods', recent: true, score: 92, quantity: '100 台', amount: '¥420,000' },
+      { title: '厂区巡检设备采购项目', type: 'goods', recent: true, score: 85, quantity: '150 台', amount: '¥336,000' },
+      { title: '手持数据采集终端采购', type: 'recent', recent: false, score: 78, quantity: '200 台', amount: '¥252,000' },
+    ];
+    const visibleCases = similarCases.filter((item) => similarFilter === 'all' || (similarFilter === 'goods' && item.type === 'goods') || (similarFilter === 'recent' && item.recent)).sort((a, b) => similarSorted ? b.score - a.score : 0);
+    return <Modal open title={<ModalTitle icon={<HistoryOutlined />} title="相似历史案例" subtitle="基于品类「移动终端设备」与预算 ¥480,000 匹配到 3 个高相似案例" />} width={760} centered onCancel={close} footer={null}><div className="similar-filter"><Space><Button type={similarFilter === 'all' ? 'primary' : 'default'} onClick={() => setSimilarFilter('all')}>全部</Button><Button type={similarFilter === 'goods' ? 'primary' : 'default'} onClick={() => setSimilarFilter('goods')}>货物类</Button><Button type={similarFilter === 'recent' ? 'primary' : 'default'} onClick={() => setSimilarFilter('recent')}>近三年</Button></Space><Button type="link" onClick={() => setSimilarSorted((sorted) => !sorted)}>{similarSorted ? '按默认顺序' : '按相似度排序'}</Button></div>{visibleCases.map((item) => <div className="similar-card" key={item.title}><div className="similar-head"><h3>{item.title}</h3><StatusPill tone="green">相似度 {item.score}%</StatusPill></div><div className="similar-metrics"><span>数量<strong>{item.quantity}</strong></span><span>成交金额<strong>{item.amount}</strong></span><span>单价区间<strong>¥3,500~¥4,200</strong></span></div><p><b>常见技术参数</b><br />续航 ≥ 10 小时 · IP65 · 支持 4G/5G · 6 英寸屏 · 整机 ≤ 350g</p><p><b>验收方法</b><br />到货抽检 10% + 现场功能测试 + 连续使用 3 天稳定性验证</p><div className="modal-actions"><Button icon={<EyeOutlined />} onClick={() => message.info(`已打开“${item.title}”详情`)}>查看详情</Button><Button type="primary" icon={<LinkOutlined />} onClick={() => { close(); (window as any).__openProcurementModal?.('reference'); }}>引用案例</Button></div></div>)}{visibleCases.length === 0 && <Empty description="暂无符合筛选条件的案例" />}<Alert type="info" showIcon message="引用案例时可按需选择「技术参数 / 验收方式 / 交付要求 / 商务要求」四类内容" /></Modal>;
+  }
   if (modal === 'reference') return <Modal open title={<ModalTitle icon={<LinkOutlined />} title="引用案例内容" subtitle="来源：2023 年度移动终端设备采购 · 相似度 92%" />} width={600} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="confirm" type="primary" onClick={() => { message.success(`已引用 ${selectedReferences.length} 项内容`); close(); }}>确认引用</Button>]}><p>请选择需要引用到当前需求文档的内容（可多选）</p>{['技术参数', '验收方式', '交付要求', '商务要求'].map((item, index) => <div className={`reference-option ${selectedReferences.includes(item) ? 'selected' : ''}`} key={item} onClick={() => setSelectedReferences((items) => items.includes(item) ? items.filter((value) => value !== item) : [...items, item])}><Checkbox checked={selectedReferences.includes(item)} /><div><strong>{item}</strong>{index < 2 && <StatusPill tone="blue">推荐引用</StatusPill>}<span>{index === 0 ? '续航 ≥ 10 小时 · IP65 · 支持 4G/5G · 6 英寸屏 · 整机 ≤ 350g' : index === 1 ? '到货抽检 10% + 现场功能测试 + 连续使用 3 天稳定性验证' : index === 2 ? '合同签订后 45 日内到货，供货方负责运输及上楼搬运' : '质保 3 年 · 验收合格后 30 日内支付 90%'}</span></div></div>)}<Alert type="info" showIcon message="引用后内容将自动写入对应字段，你仍可继续编辑修改；系统会保留引用来源标记便于追溯。" /></Modal>;
   if (modal === 'ignore') return <Modal open title={<ModalTitle icon={<EllipsisOutlined />} title="忽略该问题" subtitle="忽略后需填写人工处理意见，便于留痕审计" />} width={540} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="confirm" type="primary" danger onClick={() => { if (!ignoreReason.trim()) { message.warning('请先填写处理意见'); return; } message.success('问题已标记为人工保留'); close(); }}>确认忽略</Button>]}><div className="ignore-problem"><Alert type="error" message="品牌倾向 · 高风险" description="“要求采用华为、联想等同档次品牌产品”" showIcon /><Form.Item label="人工处理意见" required><Input.TextArea rows={4} value={ignoreReason} onChange={(event) => setIgnoreReason(event.target.value)} placeholder="请说明忽略该问题的原因，例如已与需求部门确认、属于历史沿用配置等" /></Form.Item>{['已与需求部门线下沟通确认，该表述沿用历史配置', '现有系统兼容性要求，经使用部门审批同意保留', '已在采购方式说明中另行说明，本处不重复修改'].map((item) => <Button block type="text" className="suggestion-button" key={item} onClick={() => setIgnoreReason(item)}><PlusOutlined /> {item}</Button>)}<Alert type="warning" showIcon message="忽略后该问题将标记为「人工保留」，不纳入已处理统计，重新检查时仍会提示。" /></div></Modal>;
-  if (modal === 'template') return <Modal open title={<ModalTitle icon={<DiffOutlined />} title="从模板生成采购文件" subtitle="系统已根据项目信息自动匹配推荐模板" />} width={620} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="create" type="primary" icon={<DiffOutlined />} onClick={() => { message.success('正在生成采购文件'); close(); }}>生成采购文件</Button>]}><div className="template-detection"><strong>✣ 系统自动识别</strong><div><span>采购类型 <b>▣ 货物</b></span><span>采购方式 <b>♙ 公开招标</b></span></div></div><h3>推荐模板</h3>{['《货物类公开招标标准采购文件》', '《集团通用采购文件模板》'].map((item, index) => <div className={`template-option ${index === 0 ? 'selected' : ''}`} key={item}><Radio checked={index === 0} /><FileTextOutlined /><div><strong>{item}</strong><span>{index === 0 ? '2024 版 · 含 8 个标准章节 · 集团法务审定' : '适用于各类采购方式 · 6 个通用章节'}</span></div>{index === 0 && <StatusPill tone="green">推荐</StatusPill>}</div>)}<h3>自动带入内容 <Checkbox defaultChecked>全选</Checkbox></h3><div className="content-check-grid">{['项目名称', '预算金额', '技术要求', '商务要求', '交付安排', '验收标准'].map((item) => <Checkbox defaultChecked key={item}>{item}</Checkbox>)}</div><Alert type="info" showIcon message="生成后将覆盖当前文档草稿内容，您可随时通过「版本记录」恢复到历史版本。" /></Modal>;
+  if (modal === 'template') {
+    const templateNames = [`《${project.type}类${project.method}标准采购文件》`, '《集团通用采购文件模板》'];
+    return <Modal open title={<ModalTitle icon={<DiffOutlined />} title="从模板生成采购文件" subtitle={`系统已根据「${project.name}」的项目信息自动匹配推荐模板`} />} width={620} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="create" type="primary" icon={<DiffOutlined />} onClick={() => { message.success(`已按${templateNames[selectedTemplate]}生成采购文件`); close(); }}>生成采购文件</Button>]}><div className="template-detection"><strong>✣ 系统自动识别</strong><div><span>采购类型 <b>▣ {project.type}类</b></span><span>采购方式 <b>♙ {project.method}</b></span></div></div><h3>推荐模板</h3>{templateNames.map((item, index) => <div className={`template-option ${selectedTemplate === index ? 'selected' : ''}`} key={item} onClick={() => setSelectedTemplate(index)}><Radio checked={selectedTemplate === index} /><FileTextOutlined /><div><strong>{item}</strong><span>{index === 0 ? '2024 版 · 含 8 个标准章节 · 集团法务审定' : '适用于各类采购方式 · 6 个通用章节'}</span></div>{index === 0 && <StatusPill tone="green">推荐</StatusPill>}</div>)}<h3>自动带入内容 <Checkbox defaultChecked>全选</Checkbox></h3><div className="content-check-grid">{['项目名称', '预算金额', '技术要求', '商务要求', '交付安排', '验收标准'].map((item) => <Checkbox defaultChecked key={item}>{item}</Checkbox>)}</div><Alert type="info" showIcon message="生成后将覆盖当前文档草稿内容，您可随时通过「版本记录」恢复到历史版本。" /></Modal>;
+  }
   if (modal === 'add-company') return <Modal open title={<ModalTitle icon={<BankOutlined />} title="添加候选企业" subtitle="录入企业信息并选择核查范围" />} width={600} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="confirm" type="primary" onClick={() => { message.success('候选企业已添加'); close(); }}>确认添加</Button>]}><Form layout="vertical" className="modal-form"><Form.Item label="企业名称" required><Input prefix={<SearchOutlined />} defaultValue="华科智能设备有限公司" /></Form.Item><div className="company-suggestion"><CheckCircleFilled /> <strong>华科智能设备有限公司</strong><span>91440300MA5F8K2X3D</span></div><Row gutter={16}><Col span={12}><Form.Item label="统一社会信用代码"><Input defaultValue="91440300MA5F8K2X3D" /></Form.Item></Col><Col span={12}><Form.Item label="企业类型"><Select defaultValue="有限责任公司" options={[{ value: '有限责任公司', label: '有限责任公司' }, { value: '股份有限公司', label: '股份有限公司' }]} /></Form.Item></Col></Row><Form.Item label="核查范围" required><div className="check-grid">{['企业信息', '信用风险', '经营异常', '司法风险', '关联企业', '关联人员', '供应商关系'].map((item) => <Checkbox defaultChecked key={item}>{item}</Checkbox>)}</div></Form.Item><Alert type="info" showIcon message="进入联合核查时，系统会自动识别候选企业之间的关联关系，无需单独设置。" /></Form></Modal>;
-  if (modal === 'risk-node') return <Modal open title={<ModalTitle icon={<UserOutlined />} title="人员节点详情" subtitle="来自企业关系图谱 · 交叉任职线索" />} width={520} centered onCancel={close} footer={[<Button key="report">加入核查报告</Button>, <Button key="close" type="primary" onClick={close}>关闭</Button>]}><div className="person-card"><Avatar size={48}>张</Avatar><div><h3>张伟 <StatusPill tone="orange">交叉任职</StatusPill></h3><span>在两家中标候选企业关联主体中担任职务</span></div></div><DescriptionsList items={[['职位', '董事（华科智能） · 监事（恒远科技）'], ['任职企业', '华科智能设备有限公司、恒远科技有限公司'], ['数据来源', '工商公示信息　第三方关联库（异常）'], ['查询时间', '2024-06-15 10:22:36']]} /><h3>关联路径</h3><div className="path-chips"><span>华科智能设备</span><ArrowRightOutlined /><span>张伟</span><ArrowRightOutlined /><span>恒远科技</span><br /><span>恒远科技</span><ArrowRightOutlined /><span>张伟</span><ArrowRightOutlined /><span>中联数字科技</span></div><Alert type="warning" showIcon message="该节点的关联关系部分来自第三方关联库，当前数据源不可用，结果可能不完整。" /></Modal>;
+  if (modal === 'risk-node') return <Modal open title={<ModalTitle icon={<UserOutlined />} title="人员节点详情" subtitle="来自企业关系图谱 · 交叉任职线索" />} width={520} centered onCancel={close} footer={[<Button key="report" onClick={() => { message.success('该线索已加入核查报告'); close(); }}>加入核查报告</Button>, <Button key="close" type="primary" onClick={close}>关闭</Button>]}><div className="person-card"><Avatar size={48}>张</Avatar><div><h3>张伟 <StatusPill tone="orange">交叉任职</StatusPill></h3><span>在两家中标候选企业关联主体中担任职务</span></div></div><DescriptionsList items={[['职位', '董事（华科智能） · 监事（恒远科技）'], ['任职企业', '华科智能设备有限公司、恒远科技有限公司'], ['数据来源', '工商公示信息　第三方关联库（异常）'], ['查询时间', '2024-06-15 10:22:36']]} /><h3>关联路径</h3><div className="path-chips"><span>华科智能设备</span><ArrowRightOutlined /><span>张伟</span><ArrowRightOutlined /><span>恒远科技</span><br /><span>恒远科技</span><ArrowRightOutlined /><span>张伟</span><ArrowRightOutlined /><span>中联数字科技</span></div><Alert type="warning" showIcon message="该节点的关联关系部分来自第三方关联库，当前数据源不可用，结果可能不完整。" /></Modal>;
   if (modal === 'warning') return <Modal open title={<ModalTitle icon={<ToolOutlined />} title="处理履约预警" subtitle="设备到货 · 即将超期 · 计划日期 2024-08-20" />} width={680} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="confirm" type="primary" danger onClick={() => { message.success('预警处理已提交'); close(); }}>确认处理</Button>]}><Form layout="vertical" className="modal-form"><Alert type="warning" message="设备到货 — 即将超期（剩余 3 天）" /><Row gutter={16}><Col span={12}><Form.Item label="当前责任人"><Select defaultValue="李强（供应商）" options={[{ value: '李强（供应商）', label: '李强（供应商）' }, { value: '张明（采购）', label: '张明（采购）' }]} /></Form.Item></Col><Col span={12}><Form.Item label="新计划日期"><DatePicker style={{ width: '100%' }} placeholder="请选择日期" /></Form.Item></Col></Row><Form.Item label="处理方式" required><Radio.Group className="radio-grid" defaultValue="urge" options={[{ value: 'urge', label: '🔔 催办' }, { value: 'reschedule', label: '▣ 调整计划' }, { value: 'upload', label: '☁ 已完成未上传材料' }, { value: 'other', label: '··· 其他' }]} /></Form.Item><Form.Item label="处理说明" required><Input.TextArea rows={4} placeholder="请说明处理措施与后续跟进安排，例如已电话催办供应商、要求其于 3 日内发货并回传物流单号" /></Form.Item><Form.Item label="附件"><Upload><Button icon={<PaperClipOutlined />}>选择文件</Button></Upload></Form.Item><Alert type="info" showIcon message="处理记录将留痕，可在履约台账中查看" /></Form></Modal>;
-  if (modal === 'version') return <Modal open title={<ModalTitle icon={<DiffOutlined />} title="查看前后版本" subtitle="采购文件 · V1.2 → V1.3 · 操作人：张明 · 2024-06-05 16:40" />} width={860} centered onCancel={close} footer={[<Button key="download" icon={<DownloadOutlined />}>下载对比</Button>, <Button key="close" onClick={close}>关闭</Button>, <Button key="restore" type="primary" onClick={() => { message.success('已恢复到此版本'); close(); }}>恢复到此版本</Button>]}><div className="version-summary"><span>↔ 共 3 处变更</span><span className="green-text">● 新增 1</span><span className="orange-text">● 修改 2</span><span className="red-text">● 删除 0</span></div><div className="version-grid"><div><h3>V1.2（修改前）</h3><div className="version-change red"><strong>新增　第四章 评分标准</strong><p>（本章节缺失，无内容）</p></div><div className="version-change orange"><strong>修改　技术要求·品牌表述</strong><p>要求采用华为、联想等同档次品牌产品</p></div><div className="version-change orange"><strong>修改　第四章 验收要求·续航检测项</strong><p>全数设备进行开机功能测试</p></div></div><div><h3>V1.3（修改后）</h3><div className="version-change green"><strong>技术分 60 分、商务分 20 分、价格分 20 分</strong><p>技术分含续航、防护等级、接口兼容性等指标。</p></div><div className="version-change green"><strong>采用同等性能的通用配置，需提供第三方检测报告佐证指标</strong></div><div className="version-change green"><strong>全数开机功能测试，并补充续航实测（抽检 5 台，连续巡检模式不少于 12 小时）</strong></div></div></div><Alert type="info" showIcon message="版本记录支持回溯查看与一键恢复，恢复操作将生成新的版本记录并保留完整历史。" /></Modal>;
-  return <Modal open title={<ModalTitle icon={<ThunderboltFilled />} title="查看 AI 记录" subtitle="2024-05-18 10:12 · 模型：智采云需求合规检查 v2.3 · 耗时 2.3 秒" />} width={680} centered onCancel={close} footer={[<Button key="export" icon={<DownloadOutlined />}>导出 AI 记录</Button>, <Button key="close" type="primary" onClick={close}>关闭</Button>]}><div className="ai-stats"><MetricCard icon={<WarningFilled />} value="2" label="高风险" accent="red" /><MetricCard icon={<WarningFilled />} value="2" label="中风险" accent="orange" /><MetricCard icon={<CheckCircleFilled />} value="3" label="已处理" accent="green" /><MetricCard icon={<EllipsisOutlined />} value="1" label="人工保留" accent="purple" /></div><div className="ai-output"><strong>🤖 AI 原始输出摘要</strong><p>已比对 12 项制度与 36 个历史项目。检出 4 项 altos 风险：①品牌倾向性表述 ②供应商业绩门槛显著高于项目规模 ③技术要求与验收标准不一致 ④缺少安装调试完成时间节点。建议优先处理高风险项。</p></div><h3>☷ 处理明细</h3>{auditProblems.map((item, index) => <div className={`ai-record-row ${index === 3 ? 'retained' : 'handled'}`} key={item.title}><CheckCircleFilled /> <strong>{item.title}</strong><StatusPill tone={index === 3 ? 'orange' : 'green'}>{index === 3 ? '人工保留' : index === 1 ? '人工修改' : '采纳建议'}</StatusPill><span>张明 10:{48 + index}</span></div>)}<div className="manual-opinion"><strong>人工处理意见（第 4 项）</strong><p>安装调试时间已在使用部门需求确认单中明确（到货后 10 个工作日内），本处维持原表述，提交时随附件一并说明。</p></div></Modal>;
+  if (modal === 'version') return <Modal open title={<ModalTitle icon={<DiffOutlined />} title="查看前后版本" subtitle="采购文件 · V1.2 → V1.3 · 操作人：张明 · 2024-06-05 16:40" />} width={860} centered onCancel={close} footer={[<Button key="download" icon={<DownloadOutlined />} onClick={() => message.success('版本对比文件已生成，正在下载')}>下载对比</Button>, <Button key="close" onClick={close}>关闭</Button>, <Button key="restore" type="primary" onClick={() => { message.success('已恢复到此版本'); close(); }}>恢复到此版本</Button>]}><div className="version-summary"><span>↔ 共 3 处变更</span><span className="green-text">● 新增 1</span><span className="orange-text">● 修改 2</span><span className="red-text">● 删除 0</span></div><div className="version-grid"><div><h3>V1.2（修改前）</h3><div className="version-change red"><strong>新增　第四章 评分标准</strong><p>（本章节缺失，无内容）</p></div><div className="version-change orange"><strong>修改　技术要求·品牌表述</strong><p>要求采用华为、联想等同档次品牌产品</p></div><div className="version-change orange"><strong>修改　第四章 验收要求·续航检测项</strong><p>全数设备进行开机功能测试</p></div></div><div><h3>V1.3（修改后）</h3><div className="version-change green"><strong>技术分 60 分、商务分 20 分、价格分 20 分</strong><p>技术分含续航、防护等级、接口兼容性等指标。</p></div><div className="version-change green"><strong>采用同等性能的通用配置，需提供第三方检测报告佐证指标</strong></div><div className="version-change green"><strong>全数开机功能测试，并补充续航实测（抽检 5 台，连续巡检模式不少于 12 小时）</strong></div></div></div><Alert type="info" showIcon message="版本记录支持回溯查看与一键恢复，恢复操作将生成新的版本记录并保留完整历史。" /></Modal>;
+  return <Modal open title={<ModalTitle icon={<ThunderboltFilled />} title="查看 AI 记录" subtitle="2024-05-18 10:12 · 模型：智采云需求合规检查 v2.3 · 耗时 2.3 秒" />} width={680} centered onCancel={close} footer={[<Button key="export" icon={<DownloadOutlined />} onClick={() => message.success('AI 检查记录已导出')}>导出 AI 记录</Button>, <Button key="close" type="primary" onClick={close}>关闭</Button>]}><div className="ai-stats"><MetricCard icon={<WarningFilled />} value="2" label="高风险" accent="red" /><MetricCard icon={<WarningFilled />} value="2" label="中风险" accent="orange" /><MetricCard icon={<CheckCircleFilled />} value="3" label="已处理" accent="green" /><MetricCard icon={<EllipsisOutlined />} value="1" label="人工保留" accent="purple" /></div><div className="ai-output"><strong>🤖 AI 原始输出摘要</strong><p>已比对 12 项制度与 36 个历史项目。检出 4 项高风险：①品牌倾向性表述 ②供应商业绩门槛显著高于项目规模 ③技术要求与验收标准不一致 ④缺少安装调试完成时间节点。建议优先处理高风险项。</p></div><h3>☷ 处理明细</h3>{auditProblems.map((item, index) => <div className={`ai-record-row ${index === 3 ? 'retained' : 'handled'}`} key={item.title}><CheckCircleFilled /> <strong>{item.title}</strong><StatusPill tone={index === 3 ? 'orange' : 'green'}>{index === 3 ? '人工保留' : index === 1 ? '人工修改' : '采纳建议'}</StatusPill><span>张明 10:{48 + index}</span></div>)}<div className="manual-opinion"><strong>人工处理意见（第 4 项）</strong><p>安装调试时间已在使用部门需求确认单中明确（到货后 10 个工作日内），本处维持原表述，提交时随附件一并说明。</p></div></Modal>;
 }
 
 function ModalTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) { return <div className="modal-title"><div className="modal-title-icon">{icon}</div><div><strong>{title}</strong>{subtitle && <span>{subtitle}</span>}</div></div>; }
 
 function ProcurementPortal() {
   const location = useLocation();
+  const routeContextKey = getProjectContextKey(location.search);
+  const initialContext = getRuntimeContext(routeContextKey);
   const [modal, setModal] = useState<ModalKey>(null);
-  const [workflow, setWorkflow] = useState<ProjectWorkflow>({ currentStage: 2, completedStages: [0, 1], materialsReady: false });
-  const startNewProject = () => {
-    setWorkflow({ currentStage: 0, completedStages: [], materialsReady: false });
+  const [contextKey, setContextKey] = useState<ProjectContextKey>(routeContextKey);
+  const [project, setProject] = useState<ProjectDetailData>(() => initialContext.project);
+  const [projects, setProjects] = useState<Project[]>(() => procurementRuntime.projects);
+  const [workflow, setWorkflow] = useState<ProjectWorkflow>(() => initialContext.workflow);
+  const startNewProject = (createdProject: ProjectDetailData) => {
+    const nextProjects: Project[] = [{
+      id: createdProject.id,
+      name: createdProject.name,
+      category: `${createdProject.type}类`,
+      budget: createdProject.budget,
+      stage: '项目启动',
+      progress: 0,
+      color: '#2f66eb',
+      unit: createdProject.department,
+      status: '进行中',
+    }, ...procurementRuntime.projects.filter((item) => item.id !== createdProject.id)];
+    const nextWorkflow: ProjectWorkflow = { currentStage: 0, completedStages: [], materialsReady: false };
+    procurementRuntime = {
+      ...procurementRuntime,
+      projects: nextProjects,
+      newContext: { project: createdProject, workflow: nextWorkflow },
+    };
+    activeProjectContextKey = 'new';
+    setProject(createdProject);
+    setProjects(nextProjects);
+    setWorkflow(nextWorkflow);
   };
   const markMaterialsReady = () => {
-    setWorkflow((current) => ({ ...current, materialsReady: true }));
+    const currentContext = getRuntimeContext(contextKey);
+    const nextWorkflow = { ...currentContext.workflow, materialsReady: true };
+    const nextContext = { ...currentContext, workflow: nextWorkflow };
+    procurementRuntime = contextKey === 'new'
+      ? { ...procurementRuntime, newContext: nextContext }
+      : { ...procurementRuntime, defaultContext: nextContext };
+    setWorkflow(nextWorkflow);
   };
   const completeStage = (stageIndex = workflow.currentStage) => {
-    if (stageIndex !== workflow.currentStage) {
-      message.info(`请先完成“${workflowStages[workflow.currentStage].title}”`);
+    const currentContext = getRuntimeContext(contextKey);
+    const currentWorkflow = currentContext.workflow;
+    if (stageIndex !== currentWorkflow.currentStage) {
+      message.info(`请先完成“${workflowStages[currentWorkflow.currentStage].title}”`);
       return false;
     }
-    if (stageIndex === 2 && !workflow.materialsReady) {
+    if (stageIndex === 2 && !currentWorkflow.materialsReady) {
       message.warning('请先补充项目立项依据，再提交文件形成阶段');
       return false;
     }
-    setWorkflow((current) => ({
-      ...current,
-      completedStages: current.completedStages.includes(stageIndex) ? current.completedStages : [...current.completedStages, stageIndex],
+    const nextWorkflow = {
+      ...currentWorkflow,
+      completedStages: currentWorkflow.completedStages.includes(stageIndex) ? currentWorkflow.completedStages : [...currentWorkflow.completedStages, stageIndex],
       currentStage: Math.min(stageIndex + 1, workflowStages.length - 1),
-    }));
+    };
+    const nextContext = { ...currentContext, workflow: nextWorkflow };
+    procurementRuntime = contextKey === 'new'
+      ? { ...procurementRuntime, newContext: nextContext }
+      : { ...procurementRuntime, defaultContext: nextContext };
+    setWorkflow(nextWorkflow);
     message.success(stageIndex === workflowStages.length - 1 ? '项目流程已全部完成' : `${workflowStages[stageIndex].title}已完成，已进入${workflowStages[stageIndex + 1].title}`);
     return true;
   };
-  const workflowContextValue = { workflow, markMaterialsReady, completeStage };
+  const workflowContextValue = { workflow, project, markMaterialsReady, completeStage };
   useEffect(() => {
     document.body.classList.add('procurement-mode');
     (window as any).__openProcurementModal = setModal;
     return () => { document.body.classList.remove('procurement-mode'); delete (window as any).__openProcurementModal; };
   }, []);
+  useEffect(() => {
+    activeProjectContextKey = contextKey;
+  }, [contextKey]);
+  useEffect(() => {
+    if (routeContextKey === contextKey) return;
+    const nextContext = getRuntimeContext(routeContextKey);
+    activeProjectContextKey = routeContextKey;
+    setContextKey(routeContextKey);
+    setProject(nextContext.project);
+    setProjects(procurementRuntime.projects);
+    setWorkflow(nextContext.workflow);
+  }, [contextKey, routeContextKey]);
   const view = location.pathname;
   const acceptanceView = view.endsWith('/result') ? 'result' : view.endsWith('/report') ? 'report' : view.endsWith('/evaluation') ? 'evaluation' : 'form';
   const showProjectFlowBar = ['/procurement/requirements', '/procurement/documents', '/procurement/suppliers', '/procurement/suppliers/risk', '/procurement/contracts', '/procurement/contracts/fulfillment', '/procurement/acceptance', '/procurement/acceptance/result', '/procurement/acceptance/report', '/procurement/acceptance/evaluation', '/procurement/records'].includes(view);
   const content = view === '/platform-overview' ? <PlatformOverviewPage />
     : view === '/platform-models' ? <ModelServicesPage />
-    : view === '/procurement' || view === '/procurement/' ? <Workbench onOpenModal={setModal} />
-    : view === '/procurement/projects' ? <ProjectsPage onOpenModal={setModal} />
-      : view === '/procurement/projects/detail' ? <ProjectDetail onOpenModal={setModal} />
+    : view === '/procurement' || view === '/procurement/' ? <Workbench onOpenModal={setModal} projects={projects} />
+    : view === '/procurement/projects' ? <ProjectsPage onOpenModal={setModal} projects={projects} />
+    : view === '/procurement/projects/detail' ? (routeContextKey === 'new' ? <ProjectInitialStatePage onOpenModal={setModal} /> : <ProjectDetail />)
         : view === '/procurement/requirements' ? <RequirementPage onOpenModal={setModal} onCompleteStage={() => completeStage(1)} />
           : view === '/procurement/documents' ? <DocumentsPage onOpenModal={setModal} onCompleteStage={() => completeStage(2)} />
             : view === '/procurement/contracts' ? <ContractsPage onCompleteStage={() => completeStage(4)} />
@@ -944,7 +1544,7 @@ function ProcurementPortal() {
                       : view === '/procurement/records' ? <RecordsPage onOpenModal={setModal} onCompleteStage={() => completeStage(6)} />
                         : view === '/procurement/roles' ? <RolesPage />
                           : <ReportsPage />;
-  return <ProjectWorkflowContext.Provider value={workflowContextValue}><div className="procurement-page">{showProjectFlowBar && <ProjectFlowBar />}{content}<ProcurementModal modal={modal} onClose={() => setModal(null)} onUploaded={markMaterialsReady} onProjectCreated={startNewProject} /></div></ProjectWorkflowContext.Provider>;
+  return <ProjectWorkflowContext.Provider value={workflowContextValue}><div className="procurement-page">{showProjectFlowBar && <ProjectFlowBar />}{content}<ProcurementModal modal={modal} onClose={() => setModal(null)} onOpenModal={setModal} onUploaded={markMaterialsReady} onProjectCreated={startNewProject} /></div></ProjectWorkflowContext.Provider>;
 }
 
 export default ProcurementPortal;

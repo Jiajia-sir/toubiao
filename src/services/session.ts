@@ -80,6 +80,33 @@ const componentSegmentAliasMap: Record<string, string> = {
   Operatelog: 'Operlog',
 };
 
+const LOCAL_AGENT_CHILDREN = [
+  {
+    path: '/ai-agent/agents',
+    name: '智能体管理',
+    icon: createIcon('RobotOutlined'),
+    component: 'AiAgent/Agents',
+    hideInMenu: false,
+    meta: { title: '智能体管理', icon: 'RobotOutlined' },
+  },
+  {
+    path: '/ai-agent/workflow',
+    name: '工作流编排',
+    icon: createIcon('BranchesOutlined'),
+    component: 'AiAgent/Workflow',
+    hideInMenu: false,
+    meta: { title: '工作流编排', icon: 'BranchesOutlined' },
+  },
+  {
+    path: '/ai-agent/skills',
+    name: 'Skills / MCP 管理',
+    icon: createIcon('ToolOutlined'),
+    component: 'AiAgent/Skills',
+    hideInMenu: false,
+    meta: { title: 'Skills / MCP 管理', icon: 'ToolOutlined' },
+  },
+];
+
 const LOCAL_PROJECT_MENUS = [
   {
     path: '/procurement-cockpit',
@@ -90,6 +117,18 @@ const LOCAL_PROJECT_MENUS = [
     hideChildrenInMenu: false,
     flatMenu: false,
     meta: { title: '采购运行态势', icon: 'dashboard' },
+  },
+  {
+    path: '/ai-agent',
+    name: '智能体',
+    icon: createIcon('RobotOutlined'),
+    hideInMenu: false,
+    hideChildrenInMenu: false,
+    flatMenu: false,
+    // ProLayout 菜单渲染读取 children，动态路由补丁读取 routes，两者都保留。
+    children: LOCAL_AGENT_CHILDREN,
+    routes: LOCAL_AGENT_CHILDREN,
+    meta: { title: '智能体', icon: 'RobotOutlined' },
   },
   {
     path: '/procurement',
@@ -165,6 +204,10 @@ const LOCAL_PROJECT_MENUS = [
 
 const LOCAL_PROJECT_MENU_PATHS = [
   '/procurement-cockpit',
+  '/ai-agent',
+  '/ai-agent/agents',
+  '/ai-agent/workflow',
+  '/ai-agent/skills',
   '/procurement',
   '/procurement/projects',
   '/procurement/requirements',

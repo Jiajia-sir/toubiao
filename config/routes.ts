@@ -39,6 +39,31 @@ export default [
     component: './ProcurementCockpit',
   },
   {
+    name: '智能体',
+    icon: 'robot',
+    path: '/ai-agent',
+    routes: [
+      {
+        name: '智能体管理',
+        icon: 'robot',
+        path: '/ai-agent/agents',
+        component: './AiAgent/Agents',
+      },
+      {
+        name: '工作流编排',
+        icon: 'branches',
+        path: '/ai-agent/workflow',
+        component: './AiAgent/Workflow',
+      },
+      {
+        name: 'Skills / MCP 管理',
+        icon: 'tool',
+        path: '/ai-agent/skills',
+        component: './AiAgent/Skills',
+      },
+    ],
+  },
+  {
     name: '工作台',
     icon: 'appstore',
     path: '/procurement',
