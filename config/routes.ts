@@ -70,6 +70,18 @@ export default [
     component: './ProcurementPortal',
   },
   {
+    name: 'AI 政策助手',
+    icon: 'robot',
+    path: '/procurement/policy-assistant',
+    component: './ProcurementPortal',
+  },
+  {
+    name: '采购法规知识库',
+    icon: 'book',
+    path: '/procurement/knowledge-base',
+    component: './ProcurementPortal',
+  },
+  {
     name: '项目管理',
     icon: 'project',
     path: '/procurement/projects',
@@ -88,8 +100,26 @@ export default [
     component: './ProcurementPortal',
   },
   {
+    name: '需求智能审核',
+    path: '/procurement/requirements/review',
+    component: './ProcurementPortal',
+    hideInMenu: true,
+  },
+  {
     name: '采购文件',
     path: '/procurement/documents',
+    component: './ProcurementPortal',
+    hideInMenu: true,
+  },
+  {
+    name: '文件门控',
+    path: '/procurement/documents/gate',
+    component: './ProcurementPortal',
+    hideInMenu: true,
+  },
+  {
+    name: '采购文件拟制',
+    path: '/procurement/documents/draft',
     component: './ProcurementPortal',
     hideInMenu: true,
   },
@@ -110,6 +140,12 @@ export default [
     icon: 'file-done',
     path: '/procurement/contracts',
     component: './ProcurementPortal',
+  },
+  {
+    name: '合同建议方案',
+    path: '/procurement/contracts/proposal',
+    component: './ProcurementPortal',
+    hideInMenu: true,
   },
   {
     name: '合同履约管理',

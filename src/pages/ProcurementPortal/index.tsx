@@ -80,6 +80,7 @@ import {
   UserOutlined,
   WarningFilled,
 } from '@ant-design/icons';
+import DocumentFilePreview from '@/components/DocumentFilePreview';
 import './index.less';
 
 type ModalKey =
@@ -91,7 +92,6 @@ type ModalKey =
   | 'similar'
   | 'reference'
   | 'ignore'
-  | 'template'
   | 'add-company'
   | 'risk-node'
   | 'warning'
@@ -406,6 +406,284 @@ type ProjectWorkflow = {
   materialsReady: boolean;
 };
 
+type LegalWorkflowNode = {
+  key: string;
+  title: string;
+  stageIndex: number;
+  route: string;
+  legalName: string;
+  clause: string;
+  gate: string;
+  owner: string;
+  requiredFiles: string[];
+  optionalFiles: string[];
+};
+
+const legalWorkflowNodes: LegalWorkflowNode[] = [
+  {
+    key: 'project-initiation',
+    title: '立项资料核验',
+    stageIndex: 0,
+    route: '/procurement/projects/detail',
+    legalName: '政府采购需求管理办法',
+    clause: '第十一条',
+    gate: '项目名称、采购单位、预算与负责人已确认',
+    owner: '采购人员',
+    requiredFiles: ['项目立项申请表.pdf', '预算审批文件.pdf', '项目立项依据.pdf'],
+    optionalFiles: ['资金来源说明.xlsx'],
+  },
+  {
+    key: 'requirement-confirmation',
+    title: '需求方案定稿',
+    stageIndex: 1,
+    route: '/procurement/requirements',
+    legalName: '政府采购需求管理办法',
+    clause: '第十二条、第十三条',
+    gate: '采购意向已结构化，需求要素完整且通过 AI 合规检查',
+    owner: '需求部门 / 采购人员',
+    requiredFiles: ['采购需求说明.docx', '技术参数与验收标准.xlsx'],
+    optionalFiles: ['市场调研记录.pdf', '历史相似项目对比.xlsx'],
+  },
+  {
+    key: 'document-drafting',
+    title: '采购文件起草',
+    stageIndex: 2,
+    route: '/procurement/documents/draft',
+    legalName: '政府采购货物和服务招标投标管理办法',
+    clause: '第十五条',
+    gate: '需求审核通过，标准模板与采购方式匹配',
+    owner: '采购人员',
+    requiredFiles: ['采购文件初稿.docx', '评分标准.xlsx'],
+    optionalFiles: ['采购文件模板.docx'],
+  },
+  {
+    key: 'document-review',
+    title: '采购文件合规会审',
+    stageIndex: 2,
+    route: '/procurement/documents/draft',
+    legalName: '政府采购法实施条例',
+    clause: '第三十四条',
+    gate: '需求、评分标准、采购方式和法规引用一致',
+    owner: '审核人员',
+    requiredFiles: ['采购文件审核意见表.pdf'],
+    optionalFiles: ['AI 文件质量检查报告.pdf'],
+  },
+  {
+    key: 'announcement',
+    title: '公告发布与留痕',
+    stageIndex: 2,
+    route: '/procurement/documents',
+    legalName: '政府采购信息发布管理办法',
+    clause: '第八条、第九条',
+    gate: '采购文件正式定稿，公告信息经复核后发布',
+    owner: '采购服务站',
+    requiredFiles: ['采购公告.pdf', '正式采购文件.pdf'],
+    optionalFiles: ['公告发布截图.png'],
+  },
+  {
+    key: 'supplier-signup',
+    title: '供应商资格预登记',
+    stageIndex: 3,
+    route: '/procurement/suppliers',
+    legalName: '政府采购法',
+    clause: '第二十二条',
+    gate: '报名供应商完成资格材料提交与基础核验',
+    owner: '采购服务站',
+    requiredFiles: ['供应商报名清单.xlsx'],
+    optionalFiles: ['供应商资格证明.zip'],
+  },
+  {
+    key: 'site-qa',
+    title: '现场踏勘及统一澄清',
+    stageIndex: 3,
+    route: '/procurement/suppliers',
+    legalName: '政府采购货物和服务招标投标管理办法',
+    clause: '第二十七条',
+    gate: '答疑问题统一收集，澄清文件对所有供应商公开',
+    owner: '采购人员',
+    requiredFiles: ['答疑纪要.pdf'],
+    optionalFiles: ['现场踏勘签到表.xlsx', '现场照片.zip'],
+  },
+  {
+    key: 'bid-opening',
+    title: '投标文件接收开标',
+    stageIndex: 3,
+    route: '/procurement/suppliers',
+    legalName: '政府采购法实施条例',
+    clause: '第三十四条',
+    gate: '截止时间已到，投标文件接收记录完整且不可篡改',
+    owner: '采购服务站',
+    requiredFiles: ['开标记录表.pdf', '投标文件接收记录.xlsx'],
+    optionalFiles: ['开标现场照片.zip'],
+  },
+  {
+    key: 'evaluation',
+    title: '专家评审与评分汇总',
+    stageIndex: 3,
+    route: '/procurement/suppliers',
+    legalName: '政府采购评审专家管理办法',
+    clause: '第二十条、第二十一条',
+    gate: '评审专家回避检查通过，评分项与采购文件一致',
+    owner: '评审人员',
+    requiredFiles: ['评审报告.pdf', '评分汇总表.xlsx'],
+    optionalFiles: ['专家签到表.pdf', '评审现场记录.zip'],
+  },
+  {
+    key: 'result-announcement',
+    title: '定标结果公示',
+    stageIndex: 3,
+    route: '/procurement/suppliers',
+    legalName: '政府采购信息发布管理办法',
+    clause: '第十五条',
+    gate: '评审报告完成审核，结果公示内容与评审结论一致',
+    owner: '采购服务站',
+    requiredFiles: ['中标（成交）结果公告.pdf'],
+    optionalFiles: ['结果公告发布截图.png'],
+  },
+  {
+    key: 'contract-signing',
+    title: '合同条款确认',
+    stageIndex: 4,
+    route: '/procurement/contracts/proposal',
+    legalName: '政府采购法',
+    clause: '第四十六条',
+    gate: '合同条款与采购文件、响应承诺和评审澄清一致',
+    owner: '采购人员 / 法务',
+    requiredFiles: ['合同建议方案.docx', '正式合同.pdf'],
+    optionalFiles: ['履约保证金凭证.pdf'],
+  },
+  {
+    key: 'contract-fulfillment',
+    title: '交付履约跟踪',
+    stageIndex: 5,
+    route: '/procurement/contracts/fulfillment',
+    legalName: '政府采购法',
+    clause: '第四十九条、第五十条',
+    gate: '合同已生效，履约节点与付款计划已建立',
+    owner: '采购人员 / 供应商',
+    requiredFiles: ['履约计划.xlsx'],
+    optionalFiles: ['交付计划确认单.pdf'],
+  },
+  {
+    key: 'acceptance',
+    title: '到货验收与结算',
+    stageIndex: 5,
+    route: '/procurement/acceptance',
+    legalName: '政府采购法',
+    clause: '第四十一条',
+    gate: '合同约定的技术、合规、风险和时间要点均有验收记录',
+    owner: '验收组',
+    requiredFiles: ['验收申请单.pdf', '检测 / 测试报告.pdf', '验收报告.pdf'],
+    optionalFiles: ['现场照片.zip', '验收签到表.xlsx'],
+  },
+  {
+    key: 'archive',
+    title: '项目资料归档',
+    stageIndex: 6,
+    route: '/procurement/records',
+    legalName: '政府采购法',
+    clause: '第四十二条',
+    gate: '全流程必传文件齐全，操作日志和审核记录完整',
+    owner: '采购服务站',
+    requiredFiles: ['项目档案目录.xlsx', '全流程记录.pdf'],
+    optionalFiles: ['项目复盘报告.pdf'],
+  },
+];
+
+const statutoryStepTitles: Record<string, string> = {
+  'project-initiation': '项目立项',
+  'requirement-confirmation': '需求确定',
+  'document-drafting': '文件编制',
+  'document-review': '文件审核',
+  announcement: '发布公告',
+  'supplier-signup': '供应商报名',
+  'site-qa': '踏勘 / 答疑',
+  'bid-opening': '开标',
+  evaluation: '评审',
+  'result-announcement': '结果公示',
+  'contract-signing': '合同签订',
+  'contract-fulfillment': '合同履约',
+  acceptance: '验收',
+  archive: '资料归档',
+};
+
+function getStatutoryStepTitle(node: LegalWorkflowNode) {
+  return statutoryStepTitles[node.key] || node.title;
+}
+
+const LEGAL_NODE_STAGE_MAP = legalWorkflowNodes.map((node) => node.stageIndex);
+
+type LegalNodeIndicator = {
+  label: string;
+  value: string;
+  hint: string;
+  tone: 'blue' | 'green' | 'orange' | 'purple';
+};
+
+const legalNodeIndicators: Record<string, LegalNodeIndicator> = {
+  'project-initiation': { label: '预算锁定', value: '¥28万', hint: '负责人：张明', tone: 'blue' },
+  'requirement-confirmation': { label: '需求完整度', value: '85%', hint: '技术 / 商务 / 验收', tone: 'purple' },
+  'document-drafting': { label: '章节完成', value: '6 / 8', hint: 'AI 已生成初稿', tone: 'purple' },
+  'document-review': { label: '待复核项', value: '3项', hint: '一致性与法规引用', tone: 'orange' },
+  announcement: { label: '法定公示期', value: '7天', hint: '公告信息待发布', tone: 'blue' },
+  'supplier-signup': { label: '已报名供应商', value: '12家', hint: '资格材料待核验', tone: 'green' },
+  'site-qa': { label: '待答疑问题', value: '2条', hint: '1 条需统一澄清', tone: 'orange' },
+  'bid-opening': { label: '接收投标文件', value: '8份', hint: '截止时间 09:30', tone: 'blue' },
+  evaluation: { label: '评审专家', value: '5名', hint: '回避检查已通过', tone: 'green' },
+  'result-announcement': { label: '公示剩余', value: '3天', hint: '结果公告待确认', tone: 'orange' },
+  'contract-signing': { label: '差异待确认', value: '4项', hint: '付款与交付条款', tone: 'orange' },
+  'contract-fulfillment': { label: '履约节点', value: '3 / 8', hint: '1 项即将超期', tone: 'blue' },
+  acceptance: { label: '验收指标', value: '6 / 8', hint: '技术指标已映射', tone: 'green' },
+  archive: { label: '档案完整度', value: '72%', hint: '缺 3 份归档材料', tone: 'purple' },
+};
+
+function getLegalNodeIndicator(node: LegalWorkflowNode) {
+  return legalNodeIndicators[node.key] || { label: '节点进度', value: '—', hint: '待配置指标', tone: 'blue' as const };
+}
+
+function getLegalNodeStatus(index: number, workflow: ProjectWorkflow): 'done' | 'current' | 'pending' {
+  const stageIndex = LEGAL_NODE_STAGE_MAP[index];
+  if (workflow.completedStages.includes(stageIndex) || stageIndex < workflow.currentStage) return 'done';
+  const currentStageFirstNode = LEGAL_NODE_STAGE_MAP.findIndex((item) => item === workflow.currentStage);
+  return index === currentStageFirstNode ? 'current' : 'pending';
+}
+
+function getLegalNodeFileCount(node: LegalWorkflowNode, status: 'done' | 'current' | 'pending', workflow: ProjectWorkflow) {
+  if (node.key === 'project-initiation') return workflow.materialsReady ? node.requiredFiles.length : node.requiredFiles.length - 1;
+  if (status === 'done') return node.requiredFiles.length;
+  if (status === 'current') return Math.min(1, node.requiredFiles.length);
+  return 0;
+}
+
+function getProjectStageStatus(stageIndex: number, workflow: ProjectWorkflow): 'done' | 'current' | 'pending' {
+  if (workflow.completedStages.includes(stageIndex) || stageIndex < workflow.currentStage) return 'done';
+  return stageIndex === workflow.currentStage ? 'current' : 'pending';
+}
+
+type ProjectStageFileSummary = {
+  requiredCount: number;
+  uploadedCount: number;
+  missingRequired: number;
+  optionalCount: number;
+  nodes: LegalWorkflowNode[];
+};
+
+function getProjectStageFileSummary(stageIndex: number, workflow: ProjectWorkflow): ProjectStageFileSummary {
+  const nodes = legalWorkflowNodes.filter((node) => node.stageIndex === stageIndex);
+  return nodes.reduce<ProjectStageFileSummary>((summary, node) => {
+    const nodeIndex = legalWorkflowNodes.findIndex((item) => item.key === node.key);
+    const nodeStatus = getLegalNodeStatus(nodeIndex, workflow);
+    const uploadedCount = getLegalNodeFileCount(node, nodeStatus, workflow);
+    return {
+      ...summary,
+      requiredCount: summary.requiredCount + node.requiredFiles.length,
+      uploadedCount: summary.uploadedCount + uploadedCount,
+      missingRequired: summary.missingRequired + node.requiredFiles.length - uploadedCount,
+      optionalCount: summary.optionalCount + node.optionalFiles.length,
+    };
+  }, { requiredCount: 0, uploadedCount: 0, missingRequired: 0, optionalCount: 0, nodes });
+}
+
 type ProjectWorkflowContextValue = {
   workflow: ProjectWorkflow;
   project: ProjectDetailData;
@@ -502,6 +780,45 @@ const recordItems: ProcurementRecord[] = [
   { title: '履约预警', type: '履约验收', tone: 'orange', detail: '系统检测「设备到货」节点距计划日期仅剩 3 天未完成交付，自动触发预警并推送至责任人李强。', date: '2024-08-17 08:00', user: '系统', files: ['履约预警通知.pdf'] },
   { title: '验收完成', type: '履约验收', tone: 'green', detail: '完成现场验收：到货 120 台、续航实测 12.5 小时、IP67 通过，验收结论合格，并生成验收报告与供应商履约评价。', date: '2024-08-18 15:30', user: '张明、王强', files: ['验收报告_YS-2024-0126.pdf', '现场验收照片.zip', '供应商履约评价表.pdf'] },
 ];
+
+let procurementRuntimeAuditRecords: ProcurementRecord[] = [];
+
+const recordFilePreviewDetails: Record<string, string> = {
+  '项目基础信息表.pdf': '项目名称：2024年度办公设备集中采购\n采购单位：南京市政务服务中心\n采购方式：公开招标\n预算金额：人民币 480,000 元\n项目负责人：张明\n项目概况：统一采购办公终端设备 120 台，满足办公、巡检和数据接入场景。',
+  '采购方式推荐报告.pdf': '推荐采购方式：公开招标\n推荐依据：项目预算、采购品类和市场供应情况满足公开竞争条件。\n风险提示：不得通过拆分采购标的规避公开招标，应在采购文件中留存方式论证和审批依据。',
+  '项目立项申请表.pdf': '立项事项：2024年度办公设备集中采购\n申请部门：综合管理部\n申请金额：人民币 480,000 元\n立项结论：同意进入需求确定阶段。',
+  '预算审批文件.pdf': '资金来源：部门年度采购预算\n批复预算：人民币 480,000 元\n预算科目：办公设备购置\n审批状态：已审批。',
+  '立项材料审核意见.pdf': '审核结论：通过\n审核范围：项目基础信息、立项申请、预算审批文件\n审核意见：项目名称、采购单位、预算金额和资金来源已核对一致，允许进入需求拟制环节。',
+  'AI需求合规检查报告.pdf': 'AI 检查结论：发现 4 项待处理问题\n1. 品牌倾向性表述\n2. 供应商业绩门槛与项目规模不匹配\n3. 技术要求与验收标准不一致\n4. 缺少安装调试完成时间\n处理要求：由采购人员逐项确认并保留修改留痕。',
+  '需求问题处理记录.pdf': '问题处理汇总：采纳建议 2 项、人工修改 1 项、人工保留 1 项\n处理人：张明\n处理说明：已删除品牌限定，调整业绩门槛，补充续航检测和安装调试完成时间。',
+  '公开招标采购文件_V1.3.docx': '采购文件版本：V1.3\n采购方式：公开招标\n章节：投标邀请、供应商须知、采购需求、评审标准、合同条款、投标文件格式\n定稿状态：已完成 AI 质量检查，待正式发布。',
+  '采购文件质量检查报告.pdf': '检查范围：需求一致性、评分对应性、格式规范性、法规完整性\n检查结果：通过\n待人工确认：付款条款、交付节点和验收标准的最终表述。',
+  '供应商联合核查报告.pdf': '核查对象：华科智能设备有限公司、中联数字科技有限公司\n核查范围：信用、处罚、失信、股权关联、法人及高管交叉任职\n核查结论：发现 1 条交叉任职线索，已提交人工复核。',
+  '企业关系图谱.png': '关系图谱说明\n华科智能设备有限公司 —— 张伟（董事） —— 中联数字科技有限公司\n关系类型：高管交叉任职\n数据状态：第三方关联信息，需结合工商公示信息复核。',
+  '合同草案_HT-2024-0126.docx': '合同编号：HT-2024-0126\n供应商：华科智能设备有限公司\n合同金额：人民币 462,000 元\n交付周期：25 天\n质保期限：整机 3 年，电池 5 年\n验收标准：续航实测不少于 12 小时，防护等级达到 IP67。',
+  '合同签署版.pdf': '合同状态：已签署\n签订日期：2024-06-18\n合同金额：人民币 462,000 元\n核心承诺：25 天交付、电池质保 5 年、提供 2 天驻场培训。',
+  '履约预警通知.pdf': '预警类型：设备到货即将超期\n计划日期：2024-08-20\n当前状态：距离计划日期 3 天\n责任人：李强（供应商）\n处理要求：及时反馈交付计划并上传物流或到货证明。',
+  '验收报告_YS-2024-0126.pdf': '验收报告编号：YS-2024-0126\n验收日期：2024-08-18\n到货数量：120 台\n续航实测：12.5 小时\n防护等级：IP67 通过\n验收结论：合格。',
+  '现场验收照片.zip': '现场验收影像资料清单\n1. 厂区外观照片\n2. 设备配件照片\n3. 安装环境照片\n资料状态：已归档，关联验收报告 YS-2024-0126。',
+  '供应商履约评价表.pdf': '供应商：华科智能设备有限公司\n综合得分：88 分\n交付及时性：90 分\n产品质量：92 分\n服务响应：82 分\n评价结论：履约表现良好，服务响应仍有提升空间。',
+};
+
+const buildRecordFilePreviewContent = (record: ProcurementRecord, name: string) => {
+  const detail = recordFilePreviewDetails[name] || `${record.detail}\n\n该文件为本条全过程记录的关联材料，已按项目内置演示数据归档。`;
+  return [
+    name,
+    '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    `所属记录：${record.title}`,
+    `记录类型：${record.type}`,
+    `归档时间：${record.date}`,
+    `归档人：${record.user}`,
+    '',
+    detail,
+  ].join('\n');
+};
+
+const buildRecordFilePreviewUrl = (record: ProcurementRecord, name: string) =>
+  `data:text/plain;charset=utf-8,${encodeURIComponent(buildRecordFilePreviewContent(record, name))}`;
 
 function getProjectContextKey(search: string): ProjectContextKey {
   const params = new URLSearchParams(search);
@@ -687,6 +1004,7 @@ function Workbench({ onOpenModal, projects }: { onOpenModal: (key: ModalKey) => 
         actions={
           <>
             <Button icon={<TeamOutlined />} onClick={() => go('/procurement/roles')}>切换角色</Button>
+            <Button icon={<FundOutlined />} onClick={() => go('/procurement-cockpit')}>数据驾驶舱</Button>
             <Button icon={<DownloadOutlined />} onClick={() => message.success('报表已生成，正在下载')}>导出报表</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => onOpenModal('new-project')}>
               新建采购项目
@@ -772,27 +1090,45 @@ const projectColumns: ColumnsType<Project> = [
   { title: '操作', render: (_, record) => <Button type="link" onClick={(event) => { event.stopPropagation(); go(getProjectDetailPath(record)); }}>查看当前阶段</Button> },
 ];
 
-function ProjectsPage({ onOpenModal, projects }: { onOpenModal: (key: ModalKey) => void; projects: Project[] }) {
+function ProjectsPage({ onOpenModal, projects, onUpdateStatus }: { onOpenModal: (key: ModalKey) => void; projects: Project[]; onUpdateStatus?: (projectId: string, status: Project['status']) => void }) {
   const [keyword, setKeyword] = useState('');
   const [filter, setFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const data = useMemo(() => projects.filter((item) => {
     const matchKeyword = !keyword || `${item.name}${item.id}${item.unit}`.includes(keyword);
-    const matchStatus = filter === 'all' || (filter === 'doing' && item.status === '进行中') || (filter === 'done' && item.status === '已完成');
+    const matchStatus = filter === 'all' || (filter === 'doing' && item.status === '进行中') || (filter === 'done' && item.status === '已完成') || (filter === 'review' && item.status === '待审核');
     const matchCategory = categoryFilter === 'all' || item.category.includes(categoryFilter === 'goods' ? '货物' : categoryFilter === 'service' ? '服务' : '工程');
     return matchKeyword && matchStatus && matchCategory;
   }), [categoryFilter, filter, keyword, projects]);
+  const columns = useMemo<ColumnsType<Project>>(() => [
+    ...projectColumns.slice(0, 4),
+    {
+      title: '状态管理',
+      dataIndex: 'status',
+      render: (value: Project['status'], record) => (
+        <Select
+          size="small"
+          value={value}
+          options={[{ value: '进行中', label: '进行中' }, { value: '已完成', label: '已完成' }, { value: '待审核', label: '待审核' }]}
+          onMouseDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(nextValue) => onUpdateStatus?.(record.id, nextValue as Project['status'])}
+        />
+      ),
+    },
+    ...projectColumns.slice(4),
+  ], [onUpdateStatus]);
   return (
     <>
       <PageTitle title="项目管理" subtitle="统一管理采购项目全生命周期，实时掌握项目进度与风险" actions={<Button type="primary" icon={<PlusOutlined />} onClick={() => onOpenModal('new-project')}>新建采购项目</Button>} />
       <Panel>
         <div className="filter-bar">
           <Input prefix={<SearchOutlined />} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索项目名称 / 编号 / 部门" allowClear />
-          <Select value={filter} onChange={setFilter} options={[{ value: 'all', label: '全部状态' }, { value: 'doing', label: '进行中' }, { value: 'done', label: '已完成' }]} />
+          <Select value={filter} onChange={setFilter} options={[{ value: 'all', label: '全部状态' }, { value: 'doing', label: '进行中' }, { value: 'review', label: '待审核' }, { value: 'done', label: '已完成' }]} />
           <Select value={categoryFilter} onChange={setCategoryFilter} options={[{ value: 'all', label: '全部品类' }, { value: 'goods', label: '货物类' }, { value: 'service', label: '服务类' }, { value: 'engineering', label: '工程类' }]} />
           <Button icon={<DownloadOutlined />} onClick={() => message.success(`已导出 ${data.length} 个项目`)}>导出列表</Button>
         </div>
-        <Table<Project> rowKey="id" columns={projectColumns} dataSource={data} pagination={{ pageSize: 8, showTotal: (total) => `共 ${total} 个项目` }} onRow={(record) => ({ onClick: () => go(getProjectDetailPath(record)) })} className="clickable-table" />
+        <Table<Project> rowKey="id" columns={columns} dataSource={data} pagination={{ pageSize: 8, showTotal: (total) => `共 ${total} 个项目` }} onRow={(record) => ({ onClick: () => go(getProjectDetailPath(record)) })} className="clickable-table" />
       </Panel>
     </>
   );
@@ -826,6 +1162,102 @@ function ProjectDetailStageTimeline() {
       </div>
     </Panel>
   );
+}
+
+type StageGateFileRow = {
+  key: string;
+  name: string;
+  nodeTitle: string;
+  required: boolean;
+  status: string;
+  version: string;
+  source: string;
+};
+
+function ProjectStageFileGatePage({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
+  const { workflow, project } = useProjectWorkflow();
+  const [selectedStageIndex, setSelectedStageIndex] = useState(() => normalizeStageIndex(workflow.currentStage));
+  const selectedStage = workflowStages[selectedStageIndex];
+  const selectedStageStatus = getProjectStageStatus(selectedStageIndex, workflow);
+  const selectedSummary = useMemo(() => getProjectStageFileSummary(selectedStageIndex, workflow), [selectedStageIndex, workflow]);
+  const files = useMemo<StageGateFileRow[]>(() => selectedSummary.nodes.flatMap((node) => {
+    const nodeIndex = legalWorkflowNodes.findIndex((item) => item.key === node.key);
+    const nodeStatus = getLegalNodeStatus(nodeIndex, workflow);
+    const allFiles = [...node.requiredFiles.map((name) => ({ name, required: true })), ...node.optionalFiles.map((name) => ({ name, required: false }))];
+    return allFiles.map((file, index) => {
+      const uploaded = node.key === 'project-initiation'
+        ? index < 2 || workflow.materialsReady
+        : nodeStatus === 'done' || (nodeStatus === 'current' && index === 0);
+      return {
+        key: `${node.key}-${file.name}`,
+        name: file.name,
+        nodeTitle: node.title,
+        required: file.required,
+        status: uploaded ? '已上传 / 已校验' : file.required ? '缺失' : '待补充',
+        version: uploaded ? (nodeStatus === 'done' ? 'V1.0' : 'V0.2') : '—',
+        source: uploaded ? '项目资料库' : '待上传',
+      };
+    });
+  }), [selectedSummary, workflow]);
+  const gateLabel = selectedSummary.missingRequired
+    ? `${selectedSummary.missingRequired} 项缺失`
+    : selectedStageStatus === 'pending'
+      ? '待前置阶段完成'
+      : selectedStageStatus === 'done'
+        ? '阶段已完成'
+        : '门控可提交';
+
+  return <>
+    <PageTitle
+      breadcrumb={['项目管理', project.name, '文件门控']}
+      title="文件门控中心"
+      subtitle="按项目阶段汇总检查必传材料、格式完整性与版本有效性"
+      actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/projects/detail')}>返回项目详情</Button><Button icon={<DownloadOutlined />} onClick={() => message.success('文件清单已导出为 Excel')}>导出清单</Button><Button type="primary" icon={<UploadOutlined />} onClick={() => onOpenModal('upload')}>上传材料</Button></>}
+    />
+    <Alert
+      type={selectedSummary.missingRequired ? 'warning' : 'success'}
+      showIcon
+      message={selectedSummary.missingRequired ? `当前阶段“${selectedStage.title}”还有 ${selectedSummary.missingRequired} 项必传文件缺失，系统将禁止进入下一阶段。` : `当前阶段“${selectedStage.title}”的必传文件已齐全，可提交阶段门控校验。`}
+      description={`${selectedStage.summary} 阶段内的材料规则由系统自动汇总校验。`}
+    />
+    <Row gutter={[16, 16]} className="file-gate-layout">
+      <Col xs={24} xl={8}>
+        <Panel title={<><SafetyCertificateOutlined /> 项目阶段门控清单</>} extra={<StatusPill tone="blue">7 个项目阶段</StatusPill>}>
+          <div className="file-gate-node-list" role="list" aria-label="项目阶段文件门控">
+            {workflowStages.map((stage, index) => {
+              const status = getProjectStageStatus(index, workflow);
+              const stageSummary = getProjectStageFileSummary(index, workflow);
+              return <button type="button" key={stage.key} className={selectedStageIndex === index ? 'active' : ''} onClick={() => setSelectedStageIndex(index)}>
+                <span className={`file-gate-node-icon ${status}`}>{status === 'done' ? <CheckOutlined /> : status === 'current' ? <SyncOutlined /> : index + 1}</span>
+                <div><strong>{stage.title}</strong><small>{stage.summary}</small></div>
+                <em>{stageSummary.uploadedCount}/{stageSummary.requiredCount}</em>
+              </button>;
+            })}
+          </div>
+        </Panel>
+      </Col>
+      <Col xs={24} xl={16}>
+        <Panel title={<><FolderOpenOutlined /> {selectedStage.title} · 文件清单</>} extra={<Space><StatusPill tone={selectedSummary.missingRequired ? 'red' : selectedStageStatus === 'done' ? 'green' : 'blue'}>{gateLabel}</StatusPill><Button type="link" onClick={() => go('/procurement/records')}>查看操作留痕</Button></Space>}>
+          <Table<StageGateFileRow>
+            rowKey="key"
+            pagination={false}
+            dataSource={files}
+            columns={[
+              { title: '文件名称', dataIndex: 'name', render: (value: string, record) => <div className="gate-file-name"><FileTextOutlined /><div><strong>{value}</strong><span>{record.nodeTitle} · {record.required ? '必传文件' : '选传文件'}</span></div></div> },
+              { title: '状态', dataIndex: 'status', render: (value: string) => <StatusPill tone={value === '缺失' ? 'red' : value.startsWith('已上传') ? 'green' : 'orange'}>{value}</StatusPill> },
+              { title: '版本', dataIndex: 'version' },
+              { title: '来源', dataIndex: 'source' },
+              { title: '操作', render: (_, record) => <Space size="small"><Button type="link" size="small" disabled={record.status === '缺失' || record.status === '待补充'} onClick={() => message.success(`已打开 ${record.name} 预览`)}>预览</Button><Button type="link" size="small" onClick={() => onOpenModal('upload')}>{record.status === '缺失' ? '上传' : '新版本'}</Button></Space> },
+            ]}
+          />
+        </Panel>
+        <Panel title={<><LockOutlined /> 自动校验规则</>}>
+          <div className="gate-rule-grid"><div><CheckCircleFilled /><strong>格式校验</strong><span>PDF、Word、Excel、图片格式可识别</span></div><div><CheckCircleFilled /><strong>完整性校验</strong><span>缺少必传文件不得提交下一阶段</span></div><div><CheckCircleFilled /><strong>版本校验</strong><span>仅当前有效版本进入正式档案</span></div><div><CheckCircleFilled /><strong>法规校验</strong><span>阶段规则与采购方式自动匹配</span></div></div>
+          <Alert type="info" showIcon message={`前置条件：${selectedStage.summary}`} />
+        </Panel>
+      </Col>
+    </Row>
+  </>;
 }
 
 function ProjectInitialStatePage({ onOpenModal }: { onOpenModal: (key: ModalKey) => void }) {
@@ -938,8 +1370,8 @@ function InitialGuidance() {
         <div className="initial-average-time"><ClockCircleOutlined /> 本阶段平均办理时长约 1.4 天</div>
       </Panel>
       <Panel title={<><FileTextOutlined /> 相关制度</>}>
-        <div className="initial-policy-list">{policies.map((policy) => <button type="button" key={policy} onClick={() => message.info(`已打开${policy}`)}><FileTextOutlined />{policy}<ArrowRightOutlined /></button>)}</div>
-        <Button type="link" block onClick={() => message.info('已打开制度库，共 12 项制度可供查阅')}>查看全部 12 项制度 <ArrowRightOutlined /></Button>
+        <div className="initial-policy-list">{policies.map((policy) => <button type="button" key={policy} onClick={() => go('/procurement/policy-assistant')}><FileTextOutlined />{policy}<ArrowRightOutlined /></button>)}</div>
+        <Button type="link" block onClick={() => go('/procurement/knowledge-base')}>查看知识库全部制度 <ArrowRightOutlined /></Button>
       </Panel>
     </div>
   );
@@ -1120,7 +1552,7 @@ function RequirementPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: 
   };
   return (
     <>
-      <PageTitle breadcrumb={['采购需求', '需求拟制', project.name]} title="采购需求拟制" subtitle={`${project.id} · ${project.category}采购需求 · 负责人 ${project.owner}`} actions={<><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('similar')}>查找相似案例</Button><Button icon={<DownloadOutlined />} onClick={saveDraft}>保存草稿</Button><Button icon={<ThunderboltFilled />} className="purple-button" onClick={() => setCheckOpen(true)}>智能检查</Button><Button type="primary" icon={<SendOutlined />} onClick={submitRequirement}>提交审核并进入文件编制</Button></>} />
+      <PageTitle breadcrumb={['采购需求', '需求拟制', project.name]} title="采购需求拟制" subtitle={`${project.id} · ${project.category}采购需求 · 负责人 ${project.owner}`} actions={<><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('similar')}>查找相似案例</Button><Button icon={<DownloadOutlined />} onClick={saveDraft}>保存草稿</Button><Button icon={<SafetyCertificateOutlined />} onClick={() => go('/procurement/requirements/review')}>审核工作台</Button><Button icon={<ThunderboltFilled />} className="purple-button" onClick={() => setCheckOpen(true)}>智能检查</Button><Button type="primary" icon={<SendOutlined />} onClick={submitRequirement}>提交审核并进入文件编制</Button></>} />
       <Row gutter={[16, 16]} align="top">
         <Col xs={24} xl={checkOpen ? 15 : 17}>
           <Panel title={<><InfoCircleOutlined /> 需求基本信息</>}>
@@ -1150,27 +1582,86 @@ function AuditPanel({ resolved, onResolve, onRecheck, onViewBasis, onClose, onOp
   return <Panel title={<><ThunderboltFilled /> 智能检查结果 <StatusPill tone="purple">{4 - Object.keys(resolved).length} 项问题</StatusPill></>} extra={<Button type="text" icon={<CloseCircleFilled />} onClick={onClose} />} className="audit-panel"><div className="audit-summary"><span>🔴 高风险 {auditProblems.filter((item) => item.level === '高风险').length - Object.keys(resolved).filter((key) => auditProblems[Number(key)].level === '高风险').length}</span><span>🟠 中风险 {auditProblems.filter((item) => item.level === '中风险').length - Object.keys(resolved).filter((key) => auditProblems[Number(key)].level === '中风险').length}</span></div>{auditProblems.map((item, index) => { const status = resolved[index]; return <div className={`audit-card ${status ? 'resolved' : item.level === '高风险' ? 'high' : 'medium'}`} key={item.title}><div className="audit-card-head"><strong>{index + 1} {item.title}</strong><StatusPill tone={status ? 'green' : item.level === '高风险' ? 'red' : 'orange'}>{status ? '已处理' : item.level}</StatusPill></div>{status ? <><p className="audit-resolution">处理方式：{status === '采纳' ? '采纳建议' : status === '人工修改' ? '人工修改' : '人工保留'}</p><div className="audit-suggestion">{status === '人工保留' ? '已记录人工处理意见，将保留原文并在提交审核时提示。' : item.suggestion}</div></> : <><span className="audit-label">原文</span><div className="audit-original">“{item.original}”</div><span className="audit-label">问题原因</span><p>{item.reason}</p><div className="audit-suggestion"><strong>💡 修改建议</strong><br />{item.suggestion}</div><div className="audit-actions"><Button type="primary" size="small" onClick={() => onResolve(index, '采纳')}>采纳</Button><Button size="small" onClick={() => onResolve(index, '人工修改')}>人工修改</Button><Button size="small" onClick={() => { onResolve(index, '人工保留'); onOpenModal('ignore'); }}>忽略</Button><Button size="small" icon={<LinkOutlined />} onClick={() => onViewBasis(index)}>查看依据</Button></div></>}</div>; })}<Space direction="vertical" style={{ width: '100%' }}><Button block className="purple-button" icon={<SyncOutlined />} onClick={onRecheck}>重新检查</Button><Button block icon={<DownloadOutlined />} onClick={() => onOpenModal('ai-record')}>生成检查报告</Button></Space></Panel>;
 }
 
+type DocumentSourceKey = 'basic' | 'requirements' | 'technical' | 'commercial' | 'delivery' | 'acceptance';
+
+const documentGenerationSources: Array<{ key: DocumentSourceKey; label: string; description: string }> = [
+  { key: 'basic', label: '项目基础信息', description: '项目名称、编号、预算、采购单位、采购方式' },
+  { key: 'requirements', label: '采购需求说明', description: '采购意向、采购范围、数量和项目概况' },
+  { key: 'technical', label: '技术参数', description: '性能指标、配置要求和技术响应要求' },
+  { key: 'commercial', label: '商务与评审规则', description: '资格条件、评分标准和投标文件要求' },
+  { key: 'delivery', label: '交付与合同要点', description: '交付时间、地点、付款和违约责任' },
+  { key: 'acceptance', label: '验收标准', description: '验收方式、检测项目和质保要求' },
+];
+
+const documentChapterSources: Array<{ title: string; source: DocumentSourceKey }> = [
+  { title: '采购公告', source: 'basic' },
+  { title: '投标人须知', source: 'commercial' },
+  { title: '采购需求', source: 'requirements' },
+  { title: '技术要求', source: 'technical' },
+  { title: '商务要求', source: 'commercial' },
+  { title: '评分标准', source: 'commercial' },
+  { title: '合同条款', source: 'delivery' },
+  { title: '验收要求', source: 'acceptance' },
+];
+
 function DocumentsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
-  const chapters = ['采购公告', '投标人须知', '采购需求', '技术要求', '商务要求', '评分标准', '合同条款', '验收要求'];
   const { workflow, project } = useProjectWorkflow();
+  const templateNames = ['《' + project.type + '类' + project.method + '标准采购文件》', '《集团通用采购文件模板》'];
+  const allSourceKeys = documentGenerationSources.map((item) => item.key);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(0);
+  const [generatedTemplate, setGeneratedTemplate] = useState(0);
+  const [selectedSources, setSelectedSources] = useState<DocumentSourceKey[]>(allSourceKeys);
+  const [appliedSources, setAppliedSources] = useState<DocumentSourceKey[]>(allSourceKeys);
+  const [generatedAt, setGeneratedAt] = useState('2024-06-05 11:06');
   const [aiContinuation, setAiContinuation] = useState(false);
-  const runQualityCheck = () => message.success('文件质量检查已完成，发现 3 项待处理问题');
+  const hasSource = (source: DocumentSourceKey) => appliedSources.includes(source);
+  const generatedChapterCount = documentChapterSources.filter((chapter) => hasSource(chapter.source)).length;
+  const generatedProgress = Math.round((generatedChapterCount / documentChapterSources.length) * 100);
+  const selectedChapterCount = documentChapterSources.filter((chapter) => selectedSources.includes(chapter.source)).length;
+  const sourceNames = documentGenerationSources.filter((item) => appliedSources.includes(item.key)).map((item) => item.label).join('、');
+  const openTemplateGenerator = () => {
+    setSelectedTemplate(generatedTemplate);
+    setSelectedSources([...appliedSources]);
+    setTemplateOpen(true);
+  };
+  const toggleSource = (key: DocumentSourceKey) => {
+    setSelectedSources((sources) => sources.includes(key) ? sources.filter((item) => item !== key) : [...sources, key]);
+  };
+  const generateFromTemplate = () => {
+    if (!selectedSources.length) {
+      message.warning('至少勾选一项数据源后才能生成采购文件');
+      return;
+    }
+    setAppliedSources([...selectedSources]);
+    setGeneratedTemplate(selectedTemplate);
+    setGeneratedAt(new Date().toLocaleString('zh-CN'));
+    setTemplateOpen(false);
+    message.success('已按' + templateNames[selectedTemplate] + '生成采购文件，带入 ' + selectedSources.length + ' 项数据源，形成 ' + selectedChapterCount + ' 个章节');
+  };
+  const runQualityCheck = () => message.success('文件质量检查已完成，当前生成 ' + generatedChapterCount + ' / ' + documentChapterSources.length + ' 章，发现 ' + (documentChapterSources.length - generatedChapterCount) + ' 项待补充问题');
   const exportDocument = () => message.success('采购文件 Word 已生成，正在下载');
   const submitForReview = () => {
     if (onCompleteStage && !onCompleteStage()) return;
     go('/procurement/suppliers');
   };
+
   return <>
-    <PageTitle breadcrumb={['采购需求', '采购文件', `${project.method}文件`]} title="采购文件编制" subtitle={`基于《${project.type}类${project.method}标准采购文件》生成 · 最后保存 11:06`} actions={<><Button icon={<DiffOutlined />} onClick={() => onOpenModal('template')}>从模板生成</Button><Button icon={<SafetyCertificateOutlined />} className="purple-button" onClick={runQualityCheck}>质量检查</Button><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('version')}>版本记录</Button><Button icon={<DownloadOutlined />} onClick={exportDocument}>导出 Word</Button><Button type="primary" icon={<SendOutlined />} onClick={submitForReview}>提交审核并进入供应商核查</Button></>} />
+    <PageTitle
+      breadcrumb={['采购需求', '采购文件', project.method + '文件']}
+      title="采购文件编制"
+      subtitle={'基于' + templateNames[generatedTemplate] + '生成 · 最近生成 ' + generatedAt}
+      actions={<><Button icon={<DiffOutlined />} onClick={openTemplateGenerator}>从模板生成</Button><Button icon={<FolderOpenOutlined />} onClick={() => go('/procurement/documents/gate')}>文件门控</Button><Button icon={<SafetyCertificateOutlined />} className="purple-button" onClick={runQualityCheck}>质量检查</Button><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('version')}>版本记录</Button><Button icon={<DownloadOutlined />} onClick={exportDocument}>导出 Word</Button><Button type="primary" icon={<SendOutlined />} onClick={submitForReview}>提交审核并进入供应商核查</Button></>}
+    />
     {!workflow.materialsReady && <Alert className="workflow-gate-alert" type="warning" showIcon message="当前阶段还缺少项目立项依据" description="请先补充必备材料，材料齐全后才能提交采购文件并进入供应商核查。" action={<Button type="primary" onClick={() => onOpenModal('upload')}>立即补充材料</Button>} />}
     <Row gutter={[16, 16]} align="top">
       <Col xs={24} lg={5}>
-        <Panel title={<>☷ 章节 <StatusPill tone="gray">8 章</StatusPill></>}>
-          <Progress percent={75} showInfo={false} />
-          <span className="muted-text">已完成 6 / 8 章</span>
-          <div className="chapter-list">{chapters.map((chapter, index) => <div className={index === 2 ? 'active' : index === 5 ? 'warning' : ''} key={chapter}><span>{index < 5 ? <CheckCircleFilled /> : index === 5 ? <WarningFilled /> : <span className="chapter-dot" />}</span>{chapter}{index === 5 && <StatusPill tone="red">缺失</StatusPill>}</div>)}</div>
+        <Panel title={<>☷ 章节 <StatusPill tone={generatedChapterCount === documentChapterSources.length ? 'green' : 'orange'}>{generatedChapterCount} / {documentChapterSources.length} 章</StatusPill></>}>
+          <Progress percent={generatedProgress} showInfo={false} />
+          <span className="muted-text">已生成 {generatedChapterCount} / {documentChapterSources.length} 章 · 来源 {appliedSources.length} 项</span>
+          <div className="chapter-list">{documentChapterSources.map((chapter, index) => { const generated = hasSource(chapter.source); return <div className={generated ? index === 2 ? 'active' : '' : 'warning'} key={chapter.title}><span>{generated ? <CheckCircleFilled /> : <WarningFilled />}</span>{chapter.title}{!generated && <StatusPill tone="orange">待补充</StatusPill>}</div>; })}</div>
         </Panel>
-        <Panel className="current-project-card"><strong>当前项目</strong><h3>{project.name}</h3><span>{project.id} · {project.method}</span><Progress percent={62} showInfo={false} /></Panel>
+        <Panel className="current-project-card"><strong>当前项目</strong><h3>{project.name}</h3><span>{project.id} · {project.method}</span><Progress percent={Math.max(18, generatedProgress)} showInfo={false} /></Panel>
       </Col>
       <Col xs={24} lg={14}>
         <Panel className="document-editor">
@@ -1187,25 +1678,55 @@ function DocumentsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: Mo
               <Button type="text" className="purple-button" icon={<ThunderboltFilled />} onClick={() => { setAiContinuation(true); message.success('AI 续写内容已插入文档'); }}>AI 续写</Button>
             </Space>
           </div>
-          <article className="document-body"><h1>{project.name}<br />{project.method}文件</h1><p className="document-meta">项目编号：{project.id}　采购人：某某集团有限公司　编制日期：{project.createdAt}</p><h2>第一章 采购公告</h2><h3>一、项目基本情况</h3><p>项目编号：<b>{project.id}</b></p><p>项目名称：<b>{project.name}</b></p><p>预算金额：<b>{project.budget}</b></p><p>采购方式：<b>{project.method}</b></p><h3>二、投标人资格要求</h3><ol><li>具有独立承担民事责任的能力，持有有效营业执照；</li><li>具有良好的商业信誉和健全的财务会计制度；</li><li>具有履行合同所必需的设备和专业技术能力；</li><li>近三年内在经营活动中没有重大违法记录。</li></ol><h3>三、获取招标文件</h3><p>凡有意参加投标者，请于 2024 年 6 月 20 日至 2024 年 6 月 27 日，登录集团电子采购平台下载采购文件，逾期不予受理。</p><h3>四、投标截止时间及开标时间</h3><p>投标截止时间：2024 年 7 月 8 日 09:30（北京时间）</p><p>开标时间：2024 年 7 月 8 日 09:30（北京时间）</p><p className="editor-placeholder">继续输入内容，或将鼠标移至下方添加新章节...</p>{aiContinuation && <p className="ai-generated-copy">AI 续写：供应商应在合同签订后 45 日内完成供货、安装与调试，并提交完整的产品合格证明及售后服务承诺。</p>}</article>
-          <div className="editor-footer"><span>字数 {aiContinuation ? '2,542' : '2,486'}</span><span>共 6 页</span><span>自动保存</span><span>{project.owner} 正在编辑</span></div>
+          <article className="document-body">
+            <h1>{project.name}<br />{project.method}文件</h1>
+            <p className="document-meta">项目编号：{project.id}　采购人：{project.department}　编制日期：{project.createdAt}　模板：{templateNames[generatedTemplate]}　版本：V1.3</p>
+            {hasSource('basic') ? <><h2>第一章 采购公告</h2><h3>一、项目基本情况</h3><p>项目编号：<b>{project.id}</b></p><p>项目名称：<b>{project.name}</b></p><p>预算金额：<b>{project.budget}</b></p><p>采购方式：<b>{project.method}</b></p><h3>二、采购单位与项目概况</h3><p>采购单位：<b>{project.department}</b>；项目负责人：<b>{project.owner}</b>。本项目围绕{project.name}开展采购，采购品类为{project.category}。</p></> : <div className="generated-placeholder">未勾选“项目基础信息”，本章节已保留待补充占位。</div>}
+            {hasSource('commercial') ? <><h2>第二章 投标人与评审规则</h2><h3>一、投标人资格要求</h3><ol><li>具有独立承担民事责任的能力，持有有效营业执照；</li><li>具有良好的商业信誉和健全的财务会计制度；</li><li>具有履行合同所必需的设备和专业技术能力；</li><li>近三年内在经营活动中没有重大违法记录。</li></ol><h3>二、评审标准</h3><p>技术评审 60 分、商务评审 20 分、价格评审 20 分，评审因素与采购需求保持一致。</p></> : <div className="generated-placeholder">未勾选“商务与评审规则”，投标资格和评分标准待补充。</div>}
+            {hasSource('requirements') ? <><h2>第三章 采购需求</h2><h3>一、采购范围与项目概况</h3><p>{project.intention}</p><p>本章节由项目意向、历史相似项目和采购单位确认信息自动汇总生成，具体数量及交付范围以最终确认版本为准。</p></> : <div className="generated-placeholder">未勾选“采购需求说明”，采购范围和项目概况待补充。</div>}
+            {hasSource('technical') ? <><h2>第四章 技术要求</h2><h3>一、核心技术指标</h3><ol><li>连续运行能力不低于 12 小时，支持连续巡检工作模式；</li><li>防护等级不低于 IP67，满足现场防尘、防水使用环境；</li><li>支持标准数据接口，具备与现有系统对接的能力；</li><li>投标人须逐项响应技术参数，并提供检测或验证依据。</li></ol></> : <div className="generated-placeholder">未勾选“技术参数”，技术指标章节待补充。</div>}
+            {hasSource('delivery') ? <><h2>第五章 合同条款与交付要求</h2><h3>一、交付安排</h3><p>供应商应在合同生效后 45 日内完成供货、安装与调试，交付地点为采购单位指定地点（计划完成时间：{project.planDate}）。</p><h3>二、付款与违约责任</h3><p>验收合格后按合同约定办理付款；逾期交付、未按要求整改或服务承诺未兑现的，按合同专用条款承担违约责任。</p></> : <div className="generated-placeholder">未勾选“交付与合同要点”，合同专用条款待补充。</div>}
+            {hasSource('acceptance') ? <><h2>第六章 验收要求</h2><h3>一、验收方式</h3><p>采用到货清点、现场功能测试和抽样检测相结合的方式组织验收，技术指标、资料完整性和服务承诺均应纳入验收记录。</p><h3>二、质保要求</h3><p>供应商应提供不少于 3 年质保服务，验收不合格的，应在采购单位规定期限内完成整改并申请复验。</p></> : <div className="generated-placeholder">未勾选“验收标准”，验收方式和质保要求待补充。</div>}
+            <p className="document-generated-note">本稿已根据勾选的数据源自动生成：{sourceNames || '暂无'}。生成后仍可在线编辑，系统会保留模板、来源和版本留痕。</p>
+            <p className="editor-placeholder">继续输入内容，或将鼠标移至下方添加新章节...</p>
+            {aiContinuation && <p className="ai-generated-copy">AI 续写：供应商应在合同签订后 45 日内完成供货、安装与调试，并提交完整的产品合格证明及售后服务承诺。</p>}
+          </article>
+          <div className="editor-footer"><span>字数 {(1800 + appliedSources.length * 160 + (aiContinuation ? 56 : 0)).toLocaleString()}</span><span>共 {Math.max(3, generatedChapterCount - 1)} 页</span><span>自动保存</span><span>{project.owner} 正在编辑</span></div>
         </Panel>
       </Col>
       <Col xs={24} lg={5}>
         <Panel title={<><SafetyCertificateOutlined /> 文件质量检查</>}>
-          <div className="quality-circle"><Progress type="circle" percent={82} strokeColor="#f59e0b" /><span>质量评分 / 100</span></div>
-          <div className="quality-list"><span>🔴 完整性 <b>6 / 8</b></span><span>🟠 合规性 <b>5 / 6</b></span><span>🟢 一致性 <b>4 / 4</b></span><span>🟠 规范性 <b>2 / 3</b></span></div>
-          <Divider /><strong>待处理问题 <Badge count={3} /></strong>
-          {['评分标准章节缺失', '合同条款未引用最新模板', '验收要求与技术指标表述不一致'].map((item, index) => <div className={`quality-problem ${index === 0 ? 'danger' : ''}`} key={item}><strong>{item}</strong><span>建议补充或调整相关内容</span></div>)}
+          <div className="quality-circle"><Progress type="circle" percent={Math.min(100, 42 + generatedChapterCount * 5)} strokeColor={generatedChapterCount === documentChapterSources.length ? '#10b981' : '#f59e0b'} /><span>质量评分 / 100</span></div>
+          <div className="quality-list"><span>🔴 完整性 <b>{generatedChapterCount} / {documentChapterSources.length}</b></span><span>🟠 合规性 <b>{hasSource('commercial') ? '5 / 6' : '2 / 6'}</b></span><span>🟢 一致性 <b>{hasSource('requirements') && hasSource('technical') && hasSource('acceptance') ? '4 / 4' : '2 / 4'}</b></span><span>🟠 规范性 <b>{hasSource('basic') ? '2 / 3' : '1 / 3'}</b></span></div>
+          <Divider /><strong>待处理问题 <Badge count={documentChapterSources.length - generatedChapterCount} /></strong>
+          {documentChapterSources.filter((chapter) => !hasSource(chapter.source)).slice(0, 3).map((chapter) => <div className="quality-problem" key={chapter.title}><strong>{chapter.title}章节待补充</strong><span>请从模板生成时勾选对应数据源，或人工编辑补齐</span></div>)}
+          {!documentChapterSources.some((chapter) => !hasSource(chapter.source)) && <div className="quality-problem success"><strong>章节数据已齐全</strong><span>可继续进行法规检查和多级审核</span></div>}
           <Button type="link" onClick={runQualityCheck}>查看全部检查项 <ArrowRightOutlined /></Button>
         </Panel>
       </Col>
     </Row>
+    <Modal
+      open={templateOpen}
+      title={<ModalTitle icon={<DiffOutlined />} title="从模板生成采购文件" subtitle={'勾选需要带入模板的数据，系统将生成对应章节内容'} />}
+      width={700}
+      centered
+      onCancel={() => setTemplateOpen(false)}
+      footer={[<Button key="cancel" onClick={() => setTemplateOpen(false)}>取消</Button>, <Button key="create" type="primary" icon={<DiffOutlined />} disabled={!selectedSources.length} onClick={generateFromTemplate}>生成采购文件</Button>]}
+    >
+      <div className="template-detection"><strong>✣ 系统自动识别</strong><div><span>采购类型 <b>▣ {project.type}类</b></span><span>采购方式 <b>♙ {project.method}</b></span></div></div>
+      <h3>推荐模板</h3>
+      {templateNames.map((item, index) => <div className={'template-option ' + (selectedTemplate === index ? 'selected' : '')} key={item} onClick={() => setSelectedTemplate(index)}><Radio checked={selectedTemplate === index} /><FileTextOutlined /><div><strong>{item}</strong><span>{index === 0 ? '2024 版 · 含 8 个标准章节 · 集团法务审定' : '适用于各类采购方式 · 6 个通用章节'}</span></div>{index === 0 && <StatusPill tone="green">推荐</StatusPill>}</div>)}
+      <div className="template-source-heading"><h3>自动带入内容</h3><Checkbox checked={selectedSources.length === documentGenerationSources.length} indeterminate={selectedSources.length > 0 && selectedSources.length < documentGenerationSources.length} onChange={(event) => setSelectedSources(event.target.checked ? [...allSourceKeys] : [])}>全选</Checkbox></div>
+      <div className="template-source-grid">{documentGenerationSources.map((item) => <div className={'template-source-option ' + (selectedSources.includes(item.key) ? 'selected' : '')} key={item.key} onClick={() => toggleSource(item.key)}><Checkbox checked={selectedSources.includes(item.key)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSource(item.key)} /><div><strong>{item.label}</strong><span>{item.description}</span></div></div>)}</div>
+      <div className="template-generation-summary"><strong>本次生成预览</strong><span>将带入 {selectedSources.length} 项数据源，生成 {selectedChapterCount} 个章节</span><div>{documentGenerationSources.filter((item) => selectedSources.includes(item.key)).map((item) => <Tag color="blue" key={item.key}>{item.label}</Tag>)}</div></div>
+      <Alert type="info" showIcon message="生成后将覆盖当前文档草稿内容，未勾选的数据章节会保留待补充占位；模板、来源和生成版本会记录在文档留痕中。" />
+    </Modal>
   </>;
 }
 
 function ContractsPage({ onCompleteStage }: { onCompleteStage?: () => boolean }) {
   const [writtenTitles, setWrittenTitles] = useState<string[]>([]);
+  const [reviewLevel, setReviewLevel] = useState(0);
   const writeContract = (title: string) => {
     setWrittenTitles((titles) => titles.includes(title) ? titles : [...titles, title]);
     message.success(`“${title}”条款已写入合同草案`);
@@ -1222,10 +1743,27 @@ function ContractsPage({ onCompleteStage }: { onCompleteStage?: () => boolean })
     message.success('合同草案已生成，正在进入履约管理');
     go('/procurement/contracts/fulfillment');
   };
+  const advanceReview = () => {
+    if (reviewLevel >= 2) {
+      message.info('合同建议方案已完成终审，后续修改会自动生成新版本');
+      return;
+    }
+    if (reviewLevel === 0 && writtenTitles.length < contracts.length) {
+      message.warning('请先处理并确认全部差异条款，再提交复审');
+      return;
+    }
+    setReviewLevel((level) => level + 1);
+    message.success(`合同建议方案已完成${['初审', '复审', '终审'][reviewLevel]}`);
+  };
   return (
     <>
       <PageTitle breadcrumb={['合同管理', '合同建议', '华科智能设备有限公司']} title="合同建议" subtitle="对比采购文件要求与供应商承诺，生成拟写入合同的条款建议" actions={<><Button icon={<DiffOutlined />} onClick={writeAllContracts}>全部写入合同</Button><Button onClick={() => go('/procurement/contracts/fulfillment')} icon={<FundOutlined />}>履约管理</Button><Button type="primary" icon={<FileDoneOutlined />} onClick={createContract}>生成合同草案并进入履约</Button></>} />
       <Panel className="contract-summary"><strong>{writtenTitles.length ? `已写入 ${writtenTitles.length} / ${contracts.length} 项条款，识别 4 项差异条款` : '共比对 24 项条款，识别 4 项差异条款'}</strong><Space><StatusPill tone="green">优于原要求 2</StatusPill><StatusPill tone="blue">新增承诺 1</StatusPill><StatusPill tone="orange">存在偏离 1</StatusPill></Space></Panel>
+      <Panel title={<><FileSearchOutlined /> 合同信息提取与审核流</>} extra={<StatusPill tone={reviewLevel === 2 ? 'green' : 'blue'}>{reviewLevel === 2 ? '终审通过' : `当前：${['初审', '复审', '终审'][reviewLevel]}`}</StatusPill>}>
+        <div className="contract-source-grid"><div><span>采购文件</span><strong>已提取 18 项约束</strong><small>技术要求、交付期、验收标准、付款方式</small></div><div><span>供应商响应文件</span><strong>已提取 15 项承诺</strong><small>报价、质保、培训、交付与服务承诺</small></div><div><span>评审与澄清记录</span><strong>已提取 6 项澄清</strong><small>2 项澄清已转为合同补充条款</small></div></div>
+        <div className="contract-review-steps">{['初审', '复审', '终审'].map((step, index) => <div className={index < reviewLevel ? 'done' : index === reviewLevel ? 'current' : ''} key={step}><span>{index < reviewLevel ? <CheckOutlined /> : index + 1}</span><strong>{step}</strong><small>{index < reviewLevel ? '已完成 · 留痕' : index === reviewLevel ? '待处理' : '待开始'}</small></div>)}</div>
+        <div className="contract-review-actions"><span><SafetyCertificateOutlined /> 偏离项、付款风险和验收风险会在提交前再次校验</span><Button type="primary" onClick={advanceReview}>{reviewLevel === 2 ? '查看审核记录' : `提交${['初审', '复审', '终审'][reviewLevel]}`}</Button></div>
+      </Panel>
       <div className="contract-list">{contracts.map((item) => { const written = writtenTitles.includes(item.title); return <Card className={`contract-card ${item.color}`} bordered={false} key={item.title}><div className="contract-card-head"><h2><CheckCircleFilled /> {item.title}</h2><StatusPill tone={written ? 'green' : item.color as any}>{written ? '已写入合同' : item.kind}</StatusPill><Button type={written ? 'default' : 'primary'} disabled={written} icon={written ? <CheckOutlined /> : <FileDoneOutlined />} onClick={() => writeContract(item.title)}>{written ? '已写入' : '写入合同'}</Button></div><div className="contract-compare"><div><span>采购要求</span><strong>{item.sourceValue}</strong><small>来源：{item.source}</small></div><ArrowRightOutlined /><div><span>供应商承诺</span><strong>{item.result}</strong><small>来源：投标文件·商务承诺</small></div></div><div className="contract-tip">{item.color === 'orange' ? <WarningFilled /> : <InfoCircleOutlined />} {item.color === 'orange' ? '该要求与采购文件不一致，建议提交评标委员会复核后再决定是否写入合同。' : '建议将供应商承诺写入合同，并同步约定违约责任。'}</div></Card>; })}</div>
     </>
   );
@@ -1471,6 +2009,8 @@ const fulfillmentNodeRows: FulfillmentNodeRow[] = [
   },
 ];
 
+let fulfillmentRuntimeNodes: FulfillmentNodeRow[] = fulfillmentNodeRows;
+
 function getFulfillmentNodeTone(status: FulfillmentNodeStatus): 'green' | 'red' | 'orange' | 'gray' {
   if (status === '已完成') return 'green';
   if (status === '逾期 2 天') return 'red';
@@ -1613,17 +2153,25 @@ function ContractsFulfillmentPage({ onOpenModal, nodeRows, onUpdateNode }: { onO
 
 function DescriptionsList({ items }: { items: Array<[string, string]> }) { return <div className="descriptions-list">{items.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>; }
 
-function RecordsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
+function RecordsPage({ onOpenModal, onCompleteStage, extraRecords = [] }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean; extraRecords?: ProcurementRecord[] }) {
   const [filter, setFilter] = useState('全部');
   const [selectedRecord, setSelectedRecord] = useState<ProcurementRecord | null>(null);
   const [selectedFileRecord, setSelectedFileRecord] = useState<ProcurementRecord | null>(null);
   const [selectedFile, setSelectedFile] = useState<{ record: ProcurementRecord; name: string } | null>(null);
+  const selectedPreview = useMemo(() => {
+    if (!selectedFile) return null;
+    return {
+      filePath: buildRecordFilePreviewUrl(selectedFile.record, selectedFile.name),
+      fileName: `${selectedFile.name}.txt`,
+    };
+  }, [selectedFile]);
 
   const archiveProcess = () => {
     if (onCompleteStage && !onCompleteStage()) return;
     message.success('全过程记录已归档，项目复盘阶段已完成');
   };
-  const visibleRecords = recordItems.filter((item) => filter === '全部' || (filter === 'AI 记录' && item.tone === 'purple') || (filter === '预警' && item.tone === 'orange') || filter === '我的操作');
+  const allRecords = [...extraRecords, ...recordItems];
+  const visibleRecords = allRecords.filter((item) => filter === '全部' || (filter === 'AI 记录' && item.tone === 'purple') || (filter === '预警' && item.tone === 'orange') || filter === '我的操作');
   const showFileList = (record: ProcurementRecord) => {
     setSelectedRecord(null);
     setSelectedFileRecord(record);
@@ -1676,8 +2224,8 @@ function RecordsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: Moda
         </div>)}
       </div>}
     </Modal>
-    <Modal open={Boolean(selectedFile)} title={`文件预览 · ${selectedFile?.name || ''}`} width={640} centered onCancel={() => setSelectedFile(null)} footer={<Space><Button onClick={() => setSelectedFile(null)}>关闭</Button><Button type="primary" icon={<DownloadOutlined />} onClick={() => selectedFile && downloadFile(selectedFile.name)}>下载文件</Button></Space>}>
-      {selectedFile && <div className="record-file-preview"><div className="record-file-preview-icon"><FileTextOutlined /></div><h3>{selectedFile.name}</h3><p>该文件已归档至项目全过程记录，当前演示环境提供文件关联信息与操作记录。</p><DescriptionsList items={[['所属记录', selectedFile.record.title], ['归档时间', selectedFile.record.date], ['归档人', selectedFile.record.user]]} /></div>}
+    <Modal open={Boolean(selectedFile)} title={`原文件预览 · ${selectedFile?.name || ''}`} width={960} centered destroyOnClose onCancel={() => setSelectedFile(null)} styles={{ body: { height: '72vh', padding: 0, overflow: 'hidden' } }} footer={<Space><Button onClick={() => setSelectedFile(null)}>关闭</Button><Button type="primary" icon={<DownloadOutlined />} onClick={() => selectedFile && downloadFile(selectedFile.name)}>下载文件</Button></Space>}>
+      {selectedFile && selectedPreview && <div className="record-file-preview-workspace"><div className="record-file-preview-meta"><div><strong>{selectedFile.name}</strong><span>关联记录：{selectedFile.record.title} · 项目内置文档数据</span></div><Tag color="blue">原文件预览</Tag></div><div className="record-file-preview-viewer"><DocumentFilePreview filePath={selectedPreview.filePath} fileName={selectedPreview.fileName} height="100%" /></div></div>}
     </Modal>
   </>;
 }
@@ -1792,7 +2340,6 @@ function ProcurementModal({ modal, onClose, onOpenModal, onUploaded, onProjectCr
   const [recommendationValues, setRecommendationValues] = useState<NewProjectFormValues>();
   const [similarFilter, setSimilarFilter] = useState<'all' | 'goods' | 'recent'>('all');
   const [similarSorted, setSimilarSorted] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState(0);
   if (!modal) return null;
   const close = () => { setUploadReady(false); setIgnoreReason(''); onClose(); };
   const resetNewProject = () => { form.resetFields(); setSelectedMethod(RECOMMENDED_METHOD); setRecommendationValues(undefined); };
@@ -1912,15 +2459,142 @@ function ProcurementModal({ modal, onClose, onOpenModal, onUploaded, onProjectCr
   }
   if (modal === 'reference') return <Modal open title={<ModalTitle icon={<LinkOutlined />} title="引用案例内容" subtitle="来源：2023 年度移动终端设备采购 · 相似度 92%" />} width={600} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="confirm" type="primary" onClick={() => { message.success(`已引用 ${selectedReferences.length} 项内容`); close(); }}>确认引用</Button>]}><p>请选择需要引用到当前需求文档的内容（可多选）</p>{['技术参数', '验收方式', '交付要求', '商务要求'].map((item, index) => <div className={`reference-option ${selectedReferences.includes(item) ? 'selected' : ''}`} key={item} onClick={() => setSelectedReferences((items) => items.includes(item) ? items.filter((value) => value !== item) : [...items, item])}><Checkbox checked={selectedReferences.includes(item)} /><div><strong>{item}</strong>{index < 2 && <StatusPill tone="blue">推荐引用</StatusPill>}<span>{index === 0 ? '续航 ≥ 10 小时 · IP65 · 支持 4G/5G · 6 英寸屏 · 整机 ≤ 350g' : index === 1 ? '到货抽检 10% + 现场功能测试 + 连续使用 3 天稳定性验证' : index === 2 ? '合同签订后 45 日内到货，供货方负责运输及上楼搬运' : '质保 3 年 · 验收合格后 30 日内支付 90%'}</span></div></div>)}<Alert type="info" showIcon message="引用后内容将自动写入对应字段，你仍可继续编辑修改；系统会保留引用来源标记便于追溯。" /></Modal>;
   if (modal === 'ignore') return <Modal open title={<ModalTitle icon={<EllipsisOutlined />} title="忽略该问题" subtitle="忽略后需填写人工处理意见，便于留痕审计" />} width={540} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="confirm" type="primary" danger onClick={() => { if (!ignoreReason.trim()) { message.warning('请先填写处理意见'); return; } message.success('问题已标记为人工保留'); close(); }}>确认忽略</Button>]}><div className="ignore-problem"><Alert type="error" message="品牌倾向 · 高风险" description="“要求采用华为、联想等同档次品牌产品”" showIcon /><Form.Item label="人工处理意见" required><Input.TextArea rows={4} value={ignoreReason} onChange={(event) => setIgnoreReason(event.target.value)} placeholder="请说明忽略该问题的原因，例如已与需求部门确认、属于历史沿用配置等" /></Form.Item>{['已与需求部门线下沟通确认，该表述沿用历史配置', '现有系统兼容性要求，经使用部门审批同意保留', '已在采购方式说明中另行说明，本处不重复修改'].map((item) => <Button block type="text" className="suggestion-button" key={item} onClick={() => setIgnoreReason(item)}><PlusOutlined /> {item}</Button>)}<Alert type="warning" showIcon message="忽略后该问题将标记为「人工保留」，不纳入已处理统计，重新检查时仍会提示。" /></div></Modal>;
-  if (modal === 'template') {
-    const templateNames = [`《${project.type}类${project.method}标准采购文件》`, '《集团通用采购文件模板》'];
-    return <Modal open title={<ModalTitle icon={<DiffOutlined />} title="从模板生成采购文件" subtitle={`系统已根据「${project.name}」的项目信息自动匹配推荐模板`} />} width={620} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="create" type="primary" icon={<DiffOutlined />} onClick={() => { message.success(`已按${templateNames[selectedTemplate]}生成采购文件`); close(); }}>生成采购文件</Button>]}><div className="template-detection"><strong>✣ 系统自动识别</strong><div><span>采购类型 <b>▣ {project.type}类</b></span><span>采购方式 <b>♙ {project.method}</b></span></div></div><h3>推荐模板</h3>{templateNames.map((item, index) => <div className={`template-option ${selectedTemplate === index ? 'selected' : ''}`} key={item} onClick={() => setSelectedTemplate(index)}><Radio checked={selectedTemplate === index} /><FileTextOutlined /><div><strong>{item}</strong><span>{index === 0 ? '2024 版 · 含 8 个标准章节 · 集团法务审定' : '适用于各类采购方式 · 6 个通用章节'}</span></div>{index === 0 && <StatusPill tone="green">推荐</StatusPill>}</div>)}<h3>自动带入内容 <Checkbox defaultChecked>全选</Checkbox></h3><div className="content-check-grid">{['项目名称', '预算金额', '技术要求', '商务要求', '交付安排', '验收标准'].map((item) => <Checkbox defaultChecked key={item}>{item}</Checkbox>)}</div><Alert type="info" showIcon message="生成后将覆盖当前文档草稿内容，您可随时通过「版本记录」恢复到历史版本。" /></Modal>;
-  }
   if (modal === 'add-company') return <Modal open title={<ModalTitle icon={<BankOutlined />} title="添加候选企业" subtitle="录入企业信息并选择核查范围" />} width={600} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="confirm" type="primary" onClick={() => { message.success('候选企业已添加'); close(); }}>确认添加</Button>]}><Form layout="vertical" className="modal-form"><Form.Item label="企业名称" required><Input prefix={<SearchOutlined />} defaultValue="华科智能设备有限公司" /></Form.Item><div className="company-suggestion"><CheckCircleFilled /> <strong>华科智能设备有限公司</strong><span>91440300MA5F8K2X3D</span></div><Row gutter={16}><Col span={12}><Form.Item label="统一社会信用代码"><Input defaultValue="91440300MA5F8K2X3D" /></Form.Item></Col><Col span={12}><Form.Item label="企业类型"><Select defaultValue="有限责任公司" options={[{ value: '有限责任公司', label: '有限责任公司' }, { value: '股份有限公司', label: '股份有限公司' }]} /></Form.Item></Col></Row><Form.Item label="核查范围" required><div className="check-grid">{['企业信息', '信用风险', '经营异常', '司法风险', '关联企业', '关联人员', '供应商关系'].map((item) => <Checkbox defaultChecked key={item}>{item}</Checkbox>)}</div></Form.Item><Alert type="info" showIcon message="进入联合核查时，系统会自动识别候选企业之间的关联关系，无需单独设置。" /></Form></Modal>;
   if (modal === 'risk-node') return <Modal open title={<ModalTitle icon={<UserOutlined />} title="人员节点详情" subtitle="来自企业关系图谱 · 交叉任职线索" />} width={520} centered onCancel={close} footer={[<Button key="report" onClick={() => { message.success('该线索已加入核查报告'); close(); }}>加入核查报告</Button>, <Button key="close" type="primary" onClick={close}>关闭</Button>]}><div className="person-card"><Avatar size={48}>张</Avatar><div><h3>张伟 <StatusPill tone="orange">交叉任职</StatusPill></h3><span>在两家中标候选企业关联主体中担任职务</span></div></div><DescriptionsList items={[['职位', '董事（华科智能） · 监事（恒远科技）'], ['任职企业', '华科智能设备有限公司、恒远科技有限公司'], ['数据来源', '工商公示信息　第三方关联库（异常）'], ['查询时间', '2024-06-15 10:22:36']]} /><h3>关联路径</h3><div className="path-chips"><span>华科智能设备</span><ArrowRightOutlined /><span>张伟</span><ArrowRightOutlined /><span>恒远科技</span><br /><span>恒远科技</span><ArrowRightOutlined /><span>张伟</span><ArrowRightOutlined /><span>中联数字科技</span></div><Alert type="warning" showIcon message="该节点的关联关系部分来自第三方关联库，当前数据源不可用，结果可能不完整。" /></Modal>;
   if (modal === 'warning') return <Modal open title={<ModalTitle icon={<ToolOutlined />} title="处理履约预警" subtitle="设备到货 · 即将超期 · 计划日期 2024-08-20" />} width={680} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="confirm" type="primary" danger onClick={() => { message.success('预警处理已提交'); close(); }}>确认处理</Button>]}><Form layout="vertical" className="modal-form"><Alert type="warning" message="设备到货 — 即将超期（剩余 3 天）" /><Row gutter={16}><Col span={12}><Form.Item label="当前责任人"><Select defaultValue="李强（供应商）" options={[{ value: '李强（供应商）', label: '李强（供应商）' }, { value: '张明（采购）', label: '张明（采购）' }]} /></Form.Item></Col><Col span={12}><Form.Item label="新计划日期"><DatePicker style={{ width: '100%' }} placeholder="请选择日期" /></Form.Item></Col></Row><Form.Item label="处理方式" required><Radio.Group className="radio-grid" defaultValue="urge" options={[{ value: 'urge', label: '🔔 催办' }, { value: 'reschedule', label: '▣ 调整计划' }, { value: 'upload', label: '☁ 已完成未上传材料' }, { value: 'other', label: '··· 其他' }]} /></Form.Item><Form.Item label="处理说明" required><Input.TextArea rows={4} placeholder="请说明处理措施与后续跟进安排，例如已电话催办供应商、要求其于 3 日内发货并回传物流单号" /></Form.Item><Form.Item label="附件"><Upload><Button icon={<PaperClipOutlined />}>选择文件</Button></Upload></Form.Item><Alert type="info" showIcon message="处理记录将留痕，可在履约台账中查看" /></Form></Modal>;
   if (modal === 'version') return <Modal open title={<ModalTitle icon={<DiffOutlined />} title="查看前后版本" subtitle="采购文件 · V1.2 → V1.3 · 操作人：张明 · 2024-06-05 16:40" />} width={860} centered onCancel={close} footer={[<Button key="download" icon={<DownloadOutlined />} onClick={() => message.success('版本对比文件已生成，正在下载')}>下载对比</Button>, <Button key="close" onClick={close}>关闭</Button>, <Button key="restore" type="primary" onClick={() => { message.success('已恢复到此版本'); close(); }}>恢复到此版本</Button>]}><div className="version-summary"><span>↔ 共 3 处变更</span><span className="green-text">● 新增 1</span><span className="orange-text">● 修改 2</span><span className="red-text">● 删除 0</span></div><div className="version-grid"><div><h3>V1.2（修改前）</h3><div className="version-change red"><strong>新增　第四章 评分标准</strong><p>（本章节缺失，无内容）</p></div><div className="version-change orange"><strong>修改　技术要求·品牌表述</strong><p>要求采用华为、联想等同档次品牌产品</p></div><div className="version-change orange"><strong>修改　第四章 验收要求·续航检测项</strong><p>全数设备进行开机功能测试</p></div></div><div><h3>V1.3（修改后）</h3><div className="version-change green"><strong>技术分 60 分、商务分 20 分、价格分 20 分</strong><p>技术分含续航、防护等级、接口兼容性等指标。</p></div><div className="version-change green"><strong>采用同等性能的通用配置，需提供第三方检测报告佐证指标</strong></div><div className="version-change green"><strong>全数开机功能测试，并补充续航实测（抽检 5 台，连续巡检模式不少于 12 小时）</strong></div></div></div><Alert type="info" showIcon message="版本记录支持回溯查看与一键恢复，恢复操作将生成新的版本记录并保留完整历史。" /></Modal>;
   return <Modal open title={<ModalTitle icon={<ThunderboltFilled />} title="查看 AI 记录" subtitle="2024-05-18 10:12 · 模型：智采云需求合规检查 v2.3 · 耗时 2.3 秒" />} width={680} centered onCancel={close} footer={[<Button key="export" icon={<DownloadOutlined />} onClick={() => message.success('AI 检查记录已导出')}>导出 AI 记录</Button>, <Button key="close" type="primary" onClick={close}>关闭</Button>]}><div className="ai-stats"><MetricCard icon={<WarningFilled />} value="2" label="高风险" accent="red" /><MetricCard icon={<WarningFilled />} value="2" label="中风险" accent="orange" /><MetricCard icon={<CheckCircleFilled />} value="3" label="已处理" accent="green" /><MetricCard icon={<EllipsisOutlined />} value="1" label="人工保留" accent="purple" /></div><div className="ai-output"><strong>🤖 AI 原始输出摘要</strong><p>已比对 12 项制度与 36 个历史项目。检出 4 项高风险：①品牌倾向性表述 ②供应商业绩门槛显著高于项目规模 ③技术要求与验收标准不一致 ④缺少安装调试完成时间节点。建议优先处理高风险项。</p></div><h3>☷ 处理明细</h3>{auditProblems.map((item, index) => <div className={`ai-record-row ${index === 3 ? 'retained' : 'handled'}`} key={item.title}><CheckCircleFilled /> <strong>{item.title}</strong><StatusPill tone={index === 3 ? 'orange' : 'green'}>{index === 3 ? '人工保留' : index === 1 ? '人工修改' : '采纳建议'}</StatusPill><span>张明 10:{48 + index}</span></div>)}<div className="manual-opinion"><strong>人工处理意见（第 4 项）</strong><p>安装调试时间已在使用部门需求确认单中明确（到货后 10 个工作日内），本处维持原表述，提交时随附件一并说明。</p></div></Modal>;
+}
+
+type PolicyChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  references?: PolicyReference[];
+};
+
+type PolicyReference = {
+  name: string;
+  clause: string;
+  source: string;
+};
+
+type PolicyPresetQuestion = {
+  question: string;
+  answer: string;
+  references: PolicyReference[];
+};
+
+const policyPresetQuestions: PolicyPresetQuestion[] = [
+  {
+    question: '公开招标的适用条件是什么？',
+    answer: '公开招标是政府采购的主要采购方式。办理时应先核对项目是否达到适用的公开招标数额标准，并结合采购品类、预算来源和项目所在地的现行标准判断。若因特殊情况需要采用公开招标以外的方式，应在采购活动开始前履行相应审批程序，同时在采购文件中留存适用理由和审批依据；不得通过拆分项目等方式规避公开招标。',
+    references: [
+      { name: '中华人民共和国政府采购法', clause: '第二十六条', source: '中国政府采购网 · 法规库' },
+      { name: '中华人民共和国政府采购法', clause: '第二十七条、第二十八条', source: '中国政府采购网 · 法规库' },
+    ],
+  },
+  {
+    question: '采购需求如何避免倾向性？',
+    answer: '采购需求应围绕项目目标和实际履约需要编制，使用功能、性能、服务结果和可验证的客观指标表达，避免直接指定品牌、商标、专利、型号或供应商。资格条件、业绩门槛和评审因素要与项目特点相适应，不能设置与合同履行无关的区域、所有制或规模限制；技术要求和评分标准还应保持一致，并通过市场调查和需求审查留存论证记录。',
+    references: [
+      { name: '中华人民共和国政府采购法实施条例', clause: '第二十条', source: '中国政府采购网 · 法规库' },
+      { name: '政府采购需求管理办法', clause: '第七条、第九条', source: '财政部政策文件库' },
+    ],
+  },
+  {
+    question: '供应商存在股权关联可以参加投标吗？',
+    answer: '不能只看“是否有投资关系”这一项直接下结论。若不同供应商的单位负责人为同一人，或者存在直接控股、管理关系，不得参加同一合同项下的政府采购活动；采购人应在资格审查和供应商风险核查中核验股权、实际控制人、董监高任职及关联关系，并将核查结论留痕。属于同一控制关系的，应按规定取消相关供应商参与同一项目的资格。',
+    references: [
+      { name: '中华人民共和国政府采购法实施条例', clause: '第十八条', source: '中国政府采购网 · 法规库' },
+      { name: '政府采购供应商资格审查与风险核查指引', clause: '关联关系核验要求', source: '采购法规知识库 · 内部指引' },
+    ],
+  },
+  {
+    question: '采购项目流标后如何处理？',
+    answer: '先确认流标原因并形成书面记录，向相关供应商告知废标理由。若属于合格供应商不足三家、报价超过预算或存在影响采购公正的违法情形，原则上应重新组织采购；采购任务取消的，可以终止项目。若拟改用其他采购方式，应先论证原采购文件和程序是否存在问题，并按规定履行审批后再组织实施，不能直接跳过原因分析。',
+    references: [
+      { name: '中华人民共和国政府采购法', clause: '第三十六条', source: '中国政府采购网 · 法规库' },
+      { name: '政府采购货物和服务招标投标管理办法', clause: '第五十七条', source: '财政部令第87号 · 政策库' },
+    ],
+  },
+];
+
+const initialPolicyMessages: PolicyChatMessage[] = [
+  {
+    id: 'policy-welcome',
+    role: 'assistant',
+    content: '您好，我是智采政策助手。可以基于法规知识库回答采购方式、需求编制、信息发布、合同履约等问题。当前回答会同步展示法规名称、条款号和政策来源，请结合项目实际情况由人工审核后使用。',
+    references: [{ name: '政府采购法', clause: '第四十六条', source: '中国政府采购网法规库' }],
+  },
+  ...policyPresetQuestions.flatMap((item, index): PolicyChatMessage[] => [
+    {
+      id: `policy-preset-question-${index}`,
+      role: 'user',
+      content: item.question,
+    },
+    {
+      id: `policy-preset-answer-${index}`,
+      role: 'assistant',
+      content: item.answer,
+      references: item.references,
+    },
+  ]),
+];
+
+function PolicyAssistantPage() {
+  const [messages, setMessages] = useState<PolicyChatMessage[]>(initialPolicyMessages);
+  const [question, setQuestion] = useState('');
+  const [activeHotQuestion, setActiveHotQuestion] = useState('');
+  const hotQuestions = policyPresetQuestions;
+  const askQuestion = (value = question) => {
+    const content = value.trim();
+    if (!content) return;
+    const preset = policyPresetQuestions.find((item) => item.question === content);
+    const timestamp = Date.now();
+    setMessages((current) => [...current, { id: `user-${timestamp}`, role: 'user', content }, { id: `assistant-${timestamp + 1}`, role: 'assistant', content: preset?.answer || `基于当前项目与法规知识库检索，关于“${content}”的初步结论是：应先核对采购方式适用条件、节点前置材料和项目实际金额，不能仅依据历史做法直接推进。系统建议在提交前由审核人员确认具体适用条款，并将核查结论写入项目留痕。`, references: preset?.references || [{ name: '政府采购法实施条例', clause: '第三十四条', source: '中国政府采购网 · 法规库' }, { name: '政府采购需求管理办法', clause: '第十二条', source: '财政部政策文件库' }] }]);
+    setQuestion('');
+    setActiveHotQuestion(content);
+  };
+  return <>
+    <PageTitle breadcrumb={['AI 能力', '政策合规']} title="AI 政策助手" subtitle="RAG 检索法规知识库，回答可追溯、可核验、可回看" actions={<><Button icon={<HistoryOutlined />} onClick={() => message.info('已打开近 30 天问答历史')}>历史记录</Button><Upload showUploadList={false} beforeUpload={(file) => { message.success(`已加载 ${file.name}，可在对话中提问`); return false; }}><Button icon={<UploadOutlined />}>上传文件问答</Button></Upload><Button type="primary" icon={<BookOutlined />} onClick={() => go('/procurement/knowledge-base')}>管理知识库</Button></>} />
+    <Row gutter={[16, 16]} className="policy-assistant-layout"><Col xs={24} xl={17}><Panel className="policy-chat-panel" title={<><ThunderboltFilled /> 采购政策会话1 <StatusPill tone="green">RAG 在线</StatusPill></>} extra={<span className="muted-text">已内置 4 组政策问答 · 回答必须经人工确认后进入项目记录</span>}><div className="policy-chat-list">{messages.map((item) => <div className={`policy-chat-item ${item.role}`} key={item.id}><div className="policy-chat-avatar">{item.role === 'assistant' ? <ThunderboltFilled /> : <UserOutlined />}</div><div className="policy-chat-bubble"><div className="policy-chat-head"><strong>{item.role === 'assistant' ? '智采政策助手' : '张明'}</strong><span>{item.role === 'assistant' ? 'AI 生成 · 待人工核验' : '刚刚'}</span></div><p>{item.content}</p>{item.references && <div className="policy-reference-list"><span className="policy-reference-label"><BookOutlined /> 引用依据</span>{item.references.map((reference) => <div className="policy-reference" key={`${item.id}-${reference.name}-${reference.clause}`}><div><strong>{reference.name}</strong><span>{reference.clause} · {reference.source}</span></div><Button type="link" size="small" onClick={() => message.info(`已打开《${reference.name}》${reference.clause}原文`)}>查看原文</Button></div>)}</div>}</div></div>)}</div><div className="policy-upload-hint"><UploadOutlined /><span>可将采购文件、需求说明或合同上传后提问，系统会把文件内容与法规条款一起检索。</span><Button type="link" onClick={() => message.info('支持 PDF、Word、Excel、图片，单文件不超过 50 MB')}>支持格式</Button></div><div className="policy-compose"><Input.TextArea value={question} onChange={(event) => setQuestion(event.target.value)} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="输入政策问题，例如：本项目预算 48 万元，采用公开招标是否合适？" onPressEnter={(event) => { if (!event.shiftKey) { event.preventDefault(); askQuestion(); } }} /><Button type="primary" icon={<SendOutlined />} onClick={() => askQuestion()}>发送</Button></div></Panel></Col><Col xs={24} xl={7}><Panel title={<><FileSearchOutlined /> 热门问题</>}><div className="policy-hot-list">{hotQuestions.map((item, index) => <button type="button" className={activeHotQuestion === item.question ? 'active' : ''} key={item.question} onClick={() => askQuestion(item.question)}><span>0{index + 1}</span><div><strong>{item.question}</strong><small>内置答案 · {item.references.length} 条引用</small></div><ArrowRightOutlined /></button>)}</div></Panel><Panel title={<><SafetyCertificateOutlined /> 回答质量控制</>}><div className="policy-quality-list"><div><CheckCircleFilled /><span>法规名称、条款号、来源</span><StatusPill tone="green">已开启</StatusPill></div><div><CheckCircleFilled /><span>回答与原文片段关联</span><StatusPill tone="green">已开启</StatusPill></div><div><CheckCircleFilled /><span>失效法规自动拦截</span><StatusPill tone="orange">需复核</StatusPill></div><div><HistoryOutlined /><span>问答结果写入项目留痕</span><StatusPill tone="blue">支持</StatusPill></div></div><Alert type="info" showIcon message="AI 仅提供辅助意见，正式办理以有效法规原文和审核结论为准。" /></Panel></Col></Row>
+  </>;
+}
+
+const knowledgeDocuments = [
+  { key: 'kb-1', name: '政府采购法.pdf', category: '法律', version: 'V3.0', chunks: 248, status: '已向量化', valid: '长期有效', updated: '2026-09-12' },
+  { key: 'kb-2', name: '政府采购法实施条例.docx', category: '行政法规', version: 'V2.1', chunks: 186, status: '已向量化', valid: '长期有效', updated: '2026-09-10' },
+  { key: 'kb-3', name: '政府采购需求管理办法.pdf', category: '部门规章', version: 'V1.4', chunks: 132, status: '已向量化', valid: '有效', updated: '2026-09-08' },
+  { key: 'kb-4', name: '采购文件编制指引（2024）.pdf', category: '内部制度', version: 'V1.0', chunks: 96, status: '解析中', valid: '有效', updated: '2026-10-08' },
+  { key: 'kb-5', name: '废止文件清单.xlsx', category: '失效政策', version: 'V1.2', chunks: 42, status: '已停用', valid: '已失效', updated: '2026-08-20' },
+];
+
+function KnowledgeBasePage() {
+  const [category, setCategory] = useState('全部');
+  const categories = ['全部', '法律', '行政法规', '部门规章', '内部制度', '失效政策'];
+  const docs = knowledgeDocuments.filter((item) => category === '全部' || item.category === category);
+  return <>
+    <PageTitle breadcrumb={['AI 能力', '知识库']} title="采购法规知识库" subtitle="批量导入、自动解析、向量化、版本管理和法规失效控制" actions={<><Button icon={<DownloadOutlined />} onClick={() => message.success('知识库清单已导出')}>导出清单</Button><Upload showUploadList={false} multiple beforeUpload={(file) => { message.success(`已加入导入队列：${file.name}`); return false; }}><Button type="primary" icon={<UploadOutlined />}>批量导入文件</Button></Upload></>} />
+    <Row gutter={[16, 16]} className="metric-grid"><Col xs={24} sm={12} xl={6}><MetricCard icon={<BookOutlined />} value="42" label="有效文档" badge="↑ 6" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<FileSearchOutlined />} value="8,624" label="知识切片" accent="purple" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<SyncOutlined />} value="1" label="处理中" accent="orange" badge="预计 2 分钟" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<WarningFilled />} value="3" label="待复核失效文件" accent="red" /></Col></Row>
+    <Alert type="warning" showIcon message="知识库中有 3 份政策文件即将或已经失效，AI 回答会优先排除失效版本，并在引用区域提示复核。" />
+    <Panel title={<><BookOutlined /> 文档资产</>} extra={<Space><Input prefix={<SearchOutlined />} placeholder="搜索法规名称" style={{ width: 220 }} /><Select value={category} onChange={setCategory} options={categories.map((item) => ({ value: item, label: item }))} /></Space>}><Table rowKey="key" dataSource={docs} pagination={{ pageSize: 8, showTotal: (total) => `共 ${total} 份文档` }} columns={[{ title: '文档名称', dataIndex: 'name', render: (value: string, record) => <div className="knowledge-file-name"><FileTextOutlined /><div><strong>{value}</strong><span>{record.category} · 更新于 {record.updated}</span></div></div> }, { title: '版本', dataIndex: 'version' }, { title: '切片数', dataIndex: 'chunks' }, { title: '向量状态', dataIndex: 'status', render: (value: string) => <StatusPill tone={value === '已向量化' ? 'green' : value === '已停用' ? 'red' : 'orange'}>{value}</StatusPill> }, { title: '有效性', dataIndex: 'valid', render: (value: string) => <StatusPill tone={value === '已失效' ? 'red' : 'green'}>{value}</StatusPill> }, { title: '操作', render: (_, record) => <Space size="small"><Button type="link" size="small" onClick={() => message.info(`已打开 ${record.name} 原文预览`)}>预览</Button><Button type="link" size="small" onClick={() => message.success(`${record.name} 已加入重新向量化队列`)}>重建向量</Button></Space> }]} /></Panel>
+    <Row gutter={[16, 16]}><Col xs={24} xl={15}><Panel title={<><SyncOutlined /> 处理流水线</>}><div className="knowledge-pipeline"><div className="active"><span>1</span><strong>文件解析</strong><small>结构识别、OCR、表格抽取</small></div><ArrowRightOutlined /><div className="active"><span>2</span><strong>法规分类</strong><small>法律层级、采购品类、适用范围</small></div><ArrowRightOutlined /><div className="active"><span>3</span><strong>向量化</strong><small>切片、嵌入、索引更新</small></div><ArrowRightOutlined /><div><span>4</span><strong>质量反馈</strong><small>引用反馈、失效处理、优化召回</small></div></div></Panel></Col><Col xs={24} xl={9}><Panel title={<><SafetyCertificateOutlined /> 知识库规则</>}><ul className="knowledge-rule-list"><li>仅有效版本参与 RAG 检索</li><li>同名文件新版本自动建立版本链</li><li>法规失效后保留历史引用但禁止新回答引用</li><li>用户反馈会回流至召回质量评估</li></ul></Panel></Col></Row>
+  </>;
+}
+
+const requirementReviewFindings = auditProblems.map((item, index) => ({ ...item, category: ['倾向性', '排他性', '一致性', '完整性'][index], basis: ['政府采购法实施条例 · 第二十条', '政府采购需求管理办法 · 第十七条', '政府采购法 · 第三十五条', '政府采购需求管理办法 · 第十三条'][index] }));
+
+function RequirementReviewPage() {
+  const { project } = useProjectWorkflow();
+  const [resolved, setResolved] = useState<Record<number, string>>({});
+  const remaining = requirementReviewFindings.length - Object.keys(resolved).length;
+  const resolve = (index: number, action: string) => { setResolved((current) => ({ ...current, [index]: action })); message.success(`已记录第 ${index + 1} 项处理结果：${action}`); };
+  return <>
+    <PageTitle breadcrumb={['采购需求', '需求智能审核', project.name]} title="需求智能审核" subtitle="AI 识别倾向性、排他性、一致性和完整性风险，人工确认后形成审核报告" actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/requirements')}>返回需求拟制</Button><Button icon={<SyncOutlined />} onClick={() => message.success('已重新扫描需求文本，未发现新增问题')}>重新检查</Button><Button type="primary" icon={<DownloadOutlined />} onClick={() => message.success('审核报告已生成并进入项目档案')}>生成审核报告</Button></>} />
+    <Alert type={remaining ? 'warning' : 'success'} showIcon message={remaining ? `当前还有 ${remaining} 项问题等待人工处理，全部高风险问题处理完成后才可提交审核。` : '全部问题已完成 AI 建议采纳或人工确认，审核报告可以生成。'} description="AI 结果仅作为辅助，人工选择会记录处理人、时间、原文位置和处理意见。" />
+    <Row gutter={[16, 16]} className="review-layout"><Col xs={24} xl={11}><Panel title={<><FileTextOutlined /> 采购需求原文 <StatusPill tone="purple">AI 定位已开启</StatusPill></>} extra={<Button type="link" onClick={() => message.success('已定位到第 3 页第 2 段')}>定位问题</Button>}><div className="requirement-document-preview"><h2>{project.name} · 采购需求说明</h2><p className="document-meta">版本 V0.2 · 最近修改：张明 · 2026-10-08 09:30</p><h3>一、技术要求</h3><p>投标产品应采用主流品牌，续航不少于 12 小时，防护等级不低于 IP67，并支持标准数据接口。</p><p className="highlight-red">投标人须具备近 3 年不少于 5 个同类项目业绩，单个合同金额不低于 200 万元。</p><h3>二、验收标准</h3><p className="highlight-orange">验收时进行开机功能测试，确认设备能够正常使用。</p><h3>三、服务要求</h3><p>供应商负责运输、安装和调试，并提供培训及质保服务。</p><div className="document-ai-note"><ThunderboltFilled /><span>AI 已比对 12 项制度与 36 个历史项目，点击右侧风险卡可定位到对应原文。</span></div></div></Panel></Col><Col xs={24} xl={13}><Panel title={<><SafetyCertificateOutlined /> AI 合规检查结果 <StatusPill tone={remaining ? 'red' : 'green'}>{remaining ? `${remaining} 项待处理` : '已全部处理'}</StatusPill></>}><div className="review-summary-strip"><span className="red">高风险 {requirementReviewFindings.filter((item) => item.level === '高风险' && !resolved[requirementReviewFindings.indexOf(item)]).length}</span><span className="orange">中风险 {requirementReviewFindings.filter((item) => item.level === '中风险' && !resolved[requirementReviewFindings.indexOf(item)]).length}</span><span className="green">已处理 {Object.keys(resolved).length}</span></div><div className="review-finding-list">{requirementReviewFindings.map((item, index) => { const action = resolved[index]; return <div className={`review-finding-card ${action ? 'resolved' : item.level === '高风险' ? 'high' : 'medium'}`} key={item.title}><div className="review-finding-head"><div><span className="review-category">{item.category}</span><strong>{index + 1}. {item.title}</strong></div><StatusPill tone={action ? 'green' : item.level === '高风险' ? 'red' : 'orange'}>{action || item.level}</StatusPill></div>{action ? <p className="resolved-copy">处理结果：{action}，已生成留痕记录。</p> : <><p>{item.reason}</p><div className="review-suggestion"><strong>修改建议</strong><span>{item.suggestion}</span></div><div className="review-basis"><BookOutlined /> 法规依据：{item.basis}</div><Space wrap><Button size="small" type="primary" onClick={() => resolve(index, '采纳建议')}>一键修改</Button><Button size="small" onClick={() => resolve(index, '人工修改')}>人工修改</Button><Button size="small" onClick={() => resolve(index, '人工保留')}>人工保留</Button><Button size="small" type="link" onClick={() => message.info('已定位原文并打开法规原文侧栏')}>查看原文</Button></Space></>}</div>; })}</div></Panel></Col></Row>
+  </>;
 }
 
 function ModalTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) { return <div className="modal-title"><div className="modal-title-icon">{icon}</div><div><strong>{title}</strong>{subtitle && <span>{subtitle}</span>}</div></div>; }
@@ -1934,7 +2608,8 @@ function ProcurementPortal() {
   const [project, setProject] = useState<ProjectDetailData>(() => initialContext.project);
   const [projects, setProjects] = useState<Project[]>(() => procurementRuntime.projects);
   const [workflow, setWorkflow] = useState<ProjectWorkflow>(() => initialContext.workflow);
-  const [fulfillmentNodes, setFulfillmentNodes] = useState<FulfillmentNodeRow[]>(() => fulfillmentNodeRows);
+  const [fulfillmentNodes, setFulfillmentNodes] = useState<FulfillmentNodeRow[]>(() => fulfillmentRuntimeNodes);
+  const [projectStatusLogs, setProjectStatusLogs] = useState<ProcurementRecord[]>(() => procurementRuntimeAuditRecords);
   const startNewProject = (createdProject: ProjectDetailData) => {
     const nextWorkflow: ProjectWorkflow = { currentStage: 0, completedStages: [], materialsReady: false };
     const nextProjects: Project[] = [{
@@ -1967,6 +2642,16 @@ function ProcurementPortal() {
     procurementRuntime = { ...procurementRuntime, contexts: { ...procurementRuntime.contexts, [contextKey]: nextContext } };
     setWorkflow(nextWorkflow);
   };
+  const updateProjectStatus = (projectId: string, status: Project['status']) => {
+    const targetProject = procurementRuntime.projects.find((item) => item.id === projectId);
+    const nextProjects = procurementRuntime.projects.map((item) => item.id === projectId ? { ...item, status, color: getStageColor(item.stageIndex, status) } : item);
+    procurementRuntime = { ...procurementRuntime, projects: nextProjects };
+    setProjects(nextProjects);
+    const nextLog: ProcurementRecord = { title: '项目状态更新', type: '项目管理', tone: status === '已完成' ? 'green' : 'blue', detail: `将项目「${targetProject?.name || projectId}」状态更新为“${status}”，列表状态、项目摘要与后续办理入口已同步。`, date: new Date().toLocaleString('zh-CN'), user: project.owner || '张明', files: [] };
+    procurementRuntimeAuditRecords = [nextLog, ...procurementRuntimeAuditRecords];
+    setProjectStatusLogs(procurementRuntimeAuditRecords);
+    message.success(`项目状态已更新为“${status}”，操作已写入全过程记录`);
+  };
   const completeStage = (stageIndex = workflow.currentStage) => {
     const currentContext = getRuntimeContext(contextKey);
     const currentWorkflow = currentContext.workflow;
@@ -1992,11 +2677,16 @@ function ProcurementPortal() {
     return true;
   };
   const updateFulfillmentNode = (nodeName: string, status: FulfillmentNodeStatus, note: string) => {
-    setFulfillmentNodes((current) => current.map((item) => item.node !== nodeName ? item : {
+    const nextNodes = fulfillmentRuntimeNodes.map((item) => item.node !== nodeName ? item : {
       ...item,
       status,
       activities: [...item.activities, { time: '刚刚', title: '状态已更新', description: note || `节点状态已更新为“${status}”。` }],
-    }));
+    });
+    fulfillmentRuntimeNodes = nextNodes;
+    setFulfillmentNodes(nextNodes);
+    const nextLog: ProcurementRecord = { title: '履约节点状态更新', type: '履约验收', tone: status === '已完成' ? 'green' : status === '逾期 2 天' ? 'orange' : 'blue', detail: `履约节点「${nodeName}」状态更新为“${status}”。${note ? `处理说明：${note}` : ''}`, date: new Date().toLocaleString('zh-CN'), user: project.owner || '张明', files: [] };
+    procurementRuntimeAuditRecords = [nextLog, ...procurementRuntimeAuditRecords];
+    setProjectStatusLogs(procurementRuntimeAuditRecords);
   };
   const workflowContextValue = { workflow, project, markMaterialsReady, completeStage };
   useEffect(() => {
@@ -2018,22 +2708,26 @@ function ProcurementPortal() {
   }, [contextKey, routeContextKey]);
   const view = location.pathname;
   const acceptanceView = view.endsWith('/result') ? 'result' : view.endsWith('/report') ? 'report' : view.endsWith('/evaluation') ? 'evaluation' : 'form';
-  const showProjectFlowBar = ['/procurement/requirements', '/procurement/documents', '/procurement/suppliers', '/procurement/suppliers/risk', '/procurement/contracts', '/procurement/contracts/fulfillment', '/procurement/contracts/fulfillment/node-detail', '/procurement/acceptance', '/procurement/acceptance/result', '/procurement/acceptance/report', '/procurement/acceptance/evaluation', '/procurement/records'].includes(view);
+  const showProjectFlowBar = ['/procurement/requirements', '/procurement/requirements/review', '/procurement/documents', '/procurement/documents/draft', '/procurement/documents/gate', '/procurement/suppliers', '/procurement/suppliers/risk', '/procurement/contracts', '/procurement/contracts/proposal', '/procurement/contracts/fulfillment', '/procurement/contracts/fulfillment/node-detail', '/procurement/acceptance', '/procurement/acceptance/result', '/procurement/acceptance/report', '/procurement/acceptance/evaluation', '/procurement/records'].includes(view);
   const content = view === '/platform-overview' ? <PlatformOverviewPage />
     : view === '/platform-models' ? <ModelServicesPage />
     : view === '/procurement' || view === '/procurement/' ? <Workbench onOpenModal={setModal} projects={projects} />
-    : view === '/procurement/projects' ? <ProjectsPage onOpenModal={setModal} projects={projects} />
+    : view === '/procurement/projects' ? <ProjectsPage onOpenModal={setModal} projects={projects} onUpdateStatus={updateProjectStatus} />
     : view === '/procurement/projects/detail' ? (workflow.currentStage === 0 ? <ProjectInitialStatePage onOpenModal={setModal} /> : <ProjectDetail onOpenModal={setModal} />)
-        : view === '/procurement/requirements' ? <RequirementPage onOpenModal={setModal} onCompleteStage={() => completeStage(1)} />
-          : view === '/procurement/documents' ? <DocumentsPage onOpenModal={setModal} onCompleteStage={() => completeStage(2)} />
-            : view === '/procurement/contracts' ? <ContractsPage onCompleteStage={() => completeStage(4)} />
+        : view === '/procurement/requirements/review' ? <RequirementReviewPage />
+          : view === '/procurement/requirements' ? <RequirementPage onOpenModal={setModal} onCompleteStage={() => completeStage(1)} />
+            : view === '/procurement/documents/gate' ? <ProjectStageFileGatePage onOpenModal={setModal} />
+              : view === '/procurement/documents/draft' || view === '/procurement/documents' ? <DocumentsPage onOpenModal={setModal} onCompleteStage={() => completeStage(2)} />
+                : view === '/procurement/contracts/proposal' || view === '/procurement/contracts' ? <ContractsPage onCompleteStage={() => completeStage(4)} />
               : view === '/procurement/contracts/fulfillment' ? <ContractsFulfillmentPage onOpenModal={setModal} nodeRows={fulfillmentNodes} onUpdateNode={updateFulfillmentNode} />
                 : view === '/procurement/contracts/fulfillment/node-detail' ? <FulfillmentNodeDetailPage onOpenModal={setModal} nodeRows={fulfillmentNodes} />
                   : view === '/procurement/suppliers/risk' ? <SupplierRiskPage onOpenModal={setModal} />
                   : view === '/procurement/suppliers' ? <SuppliersPage onOpenModal={setModal} onCompleteStage={() => completeStage(3)} />
                     : view.startsWith('/procurement/acceptance') ? <AcceptancePage view={acceptanceView as any} onOpenModal={setModal} onCompleteStage={() => completeStage(5)} />
-                      : view === '/procurement/records' ? <RecordsPage onOpenModal={setModal} onCompleteStage={() => completeStage(6)} />
+                      : view === '/procurement/records' ? <RecordsPage onOpenModal={setModal} onCompleteStage={() => completeStage(6)} extraRecords={projectStatusLogs} />
                         : view === '/procurement/roles' ? <RolesPage />
+                          : view === '/procurement/policy-assistant' ? <PolicyAssistantPage />
+                            : view === '/procurement/knowledge-base' ? <KnowledgeBasePage />
                           : <ReportsPage />;
   return <ProjectWorkflowContext.Provider value={workflowContextValue}><div className="procurement-page">{showProjectFlowBar && <ProjectFlowBar />}{content}<ProcurementModal modal={modal} onClose={() => setModal(null)} onOpenModal={setModal} onUploaded={markMaterialsReady} onProjectCreated={startNewProject} /></div></ProjectWorkflowContext.Provider>;
 }

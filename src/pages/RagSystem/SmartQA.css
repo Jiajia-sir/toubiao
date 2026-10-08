@@ -694,6 +694,46 @@
   line-height: 1.85;
 }
 
+.policy-citation-card {
+  margin-top: 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f8fbff 0%, #eff6ff 100%);
+  overflow: hidden;
+}
+
+.policy-citation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px dashed #bfdbfe;
+  color: #1e3a8a;
+  font-size: 12px;
+}
+
+.policy-citation-header span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.policy-citation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+}
+
+.policy-citation-list.message-reference-doc-list {
+  padding: 10px 12px 12px;
+}
+
+.policy-citation-card .message-reference-doc-item {
+  background: rgba(255, 255, 255, 0.86);
+  border-color: #dbeafe;
+}
+
 .message-reference-panel {
   width: 100%;
   padding: 10px 0 0;

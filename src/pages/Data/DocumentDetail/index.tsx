@@ -39,6 +39,7 @@ import {
   Tooltip,
 } from 'antd';
 import { statusConfig } from '@/config/status';
+import { policyDocumentMocks } from '@/data/policyDocumentMock';
 import {
   type DocumentParseDetail,
   type KnowledgeGraphData,
@@ -332,9 +333,7 @@ const parseHighlightKeywords = (value: string | null, fallbackKeyword = ''): str
     try {
       const parsed = JSON.parse(value);
       if (Array.isArray(parsed)) {
-        return Array.from(
-          new Set(parsed.map((item) => String(item ?? '').trim()).filter(Boolean)),
-        );
+        return Array.from(new Set(parsed.map((item) => String(item ?? '').trim()).filter(Boolean)));
       }
     } catch (error) {
       console.warn('解析详情高亮关键词失败，将回退到 keyword', error);
@@ -548,7 +547,11 @@ const normalizeEntities = (detail: any): DynamicEntityMap => {
         .map((name: any) => String(name ?? '').trim())
         .filter(Boolean)
         .forEach((name: string, nameIndex: number) => {
-          pushEntity(type, name, String(item?.id ?? item?.entityId ?? `${type}-${index}-${nameIndex}`));
+          pushEntity(
+            type,
+            name,
+            String(item?.id ?? item?.entityId ?? `${type}-${index}-${nameIndex}`),
+          );
         });
     });
   } else if (typeof entitySource === 'object') {
@@ -793,13 +796,50 @@ export default function DataDetailPage() {
   const fromEntity = searchParams.get('fromEntity');
   const sourceEsId = searchParams.get('esId');
   const sourceKeyword = searchParams.get('keyword');
+  const sourceFilePath = searchParams.get('filePath') || '';
   const sourcePreviewMode = searchParams.get('previewMode');
   const returnTo = searchParams.get('returnTo');
+
+  const policyDocument = useMemo(
+    () => policyDocumentMocks.find((item) => item.id === String(params.id || '')),
+    [params.id],
+  );
+
+  const policyDetailData = useMemo(
+    () =>
+      policyDocument
+        ? {
+            id: policyDocument.id,
+            name: policyDocument.fileName,
+            fileName: policyDocument.fileName,
+            documentName: policyDocument.fileName,
+            fileType: policyDocument.fileType,
+            fileSizeBytes: policyDocument.sizeBytes,
+            filePath: sourceFilePath,
+            channelName: policyDocument.source,
+            catalogName: policyDocument.catalog,
+            creatorName: '采购法规知识库',
+            createTime: policyDocument.updatedAt,
+            updateTime: policyDocument.updatedAt,
+            intelligentStatus: 2,
+            keywordsList: policyDocument.keywords,
+            fileTagNames: policyDocument.tags,
+            content: policyDocument.content,
+            summary: policyDocument.content.join('\n\n'),
+          }
+        : null,
+    [policyDocument, sourceFilePath],
+  );
 
   const fetchDetail = useCallback(async () => {
     setDetailLoading(true);
     setDetailError('');
     try {
+      if (policyDetailData) {
+        setDetailData(policyDetailData);
+        return;
+      }
+
       const response = await viewDocument({
         id: params.id || 0,
         esId: sourceEsId || '',
@@ -815,7 +855,11 @@ export default function DataDetailPage() {
       }
 
       const nextDetailData = extractDetailData(response);
-      if (!nextDetailData || typeof nextDetailData !== 'object' || !Object.keys(nextDetailData).length) {
+      if (
+        !nextDetailData ||
+        typeof nextDetailData !== 'object' ||
+        !Object.keys(nextDetailData).length
+      ) {
         setDetailData(null);
         setDetailError('当前文档不存在');
         return;
@@ -832,7 +876,7 @@ export default function DataDetailPage() {
     } finally {
       setDetailLoading(false);
     }
-  }, [params.id, sourceEsId, sourceKeyword]);
+  }, [params.id, policyDetailData, sourceEsId, sourceKeyword]);
 
   const handleBack = () => {
     if (sourceTab === '1' || sourceTab === '2') {
@@ -964,6 +1008,33 @@ export default function DataDetailPage() {
       try {
         setPreviewLoading(true);
         previewLoadingRef.current = true;
+
+        if (policyDocument) {
+          const normalizedKeyword = previewKeyword.trim().toLowerCase();
+          const chunks = policyDocument.content
+            .map((value, index) => ({
+              seq: `policy-${index}`,
+              value,
+              hit: Boolean(
+                normalizedKeyword && stripHtml(value).toLowerCase().includes(normalizedKeyword),
+              ),
+            }))
+            .filter(
+              (item) =>
+                !normalizedKeyword ||
+                stripHtml(item.value).toLowerCase().includes(normalizedKeyword),
+            );
+
+          if (active) {
+            setPreviewChunks(chunks);
+            setPreviewTotal(chunks.length);
+            setPreviewReachedEnd(true);
+            setPreviewInitialized(true);
+            previewScrollLockRef.current = false;
+          }
+          return;
+        }
+
         const response = await getDocumentHtmlChunkPage({
           pageNo: previewPageNo,
           pageSize: PREVIEW_PAGE_SIZE,
@@ -1039,7 +1110,14 @@ export default function DataDetailPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [params.id, detailData?.id, previewKeyword, previewHighlightKeywords, previewPageNo]);
+  }, [
+    params.id,
+    detailData?.id,
+    policyDocument,
+    previewKeyword,
+    previewHighlightKeywords,
+    previewPageNo,
+  ]);
 
   const document = useMemo(
     () => buildDocumentDetail(baseDocument, detailData, sourceTitle, sourceType),
@@ -1106,7 +1184,8 @@ export default function DataDetailPage() {
       const objectUrl = window.URL.createObjectURL(blob);
       const link = window.document.createElement('a');
       link.href = objectUrl;
-      link.download = originalPreviewFileName && originalPreviewFileName !== '-' ? originalPreviewFileName : '';
+      link.download =
+        originalPreviewFileName && originalPreviewFileName !== '-' ? originalPreviewFileName : '';
       link.style.display = 'none';
       window.document.body.appendChild(link);
       link.click();
@@ -1468,15 +1547,15 @@ export default function DataDetailPage() {
               </div>
             </div>
 
-              <Space wrap size={[8, 8]}>
-                <Button
-                  icon={<CloudDownloadOutlined />}
-                  style={actionButtonStyle}
-                  onClick={handleDownload}
-                  disabled={!originalFilePath}
-                >
-                  下载
-                </Button>
+            <Space wrap size={[8, 8]}>
+              <Button
+                icon={<CloudDownloadOutlined />}
+                style={actionButtonStyle}
+                onClick={handleDownload}
+                disabled={!originalFilePath}
+              >
+                下载
+              </Button>
               <Button
                 type="primary"
                 icon={<SaveOutlined />}
@@ -1528,11 +1607,7 @@ export default function DataDetailPage() {
           >
             <div style={{ textAlign: 'center' }}>
               <Empty description={detailError || '当前文档不存在'} />
-              <Button
-                icon={<ArrowLeftOutlined />}
-                onClick={handleBack}
-                style={{ marginTop: 12 }}
-              >
+              <Button icon={<ArrowLeftOutlined />} onClick={handleBack} style={{ marginTop: 12 }}>
                 返回上一页
               </Button>
             </div>
@@ -1702,7 +1777,9 @@ export default function DataDetailPage() {
                           const nextKeyword = event.target.value;
                           setPreviewKeyword(nextKeyword);
                           // 用户在详情页手动输入时，将整段输入视为一个完整词组，禁止再次按空格或 IK 子词拆分高亮。
-                          setPreviewHighlightKeywords(nextKeyword.trim() ? [nextKeyword.trim()] : []);
+                          setPreviewHighlightKeywords(
+                            nextKeyword.trim() ? [nextKeyword.trim()] : [],
+                          );
                         }}
                         placeholder="搜索内容"
                         prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
@@ -1923,12 +2000,36 @@ export default function DataDetailPage() {
                       </div>
                     </div>
                     <div style={{ flex: 1, minHeight: 0 }}>
-                      <DocumentFilePreview
-                        filePath={originalFilePath}
-                        fileName={originalPreviewFileName}
-                        searchKeyword={sourceKeyword}
-                        height="100%"
-                      />
+                      {policyDocument ? (
+                        <div
+                          style={{
+                            height: '100%',
+                            overflowY: 'auto',
+                            padding: '18px 20px',
+                            background: '#fbfcff',
+                            color: '#334155',
+                            fontSize: 14,
+                            lineHeight: 1.9,
+                            whiteSpace: 'pre-wrap',
+                          }}
+                        >
+                          {policyDocument.content.map((item, index) => (
+                            <div
+                              key={`${policyDocument.id}-original-${index}`}
+                              style={{ marginBottom: 16 }}
+                            >
+                              {renderHighlightedText(item, sourceKeyword || '')}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <DocumentFilePreview
+                          filePath={originalFilePath}
+                          fileName={originalPreviewFileName}
+                          searchKeyword={sourceKeyword}
+                          height="100%"
+                        />
+                      )}
                     </div>
                   </div>
                 )}
@@ -2120,7 +2221,9 @@ export default function DataDetailPage() {
                 <Card
                   bordered={false}
                   title="消歧记录"
-                  extra={<span style={{ color: '#94a3b8' }}>共 {entityReferRecords.length} 条</span>}
+                  extra={
+                    <span style={{ color: '#94a3b8' }}>共 {entityReferRecords.length} 条</span>
+                  }
                   style={{
                     ...surfaceCardStyle,
                     height: REFER_RECORD_CARD_HEIGHT,
@@ -2158,9 +2261,12 @@ export default function DataDetailPage() {
                     >
                       {entityReferRecords.map((record, index) => (
                         <div
-                          key={String(record.id ?? `${record.fromEntity}-${record.toEntity}-${index}`)}
+                          key={String(
+                            record.id ?? `${record.fromEntity}-${record.toEntity}-${index}`,
+                          )}
                           style={{
-                            padding: index === entityReferRecords.length - 1 ? '2px 0 0' : '2px 0 4px',
+                            padding:
+                              index === entityReferRecords.length - 1 ? '2px 0 0' : '2px 0 4px',
                             borderBottom:
                               index === entityReferRecords.length - 1
                                 ? 'none'
@@ -2427,7 +2533,6 @@ export default function DataDetailPage() {
             </Radio.Group>
           </div>
         </Modal>
-
       </div>
     </>
   );

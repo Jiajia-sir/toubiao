@@ -28,6 +28,7 @@ import {
   CodeOutlined,
   CopyOutlined,
   DeleteOutlined,
+  EyeOutlined,
   FileTextOutlined,
   FormOutlined,
   HistoryOutlined,
@@ -117,6 +118,32 @@ type WorkflowRunRecord = {
   trigger: string;
   detail: string;
   status: 'success' | 'failed';
+};
+
+type WorkflowRiskLevel = 'high' | 'medium' | 'low';
+
+type WorkflowReviewRisk = {
+  id: string;
+  level: WorkflowRiskLevel;
+  clause: string;
+  title: string;
+  description: string;
+  suggestion: string;
+  source: string;
+};
+
+type WorkflowRunResult = {
+  id: string;
+  completedAt: string;
+  duration: string;
+  documentName: string;
+  documentMeta: string;
+  summary: string;
+  conclusion: string;
+  reportName: string;
+  nextAction: string;
+  riskCounts: Record<WorkflowRiskLevel, number>;
+  risks: WorkflowReviewRisk[];
 };
 
 type StoredWorkflow = WorkflowSnapshot & {
@@ -333,6 +360,78 @@ const INITIAL_WORKFLOW_RECORDS: Record<string, WorkflowRunRecord[]> = {
   ],
 };
 
+const CONTRACT_REVIEW_RISKS: WorkflowReviewRisk[] = [
+  {
+    id: 'risk-payment-condition',
+    level: 'high',
+    clause: '第 4.2 条 · 付款条件',
+    title: '付款触发条件不够明确',
+    description: '合同约定“验收合格后付款”，但未明确验收材料、审批时限及付款起算时间，可能引发付款争议。',
+    suggestion: '补充验收单、发票及付款申请为付款前置材料，并明确审批完成后 30 日内付款。',
+    source: '《民法典》合同编 · 第五百零九条',
+  },
+  {
+    id: 'risk-delivery-breach',
+    level: 'medium',
+    clause: '第 7.1 条 · 违约责任',
+    title: '逾期交付责任边界不清',
+    description: '仅约定按日计收违约金，未区分不可抗力、采购方原因和供应商原因导致的延期情形。',
+    suggestion: '增加延期原因认定、通知时限和违约金上限，避免责任条款执行口径不一致。',
+    source: '《民法典》合同编 · 第五百九十条',
+  },
+  {
+    id: 'risk-acceptance-standard',
+    level: 'medium',
+    clause: '第 9.3 条 · 验收标准',
+    title: '技术指标与验收口径存在缺口',
+    description: '技术附件列明了性能指标，但验收条款未说明检测方法、样本数量和不合格处理方式。',
+    suggestion: '按技术响应表补充检测工具、测试场景、合格阈值及整改复验流程。',
+    source: '合同技术附件 · 验收要求第 3.2 款',
+  },
+];
+
+function createWorkflowRunResult(agentId: string, runId: string, nodeCount: number): WorkflowRunResult {
+  const completedAt = new Date().toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).replace(/\//g, '-');
+
+  if (agentId === 'AG006') {
+    return {
+      id: runId,
+      completedAt,
+      duration: '1.6s',
+      documentName: '采购合同-华东区域服务协议.docx',
+      documentMeta: 'DOCX · 2.4 MB · 已解析 28 个条款',
+      summary: '已完成合同结构解析、条款比对和风险识别，发现 3 项需要人工复核的风险事项。',
+      conclusion: '建议修订后再签署',
+      reportName: '采购合同-华东区域服务协议-审查报告.docx',
+      nextAction: '请先处理高风险付款条款，再提交法务人工复核；修改内容会自动留痕并回写运行记录。',
+      riskCounts: { high: 1, medium: 2, low: 0 },
+      risks: CONTRACT_REVIEW_RISKS,
+    };
+  }
+
+  return {
+    id: runId,
+    completedAt,
+    duration: '1.6s',
+    documentName: `${agentId} 工作流输入`,
+    documentMeta: `已执行 ${nodeCount} 个节点 · 输出节点已完成`,
+    summary: '工作流已执行完成，输出内容已生成，可在运行记录中继续追踪本次执行。',
+    conclusion: '执行成功',
+    reportName: `${agentId}-workflow-output.json`,
+    nextAction: '可打开调试面板查看节点执行轨迹，或保存当前工作流版本。',
+    riskCounts: { high: 0, medium: 0, low: 0 },
+    risks: [],
+  };
+}
+
 const EMPTY_WORKFLOW: WorkflowSnapshot = { nodes: [], edges: [] };
 const SAVED_WORKFLOWS_STORAGE_KEY = 'ai-agent-saved-workflows';
 const SAVED_WORKFLOW_RECORDS_STORAGE_KEY = 'ai-agent-saved-workflow-records';
@@ -461,6 +560,14 @@ export default function WorkflowPage() {
   const [customNodeOpen, setCustomNodeOpen] = useState(false);
   const [running, setRunning] = useState(false);
   const [debugSteps, setDebugSteps] = useState<DebugStep[]>([]);
+  const [resultOpen, setResultOpen] = useState(false);
+  const [workflowResult, setWorkflowResult] = useState<WorkflowRunResult | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [riskResolveOpen, setRiskResolveOpen] = useState(false);
+  const [activeRisk, setActiveRisk] = useState<WorkflowReviewRisk | null>(null);
+  const [resolvedRiskKeys, setResolvedRiskKeys] = useState<Record<string, boolean>>({});
+  const [riskResolutionNotes, setRiskResolutionNotes] = useState<Record<string, string>>({});
+  const [riskResolutionNote, setRiskResolutionNote] = useState('');
   const [runRecords, setRunRecords] = useState<WorkflowRunRecord[]>(() => [
     ...(INITIAL_WORKFLOW_RECORDS[agentId] || readSavedWorkflowRecords(agentId)),
   ]);
@@ -469,11 +576,16 @@ export default function WorkflowPage() {
   const [customForm] = Form.useForm<{ type: string; label: string }>();
   const nodeDragRef = useRef<NodeDragState | null>(null);
   const canvasPanRef = useRef<CanvasPanState | null>(null);
+  const runTimerRef = useRef<number | null>(null);
   const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 });
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
 
   useEffect(() => {
+    if (runTimerRef.current !== null) {
+      window.clearTimeout(runTimerRef.current);
+      runTimerRef.current = null;
+    }
     setNodes(initialWorkflow.nodes);
     setEdges(initialWorkflow.edges);
     setSelectedNodeId(initialWorkflow.nodes.find((node) => node.status === 'current')?.id || initialWorkflow.nodes[0]?.id || '');
@@ -482,6 +594,14 @@ export default function WorkflowPage() {
     setConnectMode(false);
     setConnectSource(null);
     setDebugSteps([]);
+    setResultOpen(false);
+    setWorkflowResult(null);
+    setPreviewOpen(false);
+    setRiskResolveOpen(false);
+    setActiveRisk(null);
+    setResolvedRiskKeys({});
+    setRiskResolutionNotes({});
+    setRiskResolutionNote('');
     setRecordOpen(false);
     setRunRecords([...(INITIAL_WORKFLOW_RECORDS[agentId] || readSavedWorkflowRecords(agentId))]);
     setWorkflowSaved(Boolean(savedWorkflow || configuredWorkflow));
@@ -489,9 +609,22 @@ export default function WorkflowPage() {
     setCanvasOffset({ x: 0, y: 0 });
     setDraggingNodeId(null);
     setSavedAt('10:42');
+
+    return () => {
+      if (runTimerRef.current !== null) {
+        window.clearTimeout(runTimerRef.current);
+        runTimerRef.current = null;
+      }
+    };
   }, [agentId, initialWorkflow]);
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) || null;
+  const unresolvedRiskCounts: Record<WorkflowRiskLevel, number> = workflowResult?.risks.reduce((counts, risk) => {
+    if (!resolvedRiskKeys[risk.id]) counts[risk.level] += 1;
+    return counts;
+  }, { high: 0, medium: 0, low: 0 }) || { high: 0, medium: 0, low: 0 };
+  const resolvedRiskCount = workflowResult?.risks.filter((risk) => resolvedRiskKeys[risk.id]).length || 0;
+  const allRisksResolved = Boolean(workflowResult?.risks.length && resolvedRiskCount === workflowResult.risks.length);
   const groupedPalette = useMemo(() => PALETTE_GROUPS.map((group) => ({
     group,
     items: Object.entries(NODE_CONFIG).filter(([, config]) => config.group === group && config.label.toLowerCase().includes(search.toLowerCase())),
@@ -752,11 +885,39 @@ export default function WorkflowPage() {
     message.success(`工作流已保存（${nodes.length} 个节点，${edges.length} 条连线）`);
   };
 
+  const openRiskResolve = (risk: WorkflowReviewRisk) => {
+    setActiveRisk(risk);
+    setRiskResolutionNote(riskResolutionNotes[risk.id] || '');
+    setRiskResolveOpen(true);
+  };
+
+  const resolveActiveRisk = () => {
+    if (!activeRisk) return;
+    const note = riskResolutionNote.trim();
+    if (!note) {
+      message.warning('请填写处理说明后再标记为已解决');
+      return;
+    }
+    setResolvedRiskKeys((current) => ({ ...current, [activeRisk.id]: true }));
+    setRiskResolutionNotes((current) => ({ ...current, [activeRisk.id]: note }));
+    setRiskResolveOpen(false);
+    message.success(`已完成「${activeRisk.title}」的处理登记`);
+  };
+
+  const reopenRisk = (risk: WorkflowReviewRisk) => {
+    setResolvedRiskKeys((current) => ({ ...current, [risk.id]: false }));
+    message.info(`已将「${risk.title}」恢复为待处理`);
+  };
+
   const runWorkflow = () => {
     if (running) return;
     if (!workflowSaved) {
       message.warning('请先保存工作流，再运行并查看记录');
       return;
+    }
+    if (runTimerRef.current !== null) {
+      window.clearTimeout(runTimerRef.current);
+      runTimerRef.current = null;
     }
     const startedAt = new Date().toLocaleString('zh-CN', {
       year: 'numeric',
@@ -778,6 +939,7 @@ export default function WorkflowPage() {
         : `${nodes.length} 个节点执行成功，工作流输出已生成。`,
       status: 'success',
     };
+    const resultId = `RESULT-${agentId}-${Date.now()}`;
     const steps: DebugStep[] = nodes.slice(0, 8).map((node, index) => ({
       id: node.id,
       label: node.label,
@@ -786,16 +948,31 @@ export default function WorkflowPage() {
     }));
     setDebugSteps(steps);
     setDebugOpen(true);
+    setResultOpen(false);
+    setWorkflowResult(null);
+    setResolvedRiskKeys({});
+    setRiskResolutionNotes({});
+    setRiskResolutionNote('');
+    setNodes((current) => current.map((node, index) => ({
+      ...node,
+      status: index === 0 ? 'current' : 'pending',
+    })));
     setRunning(true);
     message.info('工作流开始执行');
-    window.setTimeout(() => {
+    runTimerRef.current = window.setTimeout(() => {
       setDebugSteps((current) => current.map((step) => ({ ...step, status: 'success', detail: '执行成功' })));
+      setNodes((current) => current.map((node) => ({ ...node, status: 'completed' })));
       setRunRecords((current) => {
         const nextRecords = [runRecord, ...current].slice(0, 20);
         if (!configuredWorkflow) persistSavedWorkflowRecords(agentId, nextRecords);
         return nextRecords;
       });
+      setWorkflowResult(createWorkflowRunResult(agentId, resultId, nodes.length));
+      setSelectedNodeId(nodes.find((node) => node.type === 'output')?.id || nodes[nodes.length - 1]?.id || '');
       setRunning(false);
+      setDebugOpen(false);
+      setResultOpen(true);
+      runTimerRef.current = null;
       message.success('工作流执行完成');
     }, 1600);
   };
@@ -859,7 +1036,7 @@ export default function WorkflowPage() {
         <main className="ai-workflow-canvas-area">
           <div className="workflow-toolbar">
             <Space size={4} wrap><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => history.back()} title="返回" /><Divider type="vertical" /><Button type="text" icon={<UndoOutlined />} disabled={!undoStack.length} onClick={undo} title="撤销" /><Button type="text" icon={<RedoOutlined />} disabled={!redoStack.length} onClick={redo} title="重做" /><Divider type="vertical" /><Button icon={<AlignCenterOutlined />} onClick={resetLayout}>自动布局</Button><Button icon={<AlignCenterOutlined />} onClick={alignSelected}>对齐</Button><Button type={connectMode ? 'primary' : 'default'} icon={<LinkOutlined />} onClick={() => { setConnectMode((current) => !current); setConnectSource(null); }}>{connectMode ? '退出连线' : '连线'}</Button></Space>
-            <Space size={4} wrap><Button icon={<SyncOutlined />} onClick={() => message.info('当前版本为 v1.8.0，可从版本中心切换')}>版本</Button><Button icon={<SettingOutlined />} onClick={() => setDebugOpen(true)}>调试</Button><Button icon={<HistoryOutlined />} onClick={() => setRecordOpen(true)}>运行记录{runRecords.length ? ` ${runRecords.length}` : ''}</Button><Button type="primary" icon={running ? <StopOutlined /> : <PlayCircleOutlined />} loading={running} onClick={runWorkflow}>{running ? '运行中' : '运行'}</Button><Button icon={<SendOutlined />} onClick={() => message.success('已生成 API 发布申请')}>发布为 API</Button><Divider type="vertical" /><Button type="text" icon={<SaveOutlined />} onClick={saveWorkflow}>保存</Button></Space>
+            <Space size={4} wrap><Button icon={<SyncOutlined />} onClick={() => message.info('当前版本为 v1.8.0，可从版本中心切换')}>版本</Button><Button icon={<SettingOutlined />} onClick={() => setDebugOpen(true)}>调试</Button><Button icon={<HistoryOutlined />} onClick={() => setRecordOpen(true)}>运行记录{runRecords.length ? ` ${runRecords.length}` : ''}</Button><Button icon={<FileTextOutlined />} disabled={!workflowResult} onClick={() => setResultOpen(true)}>查看结果</Button><Button type="primary" icon={running ? <StopOutlined /> : <PlayCircleOutlined />} loading={running} onClick={runWorkflow}>{running ? '运行中' : '运行'}</Button><Button icon={<SendOutlined />} onClick={() => message.success('已生成 API 发布申请')}>发布为 API</Button><Divider type="vertical" /><Button type="text" icon={<SaveOutlined />} onClick={saveWorkflow}>保存</Button></Space>
           </div>
           <div
             className={`workflow-canvas-scroll ${isCanvasPanning ? 'is-panning' : ''}`}
@@ -925,6 +1102,170 @@ export default function WorkflowPage() {
           <div className="workflow-record-empty"><HistoryOutlined /><p>暂无运行记录</p></div>
         )}
       </Drawer>
+
+      <Drawer
+        title={<Space size={8}><FileTextOutlined /><span>工作流输出结果</span></Space>}
+        placement="right"
+        width={620}
+        open={resultOpen}
+        onClose={() => setResultOpen(false)}
+        extra={workflowResult ? <Tag color="success">运行成功</Tag> : null}
+        className="workflow-result-drawer"
+      >
+        {workflowResult ? (
+          <div className="workflow-result-content">
+            <div className="workflow-result-summary">
+              <div className="workflow-result-summary-icon"><CheckCircleOutlined /></div>
+              <div>
+                <strong>{allRisksResolved ? '风险已全部处理，待人工复核' : workflowResult.conclusion}</strong>
+                <p>{workflowResult.summary}{resolvedRiskCount > 0 ? ` 已完成 ${resolvedRiskCount} 项风险处理登记。` : ''}</p>
+              </div>
+            </div>
+
+            <div className="workflow-result-file">
+              <div className="workflow-result-file-main">
+                <span className="workflow-result-file-icon"><FileTextOutlined /></span>
+                <div>
+                  <strong>{workflowResult.documentName}</strong>
+                  <span>{workflowResult.documentMeta}</span>
+                </div>
+              </div>
+              <Tag color="blue">已解析</Tag>
+            </div>
+
+            <div className="workflow-result-stat-grid">
+              <div className="workflow-result-stat high"><span>待处理高风险</span><strong>{unresolvedRiskCounts.high}</strong><small>需优先处理</small></div>
+              <div className="workflow-result-stat medium"><span>待处理中风险</span><strong>{unresolvedRiskCounts.medium}</strong><small>建议人工复核</small></div>
+              <div className="workflow-result-stat low"><span>待处理低风险</span><strong>{unresolvedRiskCounts.low}</strong><small>持续关注</small></div>
+              <div className="workflow-result-stat duration"><span>执行耗时</span><strong>{workflowResult.duration}</strong><small>{workflowResult.completedAt}</small></div>
+            </div>
+
+            {workflowResult.risks.length > 0 ? (
+              <div className="workflow-result-section">
+                <div className="workflow-result-section-title"><strong>风险清单</strong><span>{resolvedRiskCount}/{workflowResult.risks.length} 项已处理</span></div>
+                <div className="workflow-result-risk-list">
+                  {workflowResult.risks.map((risk) => (
+                    <div className={`workflow-result-risk ${risk.level} ${resolvedRiskKeys[risk.id] ? 'resolved' : ''}`} key={risk.id}>
+                      <div className="workflow-result-risk-head">
+                        <Tag color={risk.level === 'high' ? 'error' : risk.level === 'medium' ? 'warning' : 'success'}>{risk.level === 'high' ? '高风险' : risk.level === 'medium' ? '中风险' : '低风险'}</Tag>
+                        <strong>{risk.title}</strong>
+                        {resolvedRiskKeys[risk.id] && <Tag color="success">已解决</Tag>}
+                      </div>
+                      <span className="workflow-result-risk-clause">{risk.clause}</span>
+                      <p>{risk.description}</p>
+                      <div className="workflow-result-suggestion"><span>修改建议</span>{risk.suggestion}</div>
+                      <div className="workflow-result-source"><LinkOutlined /> 依据：{risk.source}</div>
+                      {resolvedRiskKeys[risk.id] && riskResolutionNotes[risk.id] && <div className="workflow-result-resolution-note"><span>处理说明</span>{riskResolutionNotes[risk.id]}</div>}
+                      <div className="workflow-result-risk-actions">
+                        {resolvedRiskKeys[risk.id] ? <Button type="link" size="small" onClick={() => reopenRisk(risk)}>撤销处理</Button> : <Button type="primary" ghost size="small" onClick={() => openRiskResolve(risk)}>处理风险</Button>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="workflow-result-section workflow-result-generic-output">
+                <div className="workflow-result-section-title"><strong>执行输出</strong><span>所有节点均已完成</span></div>
+                <Alert type="success" showIcon message={workflowResult.summary} />
+              </div>
+            )}
+
+            <div className="workflow-result-section">
+              <div className="workflow-result-section-title"><strong>生成文件</strong><span>已关联本次运行</span></div>
+              <div className="workflow-result-output-file">
+                <FileTextOutlined />
+                <span>{workflowResult.reportName}</span>
+                <Tag color="success">已生成</Tag>
+                <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setPreviewOpen(true)}>预览</Button>
+              </div>
+            </div>
+            <Alert type="info" showIcon message="下一步建议" description={workflowResult.nextAction} />
+          </div>
+        ) : (
+          <div className="workflow-debug-empty"><PlayCircleOutlined /><p>运行完成后将在这里展示输出结果</p></div>
+        )}
+      </Drawer>
+
+      <Modal
+        title={<Space size={8}><FileTextOutlined /><span>{workflowResult?.risks.length ? '合同审查报告预览' : '工作流输出报告预览'}</span></Space>}
+        open={previewOpen}
+        onCancel={() => setPreviewOpen(false)}
+        width={900}
+        className="workflow-report-preview-modal"
+        footer={<Button onClick={() => setPreviewOpen(false)}>关闭</Button>}
+      >
+        {workflowResult ? (
+          <div className="workflow-report-preview">
+            <div className="workflow-report-header">
+              <div>
+                <span>AI 智能体工作流输出</span>
+                <h2>{workflowResult.risks.length ? '合同审查报告' : '工作流执行报告'}</h2>
+              </div>
+              <Tag color={allRisksResolved ? 'success' : 'processing'}>{allRisksResolved ? '风险已处理' : '待人工复核'}</Tag>
+            </div>
+            <div className="workflow-report-meta-grid">
+              <div><span>分析文件</span><strong>{workflowResult.documentName}</strong></div>
+              <div><span>完成时间</span><strong>{workflowResult.completedAt}</strong></div>
+              <div><span>运行耗时</span><strong>{workflowResult.duration}</strong></div>
+              <div><span>输出文件</span><strong>{workflowResult.reportName}</strong></div>
+            </div>
+            <div className="workflow-report-section">
+              <h3>一、审查结论</h3>
+              <Alert type={allRisksResolved ? 'success' : 'warning'} showIcon message={allRisksResolved ? '风险项已完成处理登记，等待人工复核确认。' : workflowResult.conclusion} description={workflowResult.summary} />
+            </div>
+            {workflowResult.risks.length > 0 ? (
+              <div className="workflow-report-section">
+                <h3>二、风险清单</h3>
+                <div className="workflow-report-table-wrap">
+                  <table className="workflow-report-table">
+                    <thead><tr><th>风险等级</th><th>定位条款</th><th>风险说明</th><th>处理状态</th></tr></thead>
+                    <tbody>
+                      {workflowResult.risks.map((risk) => (
+                        <tr key={risk.id} className={resolvedRiskKeys[risk.id] ? 'resolved' : ''}>
+                          <td><Tag color={risk.level === 'high' ? 'error' : risk.level === 'medium' ? 'warning' : 'success'}>{risk.level === 'high' ? '高风险' : risk.level === 'medium' ? '中风险' : '低风险'}</Tag></td>
+                          <td>{risk.clause}</td>
+                          <td><strong>{risk.title}</strong><span>{risk.description}</span><em>依据：{risk.source}</em></td>
+                          <td>{resolvedRiskKeys[risk.id] ? <Tag color="success">已解决</Tag> : <Tag color="warning">待处理</Tag>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="workflow-report-section"><h3>二、执行输出</h3><Alert type="success" showIcon message={workflowResult.summary} /></div>
+            )}
+            <div className="workflow-report-section">
+              <h3>{workflowResult.risks.length ? '三、处理建议' : '三、后续操作'}</h3>
+              <p className="workflow-report-advice">{workflowResult.nextAction}</p>
+            </div>
+            <div className="workflow-report-footer">本报告由工作流「{workflowConfig.workflowName}」生成 · 运行编号 {workflowResult.id}</div>
+          </div>
+        ) : <div className="workflow-debug-empty"><FileTextOutlined /><p>暂无可预览的结果文档</p></div>}
+      </Modal>
+
+      <Modal
+        title={activeRisk ? `处理风险 · ${activeRisk.clause}` : '处理风险'}
+        open={riskResolveOpen}
+        onCancel={() => setRiskResolveOpen(false)}
+        onOk={resolveActiveRisk}
+        okText="标记为已解决"
+        cancelText="取消"
+        width={560}
+      >
+        {activeRisk && (
+          <div className="workflow-risk-resolve-form">
+            <div className="workflow-risk-resolve-summary">
+              <Tag color={activeRisk.level === 'high' ? 'error' : activeRisk.level === 'medium' ? 'warning' : 'success'}>{activeRisk.level === 'high' ? '高风险' : activeRisk.level === 'medium' ? '中风险' : '低风险'}</Tag>
+              <strong>{activeRisk.title}</strong>
+              <p>{activeRisk.description}</p>
+            </div>
+            <label htmlFor="workflow-risk-resolution-note">处理说明 <span>（必填）</span></label>
+            <Input.TextArea id="workflow-risk-resolution-note" rows={5} value={riskResolutionNote} onChange={(event) => setRiskResolutionNote(event.target.value)} placeholder="请填写已采取的修改措施、依据或复核结论，例如：已补充付款材料及审批时限，并同步修改合同第 4.2 条。" />
+            <div className="workflow-risk-resolve-tip"><SafetyCertificateOutlined /> 标记后将从待处理风险统计中移除，并同步更新报告预览；如需重新处理，可在风险卡片中撤销。</div>
+          </div>
+        )}
+      </Modal>
 
       <Drawer title="运行调试 · MCP 调用追踪" placement="bottom" height={310} open={debugOpen} onClose={() => setDebugOpen(false)} extra={<Tag color={running ? 'processing' : 'success'}>{running ? '执行中' : debugSteps.length ? '已完成' : '未运行'}</Tag>}>
         {debugSteps.length ? <List size="small" dataSource={debugSteps} renderItem={(step, index) => <List.Item><Space><span className={`debug-step-dot ${step.status}`} /> <span className="debug-step-index">{String(index + 1).padStart(2, '0')}</span><strong>{step.label}</strong></Space><span className="muted-text">{step.detail}</span></List.Item>} /> : <div className="workflow-debug-empty"><PlayCircleOutlined /><p>点击右上角“运行”开始调试工作流</p></div>}

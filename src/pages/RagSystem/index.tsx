@@ -34,6 +34,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { getAccessToken } from '@/access';
 import { API_PREFIX } from '@/constants';
+import { policyDocumentMocks } from '@/data/policyDocumentMock';
 import {
   addEmbedModelConfig,
   getEmbedModelConfigPage,
@@ -74,7 +75,23 @@ type MessageItem = {
   timestamp: string;
   sources?: string[];
   reference?: ChatReference;
+  policyReferences?: PolicyReference[];
   status?: 'streaming' | 'done' | 'error';
+};
+
+type PolicyReference = {
+  name: string;
+  clause: string;
+  source: string;
+  fileName: string;
+  docId?: number | string;
+  filePath?: string;
+};
+
+type PolicyPresetQuestion = {
+  question: string;
+  answer: string;
+  references: PolicyReference[];
 };
 
 type KnowledgeBaseOption = {
@@ -110,6 +127,22 @@ type ReferenceDocumentItem = {
   chunks: ReferenceChunkItem[];
   knowledgeBaseIds: Array<number | string>;
   bestScore?: number;
+};
+
+type ReferenceDocumentLookupItem = {
+  id: number | string;
+  fileName: string;
+  filePath?: string;
+  fileType?: string;
+  isFallback?: boolean;
+};
+
+type PolicyReferenceDocumentItem = {
+  key: string;
+  fileName: string;
+  docId?: number | string;
+  filePath?: string;
+  references: PolicyReference[];
 };
 
 type AssistantFormValues = {
@@ -178,6 +211,120 @@ const embedModelProviderOptions = [
   { label: 'Ollama', value: 'ollama' },
 ];
 const embedModelApiTypeOptions = [{ label: 'OpenAI 兼容协议', value: 'openai' }];
+
+const POLICY_CHAT_TITLE = '采购政策会话1';
+
+const policyPresetQuestions: PolicyPresetQuestion[] = [
+  {
+    question: '公开招标的适用条件是什么？',
+    answer:
+      '公开招标是政府采购的主要采购方式。办理时应先核对项目是否达到适用的公开招标数额标准，并结合采购品类、预算来源和项目所在地的现行标准判断。若因特殊情况需要采用公开招标以外的方式，应在采购活动开始前履行相应审批程序，同时在采购文件中留存适用理由和审批依据；不得通过拆分项目等方式规避公开招标。',
+    references: [
+      {
+        name: '中华人民共和国政府采购法',
+        clause: '第二十六条',
+        source: '采购法规知识库 · 法规文件',
+        fileName: '政府采购法.pdf',
+      },
+      {
+        name: '中华人民共和国政府采购法',
+        clause: '第二十七条、第二十八条',
+        source: '采购法规知识库 · 法规文件',
+        fileName: '政府采购法.pdf',
+      },
+    ],
+  },
+  {
+    question: '采购需求如何避免倾向性？',
+    answer:
+      '采购需求应围绕项目目标和实际履约需要编制，使用功能、性能、服务结果和可验证的客观指标表达，避免直接指定品牌、商标、专利、型号或供应商。资格条件、业绩门槛和评审因素要与项目特点相适应，不能设置与合同履行无关的区域、所有制或规模限制；技术要求和评分标准还应保持一致，并通过市场调查和需求审查留存论证记录。',
+    references: [
+      {
+        name: '中华人民共和国政府采购法实施条例',
+        clause: '第二十条',
+        source: '采购法规知识库 · 法规文件',
+        fileName: '政府采购法实施条例.docx',
+      },
+      {
+        name: '政府采购需求管理办法',
+        clause: '第七条、第九条',
+        source: '采购法规知识库 · 法规文件',
+        fileName: '政府采购需求管理办法.pdf',
+      },
+    ],
+  },
+  {
+    question: '供应商存在股权关联可以参加投标吗？',
+    answer:
+      '不能只看“是否有投资关系”这一项直接下结论。若不同供应商的单位负责人为同一人，或者存在直接控股、管理关系，不得参加同一合同项下的政府采购活动；采购人应在资格审查和供应商风险核查中核验股权、实际控制人、董监高任职及关联关系，并将核查结论留痕。属于同一控制关系的，应按规定取消相关供应商参与同一项目的资格。',
+    references: [
+      {
+        name: '中华人民共和国政府采购法实施条例',
+        clause: '第十八条',
+        source: '采购法规知识库 · 法规文件',
+        fileName: '政府采购法实施条例.docx',
+      },
+    ],
+  },
+  {
+    question: '采购项目流标后如何处理？',
+    answer:
+      '先确认流标原因并形成书面记录，向相关供应商告知废标理由。若属于合格供应商不足三家、报价超过预算或存在影响采购公正的违法情形，原则上应重新组织采购；采购任务取消的，可以终止项目。若拟改用其他采购方式，应先论证原采购文件和程序是否存在问题，并按规定履行审批后再组织实施，不能直接跳过原因分析。',
+    references: [
+      {
+        name: '中华人民共和国政府采购法',
+        clause: '第三十六条',
+        source: '采购法规知识库 · 法规文件',
+        fileName: '政府采购法.pdf',
+      },
+      {
+        name: '政府采购货物和服务招标投标管理办法',
+        clause: '第五十七条',
+        source: '采购法规知识库 · 法规文件',
+        fileName: '政府采购货物和服务招标投标管理办法.pdf',
+      },
+    ],
+  },
+];
+
+const buildPolicyPresetMessages = (): MessageItem[] => [
+  {
+    id: 'policy-session-welcome',
+    role: 'assistant',
+    content:
+      '您好，我是采购政策助手。下面是本会话预置的政策问答示例，回答均附法规名称、条款号和来源，正式办理前请结合项目实际情况由审核人员确认。',
+    timestamp: '',
+    status: 'done',
+  },
+  ...policyPresetQuestions.flatMap((item, index): MessageItem[] => [
+    {
+      id: `policy-session-question-${index}`,
+      role: 'user',
+      content: item.question,
+      timestamp: '',
+    },
+    {
+      id: `policy-session-answer-${index}`,
+      role: 'assistant',
+      content: item.answer,
+      timestamp: '',
+      policyReferences: item.references,
+      sources: item.references.map((reference) => reference.name),
+      status: 'done',
+    },
+  ]),
+];
+
+const isPolicyChatTitle = (title?: string) =>
+  String(title || '').replace(/\s+/g, '') === POLICY_CHAT_TITLE;
+
+const mergePolicyPresetMessages = (historyMessages: MessageItem[]) => {
+  if (historyMessages.some((item) => item.id.startsWith('policy-session-'))) {
+    return historyMessages;
+  }
+
+  return [...buildPolicyPresetMessages(), ...historyMessages];
+};
 
 // const recommendQuestions = [
 //   {
@@ -413,6 +560,87 @@ const getReferenceDocuments = (reference?: ChatReference): ReferenceDocumentItem
   return Array.from(documentMap.values());
 };
 
+const normalizeDocumentName = (value: unknown) =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[\s_\-—–·.,，。；;：:()（）【】［］]/g, '');
+
+const getPolicyReferenceNameCandidates = (reference: PolicyReference) => {
+  const nameWithoutPrefix = reference.name.replace(/^中华人民共和国/, '');
+  return Array.from(
+    new Set(
+      [reference.fileName, reference.name, nameWithoutPrefix]
+        .map(normalizeDocumentName)
+        .filter(Boolean),
+    ),
+  );
+};
+
+const findPolicyReferenceDocument = (
+  reference: PolicyReference,
+  documents: ReferenceDocumentLookupItem[],
+) => {
+  if (reference.docId !== undefined && reference.docId !== null && reference.docId !== '') {
+    return documents.find((item) => String(item.id) === String(reference.docId));
+  }
+
+  const candidates = getPolicyReferenceNameCandidates(reference);
+  const exactMatch = documents
+    .filter((item) => candidates.includes(normalizeDocumentName(item.fileName)))
+    .sort((left, right) => Number(Boolean(left.isFallback)) - Number(Boolean(right.isFallback)))[0];
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  return documents
+    .map((item) => {
+      const normalizedName = normalizeDocumentName(item.fileName);
+      const matched = candidates.some(
+        (candidate) => normalizedName.includes(candidate) || candidate.includes(normalizedName),
+      );
+      return matched ? item : null;
+    })
+    .filter((item): item is ReferenceDocumentLookupItem => Boolean(item))
+    .sort(
+      (left, right) =>
+        Number(Boolean(left.isFallback)) - Number(Boolean(right.isFallback)) ||
+        right.fileName.length - left.fileName.length,
+    )[0];
+};
+
+const getPolicyReferenceDocuments = (
+  references: PolicyReference[],
+  documents: ReferenceDocumentLookupItem[],
+): PolicyReferenceDocumentItem[] => {
+  const documentMap = new Map<string, PolicyReferenceDocumentItem>();
+
+  references.forEach((reference, index) => {
+    const matchedDocument = findPolicyReferenceDocument(reference, documents);
+    const fileName = matchedDocument?.fileName || reference.fileName;
+    const docId = reference.docId ?? matchedDocument?.id;
+    const documentKey = docId ?? normalizeDocumentName(fileName);
+    const key = String(documentKey || index);
+    const existing = documentMap.get(key);
+
+    if (existing) {
+      existing.references.push(reference);
+      return;
+    }
+
+    documentMap.set(key, {
+      key,
+      fileName,
+      docId,
+      filePath: reference.filePath ?? matchedDocument?.filePath,
+      references: [reference],
+    });
+  });
+
+  return Array.from(documentMap.values());
+};
+
 const formatReferenceValue = (value: unknown, fallback = '-') => {
   if (Array.isArray(value)) {
     return value.length > 0 ? value.join(', ') : fallback;
@@ -446,6 +674,14 @@ export default function RagSystemPage() {
   const [assistants, setAssistants] = useState<AssistantItem[]>([]);
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [knowledgeOptions, setKnowledgeOptions] = useState<KnowledgeBaseOption[]>([]);
+  const [referenceDocuments, setReferenceDocuments] = useState<ReferenceDocumentLookupItem[]>(() =>
+    policyDocumentMocks.map((document) => ({
+      id: document.id,
+      fileName: document.fileName,
+      fileType: document.fileType,
+      isFallback: true,
+    })),
+  );
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
@@ -486,6 +722,20 @@ export default function RagSystemPage() {
     () => chats.find((item) => item.id === activeChatId),
     [chats, activeChatId],
   );
+
+  const policyPresetChatId = useMemo(
+    () => chats.find((item) => isPolicyChatTitle(item.title))?.id ?? chats[0]?.id,
+    [chats],
+  );
+
+  const showPolicyPresetMessages = Boolean(
+    activeChat && policyPresetChatId !== undefined && activeChat.id === policyPresetChatId,
+  );
+
+  const visibleChatMessages = useMemo(() => {
+    const currentMessages = (activeChat?.messages || []) as MessageItem[];
+    return showPolicyPresetMessages ? mergePolicyPresetMessages(currentMessages) : currentMessages;
+  }, [activeChat, showPolicyPresetMessages]);
 
   const activeAssistantKnowledgeBaseMap = useMemo(
     () => buildAssistantKnowledgeBaseMap(activeAssistant),
@@ -837,6 +1087,8 @@ export default function RagSystemPage() {
         const normalized = list
           .map((item) => normalizeChat(item))
           .filter((item) => item.id !== undefined && item.id !== null && item.id !== '');
+        const firstPolicyChat =
+          normalized.find((item) => isPolicyChatTitle(item.title)) || normalized[0];
 
         setChats(normalized);
         loadedChatMessagesRef.current = {};
@@ -857,7 +1109,7 @@ export default function RagSystemPage() {
             }
           }
           if (normalized.some((item) => item.id === prev)) return prev;
-          return normalized[0]?.id ?? '';
+          return firstPolicyChat?.id ?? normalized[0]?.id ?? '';
         });
       } catch (error: any) {
         message.error(error?.message || '加载会话列表失败');
@@ -909,6 +1161,58 @@ export default function RagSystemPage() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
+    const loadReferenceDocuments = async () => {
+      try {
+        const response: any = await request(`${API_PREFIX}/biz/document/page`, {
+          method: 'GET',
+          params: { pageNo: 1, pageSize: 1000 },
+        });
+        if (!active) return;
+
+        const documents = pickList(response)
+          .map((item: any) => ({
+            id: item.id ?? item.documentId,
+            fileName: String(item.name ?? item.fileName ?? item.documentName ?? '').trim(),
+            filePath: item.filePath,
+            fileType: item.fileType,
+          }))
+          .filter(
+            (item: ReferenceDocumentLookupItem) =>
+              item.id !== undefined && item.id !== null && item.id !== '' && item.fileName,
+          );
+        setReferenceDocuments([
+          ...documents,
+          ...policyDocumentMocks.map((document) => ({
+            id: document.id,
+            fileName: document.fileName,
+            fileType: document.fileType,
+            isFallback: true,
+          })),
+        ]);
+      } catch {
+        if (active) {
+          setReferenceDocuments(
+            policyDocumentMocks.map((document) => ({
+              id: document.id,
+              fileName: document.fileName,
+              fileType: document.fileType,
+              isFallback: true,
+            })),
+          );
+        }
+      }
+    };
+
+    void loadReferenceDocuments();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     void loadChats(activeAssistantId);
   }, [activeAssistantId]);
 
@@ -950,7 +1254,10 @@ export default function RagSystemPage() {
           return [...questionMessage, ...answerMessage];
         });
 
-        updateChatMessages(activeChatId, () => historyMessages);
+        const shouldShowPolicyPresets = showPolicyPresetMessages;
+        updateChatMessages(activeChatId, () =>
+          shouldShowPolicyPresets ? mergePolicyPresetMessages(historyMessages) : historyMessages,
+        );
         loadedChatMessagesRef.current[chatKey] = true;
       } catch (error: any) {
         message.error(error?.message || '加载聊天记录失败');
@@ -960,7 +1267,7 @@ export default function RagSystemPage() {
     };
 
     void loadCurrentChatMessages();
-  }, [activeChatId]);
+  }, [activeChat?.title, activeChatId, showPolicyPresetMessages]);
 
   useEffect(() => {
     if (!assistantModalOpen || !editingAssistant) return;
@@ -1109,23 +1416,61 @@ export default function RagSystemPage() {
     }
   };
 
-  const handleOpenReferenceDoc = (chunk: ReferenceChunkItem) => {
-    if (!chunk.docId) {
+  const handleOpenReferenceDoc = (chunk: ReferenceChunkItem, fallbackDocId?: number | string) => {
+    const documentId = chunk.docId ?? fallbackDocId;
+    if (documentId === undefined || documentId === null || documentId === '') {
       message.warning('未获取到文档ID');
       return;
     }
 
     const query = new URLSearchParams();
-    const searchKeyword = getReferenceChunkFileName(chunk).toLowerCase().endsWith('.ppt') ||
-      getReferenceChunkFileName(chunk).toLowerCase().endsWith('.pptx')
-      ? extractPptSearchKeyword(chunk.text)
-      : extractSearchClause(chunk.text);
+    const fileName = getReferenceChunkFileName(chunk);
+    const searchKeyword =
+      fileName.toLowerCase().endsWith('.ppt') || fileName.toLowerCase().endsWith('.pptx')
+        ? extractPptSearchKeyword(chunk.text)
+        : extractSearchClause(chunk.text);
+    if (fileName) {
+      query.set('title', fileName);
+      const fileType = fileName.split('.').pop();
+      if (fileType) {
+        query.set('type', fileType);
+      }
+    }
+    if (chunk.file_path) {
+      query.set('filePath', chunk.file_path);
+    }
     if (searchKeyword) {
       query.set('keyword', searchKeyword);
       query.set('previewMode', 'original');
     }
 
-    history.push(`/data/document/${chunk.docId}${query.toString() ? `?${query.toString()}` : ''}`);
+    history.push(
+      `/data/document/${encodeURIComponent(String(documentId))}${
+        query.toString() ? `?${query.toString()}` : ''
+      }`,
+    );
+  };
+
+  const handleOpenPolicyReferenceDoc = (referenceDocument: PolicyReferenceDocumentItem) => {
+    if (
+      referenceDocument.docId === undefined ||
+      referenceDocument.docId === null ||
+      referenceDocument.docId === ''
+    ) {
+      message.warning('引用文件尚未关联文档数据，请先在文档中心完成导入');
+      return;
+    }
+
+    handleOpenReferenceDoc(
+      {
+        docId: referenceDocument.docId,
+        file_name: referenceDocument.fileName,
+        file_path: referenceDocument.filePath,
+        text: referenceDocument.references.map((item) => item.clause).join('；'),
+        chunk_index: 1,
+      },
+      referenceDocument.docId,
+    );
   };
 
   const handleOpenKnowledgeBase = (knowledgeBaseId: number | string) => {
@@ -1643,6 +1988,7 @@ export default function RagSystemPage() {
                   {activeAssistant && (
                     <span className="chat-title-assistant-tag">{activeAssistant.name}</span>
                   )}
+                  {showPolicyPresetMessages && <Tag color="blue">内置政策问答</Tag>}
                 </div>
               </div>
               {activeAssistant && (
@@ -1665,7 +2011,7 @@ export default function RagSystemPage() {
             </div>
           </div>
 
-          {!activeChat || activeChat.messages.length === 0 ? (
+          {!activeChat || visibleChatMessages.length === 0 ? (
             <div className="chat-landing">
               <div className="welcome-screen">
                 <div className="robot-avatar-container">
@@ -1712,7 +2058,7 @@ export default function RagSystemPage() {
             </div>
           ) : (
             <div className="messages-area">
-              {activeChat.messages.map((msg) => (
+              {visibleChatMessages.map((msg) => (
                 <div
                   key={msg.id}
                   style={{
@@ -1750,6 +2096,90 @@ export default function RagSystemPage() {
                                 dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }}
                               />
                             </div>
+                            {msg.policyReferences && msg.policyReferences.length > 0 && (
+                              <div className="policy-citation-card">
+                                <div className="policy-citation-header">
+                                  <strong>引用依据</strong>
+                                  <span>法规文件 · 命中分块</span>
+                                </div>
+                                <div className="policy-citation-list message-reference-doc-list">
+                                  {getPolicyReferenceDocuments(
+                                    msg.policyReferences,
+                                    referenceDocuments,
+                                  ).map((referenceDocument) => (
+                                    <Tooltip
+                                      key={`${msg.id}-${referenceDocument.key}`}
+                                      placement="rightTop"
+                                      overlayClassName="message-reference-tooltip-overlay"
+                                      title={
+                                        <div className="message-reference-tooltip">
+                                          <div className="message-reference-tooltip-title">
+                                            {referenceDocument.fileName}
+                                          </div>
+                                          <div className="message-reference-tooltip-meta">
+                                            <span>
+                                              命中分块：{referenceDocument.references.length}
+                                            </span>
+                                            <span>来源：采购法规知识库</span>
+                                          </div>
+                                          <div className="message-reference-tooltip-section">
+                                            <div className="message-reference-tooltip-label">
+                                              引用条款
+                                            </div>
+                                            <div className="message-reference-tooltip-chunks">
+                                              {referenceDocument.references.map((reference) => (
+                                                <div
+                                                  key={`${referenceDocument.key}-${reference.clause}`}
+                                                  className="message-reference-tooltip-chunk"
+                                                  title="点击打开站内文档详情"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleOpenPolicyReferenceDoc(referenceDocument);
+                                                  }}
+                                                >
+                                                  <div className="message-reference-tooltip-chunk-meta">
+                                                    {reference.name} · {reference.clause}
+                                                  </div>
+                                                  <div className="message-reference-tooltip-chunk-text">
+                                                    {reference.source}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      }
+                                    >
+                                      <div
+                                        className="message-reference-doc-item policy-reference-doc-item"
+                                        title={
+                                          referenceDocument.docId
+                                            ? '点击打开站内文档详情并定位到引用条款'
+                                            : '该引用文件尚未关联文档详情'
+                                        }
+                                        onClick={() =>
+                                          handleOpenPolicyReferenceDoc(referenceDocument)
+                                        }
+                                      >
+                                        <div className="message-reference-doc-icon">
+                                          <FileTextOutlined />
+                                        </div>
+                                        <div className="message-reference-doc-main">
+                                          <div className="message-reference-doc-line">
+                                            <div className="message-reference-doc-name">
+                                              {referenceDocument.fileName}
+                                            </div>
+                                            <div className="message-reference-doc-meta">
+                                              {`命中 ${referenceDocument.references.length} 个块`}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </Tooltip>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             <div
                               style={{
                                 fontSize: 11,
@@ -1758,7 +2188,7 @@ export default function RagSystemPage() {
                                 textAlign: 'right',
                               }}
                             >
-                              {msg.timestamp}
+                              {msg.timestamp && <span>{msg.timestamp}</span>}
                             </div>
                           </div>
                           {Number(msg.reference?.total ?? 0) > 0 && (
@@ -1817,7 +2247,7 @@ export default function RagSystemPage() {
                                                 title="点击查看文档并定位到该命中内容"
                                                 onClick={(event) => {
                                                   event.stopPropagation();
-                                                  handleOpenReferenceDoc(chunk);
+                                                  handleOpenReferenceDoc(chunk, doc.docId);
                                                 }}
                                               >
                                                 <div className="message-reference-tooltip-chunk-meta">
@@ -1839,10 +2269,13 @@ export default function RagSystemPage() {
                                   >
                                     <div
                                       className="message-reference-doc-item"
-                                      onClick={() =>
+                                      title={
                                         doc.docId
-                                          ? handleOpenReferenceDoc(doc.chunks[0])
-                                          : undefined
+                                          ? '点击打开站内文档详情并定位到引用内容'
+                                          : '该引用暂未关联文档详情'
+                                      }
+                                      onClick={() =>
+                                        handleOpenReferenceDoc(doc.chunks[0], doc.docId)
                                       }
                                     >
                                       <div className="message-reference-doc-icon">
@@ -1887,7 +2320,7 @@ export default function RagSystemPage() {
                               textAlign: 'right',
                             }}
                           >
-                            {msg.timestamp}
+                            {msg.timestamp && <span>{msg.timestamp}</span>}
                           </div>
                         </div>
                       )}
