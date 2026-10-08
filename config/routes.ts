@@ -118,6 +118,12 @@ export default [
     hideInMenu: true,
   },
   {
+    name: '履约节点详情',
+    path: '/procurement/contracts/fulfillment/node-detail',
+    component: './ProcurementPortal',
+    hideInMenu: true,
+  },
+  {
     name: '现场验收',
     path: '/procurement/acceptance',
     component: './ProcurementPortal',
