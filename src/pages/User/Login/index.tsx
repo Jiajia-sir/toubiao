@@ -755,12 +755,13 @@ const Login: React.FC = () => {
                   lineHeight: 1.3,
                 }}
               >
-                文档信息
+                企业蜂窝人工智能一体化平台
+                {/* 文档信息
                 <br />
-                智能处理系统
+                智能处理系统 */}
               </div>
 
-              <p
+              {/* <p
                 style={{
                   fontSize: 'clamp(14px, 1.5vw, 18px)',
                   color: 'rgba(255, 255, 255, 0.5)',
@@ -769,10 +770,10 @@ const Login: React.FC = () => {
                 }}
               >
                 企业级知识管理与智能分析平台
-              </p>
+              </p> */}
 
               {/* 特性标签 */}
-              <div
+              {/* <div
                 style={{
                   display: 'flex',
                   flexWrap: 'wrap',
@@ -796,7 +797,7 @@ const Login: React.FC = () => {
                     {tag}
                   </div>
                 ))}
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

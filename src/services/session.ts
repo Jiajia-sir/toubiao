@@ -190,16 +190,16 @@ const LOCAL_PROJECT_MENUS = [
     flatMenu: true,
     meta: { title: '合同管理', icon: 'file-done' },
   },
-  {
-    path: '/procurement/reports',
-    name: '数据报表',
-    icon: createIcon('bar-chart'),
-    component: 'ProcurementPortal',
-    hideInMenu: false,
-    hideChildrenInMenu: true,
-    flatMenu: true,
-    meta: { title: '数据报表', icon: 'bar-chart' },
-  },
+  // {
+  //   path: '/procurement/reports',
+  //   name: '数据报表',
+  //   icon: createIcon('bar-chart'),
+  //   component: 'ProcurementPortal',
+  //   hideInMenu: false,
+  //   hideChildrenInMenu: true,
+  //   flatMenu: true,
+  //   meta: { title: '数据报表', icon: 'bar-chart' },
+  // },
 ];
 
 const LOCAL_PROJECT_MENU_PATHS = [

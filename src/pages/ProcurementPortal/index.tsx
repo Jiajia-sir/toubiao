@@ -777,6 +777,8 @@ type ProcurementTemplate = {
   updated: string;
   owner: string;
   description: string;
+  sections?: string[];
+  steps?: TemplateWorkflowStep[];
 };
 
 let procurementTemplateLibrary: ProcurementTemplate[] = [
@@ -789,7 +791,13 @@ let procurementTemplateLibrary: ProcurementTemplate[] = [
 type TemplateWorkflowProfile = {
   budgetRange: string;
   sections: string[];
-  steps: Array<{ id: string; title: string; description: string }>;
+  steps: TemplateWorkflowStep[];
+};
+
+type TemplateWorkflowStep = {
+  id: string;
+  title: string;
+  description: string;
 };
 
 const templateWorkflowProfiles: Record<string, TemplateWorkflowProfile> = {
@@ -836,8 +844,7 @@ const templateWorkflowProfiles: Record<string, TemplateWorkflowProfile> = {
 };
 
 function getTemplateWorkflowProfile(template?: ProcurementTemplate): TemplateWorkflowProfile {
-  if (template && templateWorkflowProfiles[template.id]) return templateWorkflowProfiles[template.id];
-  return {
+  const defaultProfile = (template && templateWorkflowProfiles[template.id]) || {
     budgetRange: '按项目实际预算填写',
     sections: ['项目概况', '采购需求', '技术要求', '商务要求', '验收标准'],
     steps: [
@@ -846,6 +853,11 @@ function getTemplateWorkflowProfile(template?: ProcurementTemplate): TemplateWor
       { id: 'commercial', title: '商务要求', description: '设定交付、质保和付款条件' },
       { id: 'acceptance', title: '验收标准', description: '明确验收条件和流程' },
     ],
+  };
+  return {
+    ...defaultProfile,
+    sections: template?.sections?.length ? template.sections : defaultProfile.sections,
+    steps: template?.steps?.length ? template.steps : defaultProfile.steps,
   };
 }
 
@@ -1282,16 +1294,7 @@ function ProjectsPage({ onOpenModal, projects, onUpdateStatus }: { onOpenModal: 
     {
       title: '状态管理',
       dataIndex: 'status',
-      render: (value: Project['status'], record) => (
-        <Select
-          size="small"
-          value={value}
-          options={[{ value: '进行中', label: '进行中' }, { value: '已完成', label: '已完成' }, { value: '待审核', label: '待审核' }]}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(nextValue) => onUpdateStatus?.(record.id, nextValue as Project['status'])}
-        />
-      ),
+      render: (value: Project['status']) => <StatusPill tone={value === '已完成' ? 'green' : value === '待审核' ? 'orange' : 'blue'}>{value}</StatusPill>,
     },
     ...projectColumns.slice(4),
   ], [onUpdateStatus]);
@@ -4308,9 +4311,14 @@ function TemplateManagerPage() {
   const [form] = Form.useForm();
   const location = useLocation();
   const openTemplateForm = (template?: ProcurementTemplate) => {
+    const workflowProfile = getTemplateWorkflowProfile(template);
     setEditingTemplate(template || null);
     form.resetFields();
-    if (template) form.setFieldsValue(template);
+    form.setFieldsValue({
+      ...(template || { status: '草稿' }),
+      sections: workflowProfile.sections,
+      steps: workflowProfile.steps,
+    });
     setTemplateModalOpen(true);
   };
   useEffect(() => {
@@ -4320,6 +4328,18 @@ function TemplateManagerPage() {
     try {
       const values = await form.validateFields();
       const currentDate = new Date().toISOString().slice(0, 10);
+      const sections = (values.sections || [])
+        .map((section: string) => section.trim())
+        .filter(Boolean);
+      const steps = (values.steps || []).map((step: { id?: string; title: string; description: string }, index: number) => ({
+        id: step.id || `step-${Date.now()}-${index}`,
+        title: step.title.trim(),
+        description: step.description.trim(),
+      }));
+      if (!sections.length || !steps.length) {
+        message.error('请至少配置一个拟制板块和一个拟制步骤');
+        return;
+      }
       const nextTemplate: ProcurementTemplate = {
         id: editingTemplate?.id || `TPL-${String(Date.now()).slice(-3)}`,
         name: values.name,
@@ -4331,6 +4351,8 @@ function TemplateManagerPage() {
         updated: currentDate,
         owner: values.owner || '采购管理部',
         description: values.description || '未填写模板说明',
+        sections,
+        steps,
       };
       const nextTemplates = editingTemplate ? templates.map((item) => item.id === editingTemplate.id ? nextTemplate : item) : [nextTemplate, ...templates];
       procurementTemplateLibrary = nextTemplates;
@@ -4376,8 +4398,71 @@ function TemplateManagerPage() {
     <div className="template-start-bar"><div className={`template-start-icon ${selectedTemplate ? 'selected' : ''}`}><CheckOutlined /></div><div className="template-start-copy"><strong>{selectedTemplate ? `已选择：${selectedTemplate.name}` : '请选择一个需求模板'}</strong><span>{selectedTemplate ? `将引导您完成 ${selectedProfile.steps.length} 个步骤，并生成 ${selectedProfile.sections.length} 个需求板块` : '选择后可进入流程引导式拟制'}</span></div><Button type="primary" size="large" icon={<ArrowRightOutlined />} disabled={!selectedTemplate} onClick={handleStartDrafting}>开始拟制</Button></div>
     <Panel title={<><BookOutlined /> 模板版本管理 <span className="panel-count">模板变更会保留历史生成文件</span></>} extra={<Space><Input prefix={<SearchOutlined />} value={templateKeyword} onChange={(event) => setTemplateKeyword(event.target.value)} placeholder="搜索模板" style={{ width: 220 }} allowClear /><Button icon={<UploadOutlined />} onClick={() => message.info('支持导入 Word / Excel 模板，接入真实文件服务后可上传模板文件')}>导入模板</Button></Space>}><Table<ProcurementTemplate> rowKey="id" columns={columns} dataSource={visibleTemplates} pagination={{ pageSize: 8, showTotal: (total) => `共 ${total} 个模板` }} /></Panel>
     <Panel title={<><SafetyCertificateOutlined /> 模板使用规则</>}><div className="template-rules-grid"><div><strong>自动匹配</strong><span>按项目类型、采购方式和模板状态推荐可用模板。</span></div><div><strong>自动填充</strong><span>项目基础信息、技术要求、商务要求和验收标准可带入对应章节。</span></div><div><strong>版本留痕</strong><span>模板每次编辑和启停都会保留操作时间，历史文件不受影响。</span></div></div></Panel>
-    <Modal open={templateModalOpen} title={<ModalTitle icon={<BookOutlined />} title={editingTemplate ? '编辑采购文件模板' : '新建采购文件模板'} subtitle="模板保存后即可在采购文件生成器中选择使用" />} width={680} centered onCancel={() => setTemplateModalOpen(false)} onOk={saveTemplate} okText="保存模板" cancelText="取消">
-      <Form form={form} layout="vertical" className="modal-form"><Row gutter={16}><Col span={16}><Form.Item name="name" label="模板名称" rules={[{ required: true, message: '请输入模板名称' }]}><Input placeholder="例如：货物类公开招标标准采购文件" /></Form.Item></Col><Col span={8}><Form.Item name="version" label="版本号" rules={[{ required: true, message: '请输入版本号' }]}><Input placeholder="V1.0" /></Form.Item></Col><Col span={12}><Form.Item name="type" label="适用类型" rules={[{ required: true, message: '请选择适用类型' }]}><Select placeholder="请选择" options={['货物类', '服务类', '工程类'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col><Col span={12}><Form.Item name="method" label="适用采购方式"><Select placeholder="通用" options={['通用', '公开招标', '竞争性磋商', '询价采购'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col><Col span={12}><Form.Item name="chapters" label="章节数量" rules={[{ required: true, message: '请输入章节数量' }]}><Input type="number" min={1} /></Form.Item></Col><Col span={12}><Form.Item name="status" label="初始状态"><Select defaultValue="草稿" options={['草稿', '已启用', '已停用'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col><Col span={24}><Form.Item name="owner" label="维护部门"><Input placeholder="采购管理部" /></Form.Item></Col><Col span={24}><Form.Item name="description" label="模板说明"><Input.TextArea rows={3} placeholder="说明模板适用范围和自动填充内容" /></Form.Item></Col></Row></Form>
+    <Modal open={templateModalOpen} title={<ModalTitle icon={<BookOutlined />} title={editingTemplate ? '编辑采购文件模板' : '新建采购文件模板'} subtitle="模板保存后即可在采购文件生成器中选择使用" />} width={780} centered onCancel={() => setTemplateModalOpen(false)} onOk={saveTemplate} okText="保存模板" cancelText="取消">
+      <Form form={form} layout="vertical" className="modal-form">
+        <Row gutter={16}>
+          <Col span={16}><Form.Item name="name" label="模板名称" rules={[{ required: true, message: '请输入模板名称' }]}><Input placeholder="例如：货物类公开招标标准采购文件" /></Form.Item></Col>
+          <Col span={8}><Form.Item name="version" label="版本号" rules={[{ required: true, message: '请输入版本号' }]}><Input placeholder="V1.0" /></Form.Item></Col>
+          <Col span={12}><Form.Item name="type" label="适用类型" rules={[{ required: true, message: '请选择适用类型' }]}><Select placeholder="请选择" options={['货物类', '服务类', '工程类'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="method" label="适用采购方式"><Select placeholder="通用" options={['通用', '公开招标', '竞争性磋商', '询价采购'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="chapters" label="章节数量" rules={[{ required: true, message: '请输入章节数量' }]}><Input type="number" min={1} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="status" label="初始状态"><Select options={['草稿', '已启用', '已停用'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col>
+          <Col span={24}><Form.Item name="owner" label="维护部门"><Input placeholder="采购管理部" /></Form.Item></Col>
+          <Col span={24}><Form.Item name="description" label="模板说明"><Input.TextArea rows={3} placeholder="说明模板适用范围和自动填充内容" /></Form.Item></Col>
+        </Row>
+        <div className="template-workflow-config">
+          <div className="template-workflow-card">
+            <Form.List
+              name="sections"
+              rules={[{ validator: async (_, value) => (value?.length ? Promise.resolve() : Promise.reject(new Error('请至少添加一个拟制板块'))) }]}
+            >
+              {(fields, { add, remove }, { errors }) => <>
+                <div className="template-workflow-card-head">
+                  <div><strong>拟制板块</strong><span>配置需求拟制时需要生成的内容板块</span></div>
+                  <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => add('')}>添加板块</Button>
+                </div>
+                <div className="template-workflow-list">
+                  {fields.map((field, index) => <div className="template-workflow-row" key={field.key}>
+                    <span className="template-workflow-index">{index + 1}</span>
+                    <Form.Item {...field} rules={[{ required: true, whitespace: true, message: '请输入板块名称' }]}>
+                      <Input placeholder={`请输入第${index + 1}个拟制板块`} />
+                    </Form.Item>
+                    <Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除第${index + 1}个拟制板块`} onClick={() => remove(field.name)} disabled={fields.length <= 1} />
+                  </div>)}
+                </div>
+                <Form.ErrorList errors={errors} />
+              </>}
+            </Form.List>
+          </div>
+          <div className="template-workflow-card">
+            <Form.List
+              name="steps"
+              rules={[{ validator: async (_, value) => (value?.length ? Promise.resolve() : Promise.reject(new Error('请至少添加一个拟制步骤'))) }]}
+            >
+              {(fields, { add, remove }, { errors }) => <>
+                <div className="template-workflow-card-head">
+                  <div><strong>拟制步骤</strong><span>配置 AI 引导用户完成需求拟制的步骤</span></div>
+                  <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => add({ id: `step-${Date.now()}`, title: '', description: '' })}>添加步骤</Button>
+                </div>
+                <div className="template-workflow-list">
+                  {fields.map((field, index) => <div className="template-workflow-step-row" key={field.key}>
+                    <span className="template-workflow-index">{index + 1}</span>
+                    <Form.Item name={[field.name, 'id']} hidden className="template-workflow-step-id"><Input /></Form.Item>
+                    <Form.Item name={[field.name, 'title']} className="template-workflow-step-title" rules={[{ required: true, whitespace: true, message: '请输入步骤名称' }]}>
+                      <Input placeholder="步骤名称" />
+                    </Form.Item>
+                    <Form.Item name={[field.name, 'description']} className="template-workflow-step-description" rules={[{ required: true, whitespace: true, message: '请输入步骤说明' }]}>
+                      <Input placeholder="步骤说明" />
+                    </Form.Item>
+                    <Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除第${index + 1}个拟制步骤`} onClick={() => remove(field.name)} disabled={fields.length <= 1} />
+                  </div>)}
+                </div>
+                <Form.ErrorList errors={errors} />
+              </>}
+            </Form.List>
+          </div>
+        </div>
+      </Form>
     </Modal>
   </>;
 }
