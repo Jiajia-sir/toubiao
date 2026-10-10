@@ -15,7 +15,7 @@ const Settings: ProLayoutProps & {
   fixedHeader: true,
   fixSiderbar: true,
   colorWeak: false,
-  title: '智能文档处理平台',
+  title: '企业蜂窝人工智能一体化平台',
   pwa: true,
   logo: '/logo.svg',
   iconfontUrl: '',

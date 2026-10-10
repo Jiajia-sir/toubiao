@@ -100,6 +100,18 @@ export default [
     component: './ProcurementPortal',
   },
   {
+    name: '采购需求历史项目',
+    path: '/procurement/requirements/history',
+    component: './ProcurementPortal',
+    hideInMenu: true,
+  },
+  {
+    name: '采购文件模板管理',
+    path: '/procurement/requirements/templates',
+    component: './ProcurementPortal',
+    hideInMenu: true,
+  },
+  {
     name: '需求智能审核',
     path: '/procurement/requirements/review',
     component: './ProcurementPortal',

@@ -61,6 +61,7 @@ import {
   InfoCircleOutlined,
   LinkOutlined,
   LoadingOutlined,
+  MessageOutlined,
   LockOutlined,
   MoreOutlined,
   PaperClipOutlined,
@@ -701,12 +702,152 @@ function useProjectWorkflow() {
   return context;
 }
 
-const requirementCards = [
-  { title: '续航能力', text: '续航不少于 12 小时（连续巡检模式）', tone: 'purple' },
-  { title: '防护等级', text: '防护等级不低于 IP67（防尘防水）', tone: 'purple' },
-  { title: '数据接口', text: '支持标准数据接口，可与现有巡检系统对接', tone: 'purple' },
-  { title: '其他要求', text: '屏幕尺寸不小于 6 英寸，支持手套触控；整机重量不超过 320g。', tone: 'gray' },
+type HistoricalProject = {
+  id: string;
+  name: string;
+  category: string;
+  date: string;
+  winningPrice: string;
+  supplier: string;
+  quantity: string;
+  similarity: number;
+  technical: string;
+  acceptance: string;
+};
+
+const historicalProjects: HistoricalProject[] = [
+  {
+    id: 'HIS-2025-031',
+    name: '2025 年园区智能巡检终端采购',
+    category: '移动终端设备',
+    date: '2025-09-18',
+    winningPrice: '¥438,000',
+    supplier: '南京云巡科技有限公司',
+    quantity: '100 台',
+    similarity: 94,
+    technical: '续航 ≥ 12 小时 · IP67 · 支持 4G/5G · 标准 API',
+    acceptance: '到货抽检 10% + 功能测试 + 续航抽检不少于 12 小时',
+  },
+  {
+    id: 'HIS-2024-018',
+    name: '厂区巡检设备采购项目',
+    category: '移动终端设备',
+    date: '2024-06-28',
+    winningPrice: '¥336,000',
+    supplier: '苏州智联设备有限公司',
+    quantity: '150 台',
+    similarity: 88,
+    technical: '续航 ≥ 10 小时 · IP65 · 支持离线缓存 · 6 英寸屏',
+    acceptance: '外观及配件全检 + 开机测试 + 连续使用 3 天稳定性验证',
+  },
+  {
+    id: 'HIS-2023-072',
+    name: '手持数据采集终端采购',
+    category: '数据采集设备',
+    date: '2023-11-06',
+    winningPrice: '¥252,000',
+    supplier: '杭州数联信息技术有限公司',
+    quantity: '200 台',
+    similarity: 78,
+    technical: '续航 ≥ 8 小时 · 防护等级 IP65 · 蓝牙 5.0',
+    acceptance: '抽检 10% · 接口联调 · 供应商提供出厂检测报告',
+  },
+  {
+    id: 'HIS-2023-041',
+    name: '市政移动办公设备采购',
+    category: '办公设备',
+    date: '2023-08-15',
+    winningPrice: '¥418,600',
+    supplier: '华科智能设备有限公司',
+    quantity: '120 台',
+    similarity: 73,
+    technical: '整机质保 3 年 · 支持统一管理 · 标准数据接口',
+    acceptance: '数量清点 + 外观检查 + 现场安装调试 + 资料验收',
+  },
 ];
+
+type ProcurementTemplate = {
+  id: string;
+  name: string;
+  type: '货物类' | '服务类' | '工程类';
+  method: string;
+  version: string;
+  chapters: number;
+  status: '已启用' | '草稿' | '已停用';
+  updated: string;
+  owner: string;
+  description: string;
+};
+
+let procurementTemplateLibrary: ProcurementTemplate[] = [
+  { id: 'TPL-001', name: '货物类公开招标标准采购文件', type: '货物类', method: '公开招标', version: 'V2.4', chapters: 8, status: '已启用', updated: '2026-10-08', owner: '集团采购中心', description: '适用于货物类公开招标项目，包含采购需求、技术要求、评审标准和验收要求。' },
+  { id: 'TPL-002', name: '集团通用采购文件模板', type: '货物类', method: '通用', version: 'V1.8', chapters: 6, status: '已启用', updated: '2026-09-21', owner: '集团采购中心', description: '适用于各类采购方式的通用文件骨架，可按项目数据自动填充。' },
+  { id: 'TPL-003', name: '服务类竞争性磋商模板', type: '服务类', method: '竞争性磋商', version: 'V1.3', chapters: 7, status: '已启用', updated: '2026-08-30', owner: '法务合规部', description: '覆盖服务范围、人员配置、服务响应、报价及履约评价等章节。' },
+  { id: 'TPL-004', name: '工程类需求说明初稿', type: '工程类', method: '通用', version: 'V0.9', chapters: 5, status: '草稿', updated: '2026-10-07', owner: '工程采购组', description: '工程类需求说明和验收条款的内部试用模板。' },
+];
+
+type TemplateWorkflowProfile = {
+  budgetRange: string;
+  sections: string[];
+  steps: Array<{ id: string; title: string; description: string }>;
+};
+
+const templateWorkflowProfiles: Record<string, TemplateWorkflowProfile> = {
+  'TPL-001': {
+    budgetRange: '100 万 - 1000 万',
+    sections: ['项目概况', '技术要求', '商务要求', '评审标准', '验收标准'],
+    steps: [
+      { id: 'basic', title: '项目基本信息', description: '填写项目名称、预算、类型等基础信息' },
+      { id: 'technical', title: '技术要求', description: '明确设备技术规格、性能指标' },
+      { id: 'commercial', title: '商务要求', description: '设定报价、交付、售后等商务条件' },
+      { id: 'acceptance', title: '验收标准', description: '明确验收条件和可验证流程' },
+    ],
+  },
+  'TPL-002': {
+    budgetRange: '20 万 - 2000 万',
+    sections: ['项目概况', '采购需求', '技术要求', '商务要求', '验收标准', '合同要点'],
+    steps: [
+      { id: 'basic', title: '项目基本信息', description: '填写项目名称、预算、类型等基础信息' },
+      { id: 'technical', title: '技术与服务要求', description: '明确性能、配置和服务边界' },
+      { id: 'commercial', title: '商务要求', description: '设定交付、付款、质保和售后条件' },
+      { id: 'acceptance', title: '验收标准', description: '形成与技术要求对应的验收口径' },
+    ],
+  },
+  'TPL-003': {
+    budgetRange: '100 万 - 1000 万',
+    sections: ['项目概况', '服务范围', '人员配置', '考核标准', '商务要求'],
+    steps: [
+      { id: 'basic', title: '项目基本信息', description: '填写服务项目、预算、期限等基础信息' },
+      { id: 'technical', title: '服务范围与人员', description: '明确服务内容、人员数量和资质' },
+      { id: 'commercial', title: '考核与商务', description: '设定考核、报价、服务期限和付款条件' },
+      { id: 'acceptance', title: '履约验收标准', description: '形成月度考核和年度评价标准' },
+    ],
+  },
+  'TPL-004': {
+    budgetRange: '500 万 - 5000 万',
+    sections: ['项目概况', '工程范围', '技术规范', '质量要求', '安全要求'],
+    steps: [
+      { id: 'basic', title: '项目基本信息', description: '填写工程名称、预算、建设地点等基础信息' },
+      { id: 'technical', title: '工程范围与技术规范', description: '明确工程范围、质量和技术要求' },
+      { id: 'commercial', title: '安全与商务', description: '设定安全管理、工期、报价和付款条件' },
+      { id: 'acceptance', title: '质量验收标准', description: '明确工程质量、资料和安全验收要求' },
+    ],
+  },
+};
+
+function getTemplateWorkflowProfile(template?: ProcurementTemplate): TemplateWorkflowProfile {
+  if (template && templateWorkflowProfiles[template.id]) return templateWorkflowProfiles[template.id];
+  return {
+    budgetRange: '按项目实际预算填写',
+    sections: ['项目概况', '采购需求', '技术要求', '商务要求', '验收标准'],
+    steps: [
+      { id: 'basic', title: '项目基本信息', description: '填写项目名称、预算、类型等基础信息' },
+      { id: 'technical', title: '技术要求', description: '明确技术规格和性能指标' },
+      { id: 'commercial', title: '商务要求', description: '设定交付、质保和付款条件' },
+      { id: 'acceptance', title: '验收标准', description: '明确验收条件和流程' },
+    ],
+  };
+}
 
 const auditProblems = [
   {
@@ -850,6 +991,42 @@ function go(path: string) {
     return;
   }
   history.push(path);
+}
+
+function escapeDocumentHtml(value: string) {
+  const htmlEntities: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return value.replace(/[&<>"']/g, (character) => htmlEntities[character] || character);
+}
+
+function buildDocumentExportHtml(title: string, body: string) {
+  return `<!doctype html><html><head><meta charset="utf-8" /><title>${escapeDocumentHtml(title)}</title><style>body{margin:0;padding:40px;color:#253044;font-family:"Microsoft YaHei",Arial,sans-serif;font-size:14px;line-height:1.8}h1{text-align:center;font-size:24px;line-height:1.5}h2{margin-top:28px;padding-bottom:8px;border-bottom:1px solid #dfe5ee;font-size:18px}h3{margin-top:18px;font-size:15px}p{margin:8px 0}ol,ul{padding-left:24px}.document-export-meta{color:#667085;text-align:center;font-size:12px}.document-export-section{page-break-inside:avoid}</style></head><body>${body}</body></html>`;
+}
+
+function downloadDocumentExport(fileBaseName: string, body: string, format: 'Word' | 'PDF') {
+  const html = buildDocumentExportHtml(fileBaseName, body);
+  if (format === 'Word') {
+    const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${fileBaseName}.doc`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    message.success(`${fileBaseName} Word 版本已下载`);
+    return;
+  }
+  const printWindow = window.open('', '_blank', 'width=980,height=760');
+  if (!printWindow) {
+    message.warning('浏览器阻止了打印窗口，请允许弹窗后再导出 PDF');
+    return;
+  }
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => printWindow.print(), 250);
+  message.success('已打开 PDF 导出窗口，请在打印设置中选择“另存为 PDF”');
 }
 
 function getProjectDetailPath(project: Project) {
@@ -1521,65 +1698,369 @@ function InfoCell({ label, value, avatar }: { label: string; value: string; avat
 
 function ShareIcon() { return <LinkOutlined />; }
 
-function RequirementPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
-  const { project } = useProjectWorkflow();
-  const [checkOpen, setCheckOpen] = useState(false);
-  const [resolved, setResolved] = useState<Record<number, string>>({});
-  const [technicalItems, setTechnicalItems] = useState(requirementCards);
-  const [assistantRevision, setAssistantRevision] = useState(0);
-  const handledCount = Object.keys(resolved).length;
-  const saveDraft = () => message.success('需求草稿已保存，稍后可继续编辑');
-  const addTechnicalRequirement = () => {
-    const index = technicalItems.length - requirementCards.length + 1;
-    setTechnicalItems((items) => [...items, { title: `新增技术要求 ${index}`, text: '请补充该项技术指标、验收方式及判定标准。', tone: 'gray' }]);
-    message.success('已新增一项技术要求');
+type ReferenceDraftField = { id: string; aiAssist?: boolean };
+
+type ReferenceDraftStep = {
+  id: string;
+  title: string;
+  description: string;
+  fields: ReferenceDraftField[];
+};
+
+type ReferenceDraftTemplate = {
+  id: string;
+  name: string;
+  category: string;
+  projectType: string;
+  sections: string[];
+  steps: ReferenceDraftStep[];
+};
+
+type ReferenceDraftFormState = {
+  projectName: string;
+  category: string;
+  budget: string;
+  projectType: string;
+  purpose: string;
+  quantity: string;
+  technicalRequirements: string;
+  commercialRequirements: string;
+  timeline: string;
+};
+
+type ReferenceChatMessage = {
+  id: string;
+  role: 'ai' | 'user';
+  content: string;
+  timestamp: number;
+  suggestions?: string[];
+};
+
+type ConfirmedRequirementSection = { id: string; title: string; content: string };
+
+type ConfirmedRequirementDraft = {
+  projectId: string;
+  templateName: string;
+  sections: ConfirmedRequirementSection[];
+  updatedAt: string;
+};
+
+let confirmedRequirementDraft: ConfirmedRequirementDraft | null = null;
+
+const referenceAiResponses: Array<{ keywords: string[]; response: string; suggestions?: string[] }> = [
+  {
+    keywords: ['网络', '交换机', '设备'],
+    response: '我理解您需要采购网络设备。根据您的描述，我为您初步整理以下技术要求：\n\n1. 核心交换机：48口千兆+4个万兆光口，背板带宽≥2.4Tbps，支持堆叠和冗余电源\n2. 接入交换机：24口千兆+万兆上联，支持POE+供电\n3. 网络安全：支持ACL、端口安全、802.1X认证\n4. 管理要求：支持SNMP v3、NetFlow，可集中管理\n\n请问需要补充商务要求方面的信息吗？例如交付期限、质保期限等。',
+    suggestions: ['补充商务要求', '调整技术参数', '查看历史同类项目'],
+  },
+  {
+    keywords: ['服务器', '存储', '计算'],
+    response: '好的，关于服务器采购，我为您整理以下技术规格建议：\n\n1. 处理器：双路Intel Xeon Gold 6348 2.6GHz（28核/56线程）\n2. 内存：256GB DDR4 ECC RDIMM，可扩展至2TB\n3. 存储：4TB NVMe SSD ×4，支持RAID 0/1/5/10\n4. 网络：双口25GbE + 双口千兆管理\n5. 冗余：双热插拔电源（1+1冗余）\n\n根据历史项目分析，该配置的市场均价约在478万元左右。是否需要我推荐验收标准？',
+    suggestions: ['推荐验收标准', '查看市场行情', '调整配置参数'],
+  },
+  {
+    keywords: ['安防', '监控', '摄像头'],
+    response: '关于安防监控系统采购，我为您整理以下方案：\n\n1. 前端设备：4K高清网络摄像头120台（半球50+枪机50+球机20）\n2. 智能分析：AI行为分析平台，支持人体检测、车辆识别、人脸比对\n3. 存储系统：30天循环存储，支持云端备份\n4. 防护等级：前端设备IP67，工作温度-30°C~65°C\n5. 管理平台：统一管理界面，支持电子地图、告警联动\n\n是否需要我帮您生成验收标准？',
+    suggestions: ['生成验收标准', '查看技术趋势', '补充商务要求'],
+  },
+  {
+    keywords: ['物业', '保洁', '安保', '服务'],
+    response: '关于物业服务采购，我为您整理以下服务范围：\n\n1. 保洁服务：每日清扫保洁，覆盖办公区域约12000㎡\n2. 安保服务：24小时门岗值守+定时巡逻，安保人员15人\n3. 绿化养护：园区绿化面积5000㎡，定期修剪浇水\n4. 设施维护：水电设施日常巡检维修，维修人员3人\n5. 考核标准：保洁合格率≥95%，安保响应≤5分钟\n\n请确认服务期限和人员配置是否符合预期？',
+    suggestions: ['确认服务期限', '调整人员配置', '查看考核标准'],
+  },
+  {
+    keywords: ['商务', '交付', '质保', '付款'],
+    response: '好的，我为您整理商务要求如下：\n\n1. 交付期限：合同签订后30个工作日内完成交付安装\n2. 质保要求：整机三年免费质保，含软硬件升级服务\n3. 付款方式：货到验收合格后支付90%，质保期满后支付10%\n4. 售后服务：7×24小时技术支持，4小时响应，24小时到场\n5. 培训要求：供应商提供不少于2次系统操作培训\n\n是否需要调整以上商务条件？',
+    suggestions: ['调整付款方式', '修改质保期限', '生成需求文件初稿'],
+  },
+];
+
+function findReferenceAIResponse(input: string): { response: string; suggestions?: string[] } {
+  const lowerInput = input.toLowerCase();
+  for (const item of referenceAiResponses) {
+    if (item.keywords.some((keyword) => lowerInput.includes(keyword))) {
+      return { response: item.response, suggestions: item.suggestions };
+    }
+  }
+  return {
+    response: '感谢您的描述。我已记录您的采购意向，将基于此信息协助您完善技术要求和商务要求。\n\n请问您能提供以下信息吗？\n1. 采购品类和数量\n2. 主要用途和使用场景\n3. 预算范围\n\n这样我可以更精准地为您推荐技术参数和参考历史项目。',
+    suggestions: ['输入采购品类', '说明使用场景', '告知预算范围'],
   };
-  const addAiRequirements = () => {
-    if (technicalItems.some((item) => item.title === 'AI 补充建议')) {
-      message.info('AI 识别内容已加入需求文档');
+}
+
+function buildReferenceTemplate(template: ProcurementTemplate | undefined, project: ProjectDetailData): ReferenceDraftTemplate | null {
+  if (!template) return null;
+  const profile = getTemplateWorkflowProfile(template);
+  return {
+    id: template.id,
+    name: template.name,
+    category: project.category,
+    projectType: template.type,
+    sections: profile.sections,
+    steps: profile.steps.map((step) => ({
+      ...step,
+      fields: [{ id: `${step.id}-assistant`, aiAssist: step.id !== 'basic' }],
+    })),
+  };
+}
+
+function RequirementPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
+  void onOpenModal;
+  const { project } = useProjectWorkflow();
+  const location = useLocation();
+  const availableTemplates = procurementTemplateLibrary.filter((item) => item.status !== '已停用');
+  const requestedTemplateId = new URLSearchParams(location.search).get('templateId');
+  const requestedTemplate = availableTemplates.find((item) => item.id === requestedTemplateId);
+  const defaultTemplate = requestedTemplate || availableTemplates.find((item) => item.type === `${project.type}类`) || availableTemplates[0];
+  const template = buildReferenceTemplate(defaultTemplate, project);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [formState, setFormState] = useState<ReferenceDraftFormState>({
+    projectName: '',
+    category: template?.category || '',
+    budget: '',
+    projectType: template?.projectType || '',
+    purpose: '',
+    quantity: '',
+    technicalRequirements: '',
+    commercialRequirements: '',
+    timeline: '',
+  });
+  const [draftedSections, setDraftedSections] = useState<{ id: string; title: string; content: string }[]>([]);
+  const [isComplete, setIsComplete] = useState(false);
+  const [activePreviewSection, setActivePreviewSection] = useState('');
+  const [previewEdited, setPreviewEdited] = useState(false);
+  const previewSectionRefs = React.useRef<Record<string, HTMLElement | null>>({});
+
+  useEffect(() => {
+    if (!draftedSections.length) {
+      setActivePreviewSection('');
       return;
     }
-    setTechnicalItems((items) => [...items, { title: 'AI 补充建议', text: '已将 AI 识别到的接口兼容性与环境适应性要求加入文档。', tone: 'purple' }]);
-    message.success('AI 识别内容已加入需求文档');
+    setActivePreviewSection((current) => draftedSections.some((section) => section.id === current) ? current : draftedSections[0].id);
+  }, [draftedSections]);
+
+  const updateExtractedInfo = (text: string, response: string) => {
+    const quantityMatch = text.match(/(\d+(?:\.\d+)?)\s*(台|套|人|个|平方米|㎡)/);
+    const budgetMatch = text.match(/预算[^\d]*(\d+(?:\.\d+)?\s*(?:万|万元)?)/);
+    const timelineMatch = text.match(/(\d+)\s*(?:个)?工作日|交付[^\d]*(\d+)\s*天/);
+    setFormState((previous) => ({
+      ...previous,
+      purpose: previous.purpose || text,
+      quantity: quantityMatch ? `${quantityMatch[1]} ${quantityMatch[2]}` : previous.quantity,
+      budget: budgetMatch ? budgetMatch[1] : previous.budget,
+      timeline: timelineMatch ? `合同签订后${timelineMatch[1] || timelineMatch[2]}个工作日` : previous.timeline,
+      technicalRequirements: /技术|设备|服务器|网络|交换机|监控|安防|摄像头/.test(text) ? response : previous.technicalRequirements,
+      commercialRequirements: /商务|交付|质保|付款|售后/.test(text) ? response : previous.commercialRequirements,
+    }));
   };
-  const regenerateAssistant = () => {
-    setAssistantRevision((revision) => revision + 1);
-    message.success('AI 已重新生成需求建议');
+
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [messages, setMessages] = useState<ReferenceChatMessage[]>(() => [{
+    id: 'msg-init',
+    role: 'ai',
+    content: template
+      ? `您好！您已选择"${template.name}"，我将引导您逐步完成需求拟制。\n\n当前步骤：${template.steps[0]?.title} — ${template.steps[0]?.description}\n\n请先描述您的采购意向（品类、数量、用途等），我将通过多轮对话帮您完成技术要求和商务要求的撰写。`
+      : '您好！请先选择一个需求模板，或直接描述您的采购意向，我将帮您完成需求拟制。',
+    timestamp: Date.now(),
+    suggestions: ['我要采购网络设备', '需要采购服务器', '安防监控系统采购'],
+  }]);
+
+  const handleSend = (text: string) => {
+    if (!text.trim()) return;
+    const userMessage: ReferenceChatMessage = { id: `msg-${Date.now()}`, role: 'user', content: text, timestamp: Date.now() };
+    setMessages((previous) => [...previous, userMessage]);
+    setInput('');
+    setIsTyping(true);
+
+    if (formState.purpose === '') {
+      setFormState((previous) => ({ ...previous, purpose: text }));
+    }
+
+    setTimeout(() => {
+      const result = findReferenceAIResponse(text);
+      const aiMessage: ReferenceChatMessage = { id: `msg-${Date.now() + 1}`, role: 'ai', content: result.response, timestamp: Date.now(), suggestions: result.suggestions };
+      setMessages((previous) => [...previous, aiMessage]);
+      setIsTyping(false);
+      updateExtractedInfo(text, result.response);
+    }, 1200);
   };
-  const submitRequirement = () => {
+
+  const handleNextStep = () => {
+    if (!template || currentStep >= template.steps.length - 1) return;
+    const nextStep = template.steps[currentStep + 1];
+    setCurrentStep(currentStep + 1);
+    setMessages((previous) => [...previous, {
+      id: `msg-step-${Date.now()}`,
+      role: 'ai',
+      content: `进入下一步：${nextStep.title} — ${nextStep.description}\n\n请继续描述或完善相关信息。`,
+      timestamp: Date.now(),
+      suggestions: nextStep.fields.some((field) => field.aiAssist) ? ['使用AI辅助撰写', '手动输入'] : undefined,
+    }]);
+  };
+
+  const handleAutoFill = () => {
+    if (!template) return;
+    const sections = template.sections.map((section, index) => {
+      let content = '';
+      if (section.includes('技术') || section.includes('规格') || section.includes('参数')) {
+        content = formState.technicalRequirements || '（AI根据采购意向自动生成）核心设备需满足以下技术要求：\n1. 性能指标满足行业主流标准\n2. 支持冗余配置，保障高可用\n3. 具备扩展能力，预留升级空间\n4. 支持远程管理和监控';
+      } else if (section.includes('商务') || section.includes('交付') || section.includes('付款')) {
+        content = formState.commercialRequirements || '（AI根据模板自动生成）商务要求：\n1. 交付期限：合同签订后30个工作日内\n2. 质保要求：三年免费质保\n3. 付款方式：验收合格后支付90%，质保期满支付10%\n4. 售后服务：7×24小时技术支持';
+      } else if (section.includes('验收')) {
+        content = '（AI根据技术参数推荐）验收标准：\n1. 到货检查：设备型号、数量、配置与合同一致性核查\n2. 性能测试：各项指标达到技术要求，连续运行72小时无故障\n3. 安全测试：无高危漏洞，访问控制策略生效\n4. 环境检查：安装环境符合设备运行要求';
+      } else if (section.includes('概况') || section.includes('基本信息')) {
+        content = `项目名称：${formState.projectName || '（待填写）'}\n项目类型：${formState.projectType || template.projectType}\n预算金额：${formState.budget || '（待填写）'}万元\n采购品类：${formState.category || template.category}`;
+      } else {
+        content = `（基于${template.name}模板生成）${section}内容将根据上述信息自动整合。`;
+      }
+      return { id: `sec-${index}`, title: section, content };
+    });
+    setDraftedSections(sections);
+    setIsComplete(true);
+    setPreviewEdited(false);
+    setActivePreviewSection(sections[0]?.id || '');
+    setMessages((previous) => [...previous, {
+      id: `msg-complete-${Date.now()}`,
+      role: 'ai',
+      content: `需求文件初稿已自动生成完成！共填充 ${sections.length} 个板块内容。\n\n您可以点击下方按钮预览完整需求文件初稿，或继续通过对话调整内容。`,
+      timestamp: Date.now(),
+      suggestions: ['预览需求文件', '继续调整内容'],
+    }]);
+  };
+
+  const updateDraftSection = (sectionId: string, content: string) => {
+    setDraftedSections((sections) => sections.map((section) => section.id === sectionId ? { ...section, content } : section));
+    setPreviewEdited(true);
+  };
+
+  const focusPreviewSection = (sectionId: string) => {
+    setActivePreviewSection(sectionId);
+    window.setTimeout(() => previewSectionRefs.current[sectionId]?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
+
+  const getDraftPreviewBody = () => [
+    `<h1>${escapeDocumentHtml(project.name)}<br />采购需求文件初稿</h1>`,
+    `<p class="document-export-meta">模板：${escapeDocumentHtml(template?.name || '采购需求模板')} · 生成状态：初稿</p>`,
+    draftedSections.map((section, index) => `<section class="document-export-section"><h2>第${index + 1}章 ${escapeDocumentHtml(section.title)}</h2><p>${escapeDocumentHtml(section.content).replace(/\n/g, '<br />')}</p></section>`).join(''),
+  ].join('');
+
+  const exportDraftPreview = (format: 'Word' | 'PDF') => {
+    downloadDocumentExport(`${project.name}-采购需求文件初稿`, getDraftPreviewBody(), format);
+  };
+
+  const handlePreview = () => {
+    if (!isComplete) {
+      message.warning('请先点击“自动填充”生成需求文件初稿');
+      return;
+    }
     if (onCompleteStage && !onCompleteStage()) return;
-    go('/procurement/documents');
+    if (template && draftedSections.length > 0) {
+      confirmedRequirementDraft = {
+        projectId: project.id,
+        templateName: template.name,
+        sections: draftedSections.map((section) => ({ ...section })),
+        updatedAt: new Date().toLocaleString('zh-CN'),
+      };
+    }
+    go('/procurement/documents/draft');
   };
+
+  const handleConfirmDraft = () => {
+    if (!isComplete || draftedSections.length === 0) {
+      message.warning('请先点击“生成初稿”完成需求文件编制');
+      return;
+    }
+    if (template) {
+      confirmedRequirementDraft = {
+        projectId: project.id,
+        templateName: template.name,
+        sections: draftedSections.map((section) => ({ ...section })),
+        updatedAt: new Date().toLocaleString('zh-CN'),
+      };
+    }
+    message.success('需求文件初稿已确认，正在进入文件形成流程');
+    go('/procurement/documents/draft');
+  };
+
+  if (!template) {
+    return <><PageTitle breadcrumb={['采购需求', '需求拟制']} title="需求拟制" subtitle="选择模板后开始 AI 引导式需求拟制" /><Panel className="reference-empty-template"><div><ThunderboltFilled /><strong>请先选择需求模板</strong><span>选择模板后即可开始 AI 引导式多轮对话拟制</span></div><Space wrap><Button type="primary" icon={<BookOutlined />} onClick={() => go('/procurement/requirements/templates')}>选择模板</Button><Button icon={<PlusOutlined />} onClick={() => go('/procurement/requirements/templates?mode=create')}>模板制作</Button></Space></Panel></>;
+  }
+
+  const totalSteps = template.steps.length;
+  const extractedInfo = [
+    { label: '采购意向', value: formState.purpose },
+    { label: '项目类型', value: formState.projectType },
+    { label: '技术要求', value: formState.technicalRequirements ? '已生成' : '待生成' },
+    { label: '商务要求', value: formState.commercialRequirements ? '已生成' : '待生成' },
+  ];
+
   return (
     <>
-      <PageTitle breadcrumb={['采购需求', '需求拟制', project.name]} title="采购需求拟制" subtitle={`${project.id} · ${project.category}采购需求 · 负责人 ${project.owner}`} actions={<><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('similar')}>查找相似案例</Button><Button icon={<DownloadOutlined />} onClick={saveDraft}>保存草稿</Button><Button icon={<SafetyCertificateOutlined />} onClick={() => go('/procurement/requirements/review')}>审核工作台</Button><Button icon={<ThunderboltFilled />} className="purple-button" onClick={() => setCheckOpen(true)}>智能检查</Button><Button type="primary" icon={<SendOutlined />} onClick={submitRequirement}>提交审核并进入文件编制</Button></>} />
-      <Row gutter={[16, 16]} align="top">
-        <Col xs={24} xl={checkOpen ? 15 : 17}>
-          <Panel title={<><InfoCircleOutlined /> 需求基本信息</>}>
-            <Form layout="vertical" className="requirement-form">
-              <Form.Item label="采购意向" required><Input.TextArea rows={3} defaultValue={project.intention} /></Form.Item>
-              <Row gutter={16}><Col span={12}><Form.Item label="使用环境" required><Input defaultValue="室外车间，-10℃ ~ 45℃" /></Form.Item></Col><Col span={12}><Form.Item label="数量" required><Input defaultValue={project.quantity} /></Form.Item></Col><Col span={12}><Form.Item label="预算" required><Input prefix="¥" defaultValue={project.budget.replace(/^¥/, '')} /></Form.Item></Col><Col span={12}><Form.Item label="交付日期" required><DatePicker defaultValue={undefined} placeholder={project.planDate || '请选择日期'} style={{ width: '100%' }} /></Form.Item></Col><Col span={24}><Form.Item label="交付地点" required><Input defaultValue="总部园区 B 座一层收货区（含卸货与上楼搬运）" /></Form.Item></Col></Row>
-            </Form>
-          </Panel>
-          <Panel title={<><ToolOutlined /> 技术要求 <StatusPill tone="purple">含 3 项 AI 识别内容</StatusPill></>}>
-            <div className="requirement-card-list">{technicalItems.map((item) => <div className={`requirement-card ${item.tone}`} key={item.title}><div><strong>{item.title}</strong><p>{item.text}</p></div><StatusPill tone={item.tone === 'purple' ? 'purple' : 'gray'}>{item.tone === 'purple' ? 'AI 识别' : '手动填写'}</StatusPill></div>)}</div><Button block type="dashed" icon={<PlusOutlined />} onClick={addTechnicalRequirement}>添加技术要求</Button>
-          </Panel>
-          <Panel title={<><FileTextOutlined /> 商务要求</>}><Input.TextArea rows={4} defaultValue={'1. 整机质保不少于 3 年，提供原厂授权及售后承诺函；\n2. 报价含运输、安装、调试及首年上门维护费用；\n3. 付款方式为验收合格后 30 日内支付 90%，质保期满支付 10%。'} /><div className="chip-row"><Tag>质保 3 年</Tag><Tag>含运输安装</Tag><Tag>30 天账期</Tag></div></Panel>
-          <Panel title={<><SafetyCertificateOutlined /> 验收要求</>}><Input.TextArea rows={3} defaultValue="到货后按 10% 比例抽检外观与配件完整性；全数设备进行开机功能测试与续航实测，测试结果需满足技术要求约定指标。" /><div className="completion-line"><span>需求完整度</span><Progress percent={handledCount ? 96 : 85} strokeColor="#10b981" /><b>{handledCount ? 96 : 85}%</b></div></Panel>
+      <PageTitle breadcrumb={['采购需求', '需求拟制', project.name]} title="需求拟制" subtitle={`基于“${template.name}”的 AI 引导式多轮对话拟制`} />
+      <div className="drafting-template-entry"><div className="drafting-template-entry-copy"><span><BookOutlined /> 当前拟制模板</span><strong>{template.name}</strong><small>{template.projectType} · {template.sections.length} 个需求板块 · 可进入模板选择或制作页面调整</small></div><Space wrap><Button icon={<BookOutlined />} onClick={() => go('/procurement/requirements/templates')}>选择模板</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => go('/procurement/requirements/templates?mode=create')}>制作模板</Button></Space></div>
+      <Row gutter={[18, 18]} align="top" className="requirement-drafting-reference-layout">
+        <Col xs={24} xl={16}><ReferenceAiAssistant template={template} messages={messages} input={input} isTyping={isTyping} onInputChange={setInput} onSend={handleSend} onAutoFill={handleAutoFill} onReset={() => { setMessages([messages[0]]); setInput(''); setIsTyping(false); setIsComplete(false); setDraftedSections([]); setActivePreviewSection(''); setPreviewEdited(false); setCurrentStep(0); }} /></Col>
+        <Col xs={24} xl={8}>
+          <div className="drafting-side-stack">
+            <Panel className="drafting-progress-panel" title="拟制进度">
+              <div className="drafting-step-list">
+                {template.steps.map((step, index) => {
+                  const isCurrent = index === currentStep;
+                  const isDone = index < currentStep;
+                  return <div key={step.id} className={`drafting-step-item ${isDone ? 'done' : isCurrent ? 'active' : ''}`}><span className="drafting-step-indicator">{isDone ? <CheckOutlined /> : index + 1}</span><div><strong>{step.title}</strong><small>{step.description}</small></div></div>;
+                })}
+              </div>
+              <div className="drafting-progress-summary"><div><span>完成度</span><b>{Math.round(((currentStep + 1) / totalSteps) * 100)}%</b></div><Progress percent={Math.round(((currentStep + 1) / totalSteps) * 100)} showInfo={false} strokeColor={{ '0%': '#2f66eb', '100%': '#7256e8' }} /></div>
+              <Space.Compact block className="drafting-step-actions"><Button icon={<ArrowLeftOutlined />} disabled={currentStep === 0} onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}>上一步</Button>{currentStep < totalSteps - 1 ? <Button type="primary" icon={<ArrowRightOutlined />} onClick={handleNextStep}>下一步</Button> : <Button type="primary" icon={<ThunderboltFilled />} onClick={handleAutoFill}>生成初稿</Button>}</Space.Compact>
+            </Panel>
+            <Panel className="drafting-extracted-panel" title="已提取信息"><div className="drafting-extracted-list">{extractedInfo.map((item) => <div key={item.label}><span>{item.label}</span><strong title={item.value}>{item.value ? (item.value.length > 20 ? `${item.value.slice(0, 20)}...` : item.value) : '待填写'}</strong></div>)}</div></Panel>
+            {isComplete && draftedSections.length > 0 && <Panel className="drafting-complete-panel"><div className="drafting-complete-icon"><FileDoneOutlined /></div><div><h3>初稿已生成</h3><p>已按标准模板自动填充 {draftedSections.length} 个板块内容，可预览完整需求文件。</p></div><Button type="primary" block icon={<FileDoneOutlined />} onClick={handlePreview}>预览需求文件</Button></Panel>}
+          </div>
         </Col>
-        {checkOpen && <Col xs={24} xl={9}><AuditPanel resolved={resolved} onResolve={(index, action) => setResolved((current) => ({ ...current, [index]: action }))} onRecheck={() => { setResolved({}); message.success('已重新检查需求文档'); }} onViewBasis={() => message.info('已定位到相关采购制度与历史案例依据')} onClose={() => setCheckOpen(false)} onOpenModal={onOpenModal} /></Col>}
-        {!checkOpen && <Col xs={24} xl={7}><AiAssistant onOpenSimilar={() => onOpenModal('similar')} onCheck={() => setCheckOpen(true)} onAddRequirements={addAiRequirements} onRegenerate={regenerateAssistant} assistantRevision={assistantRevision} /></Col>}
       </Row>
+      {isComplete && draftedSections.length > 0 && <Panel className="drafting-preview-panel" title={<div className="drafting-preview-title"><span className="drafting-preview-title-icon"><FileDoneOutlined /></span><span><strong>预览需求文件</strong><small>目录、正文均可编辑，修改会保留在当前初稿中</small></span></div>} extra={<Space wrap><StatusPill tone="green">已生成</StatusPill><Button size="small" icon={<DownloadOutlined />} onClick={() => exportDraftPreview('Word')}>下载 Word</Button><Button size="small" icon={<FileTextOutlined />} onClick={() => exportDraftPreview('PDF')}>导出 PDF</Button></Space>}>
+        <div className="drafting-preview-summary"><span>共 {draftedSections.length} 个板块</span><span>来源：{template.name}</span><span>{previewEdited ? '修改已记录 · 可继续编辑' : 'AI 初稿 · 可直接编辑'}</span></div>
+        <div className="drafting-preview-workspace">
+          <aside className="drafting-preview-toc">
+            <div className="drafting-preview-toc-title"><ApartmentOutlined /> 文档目录</div>
+            <div className="drafting-preview-toc-list">{draftedSections.map((section, index) => <button type="button" className={activePreviewSection === section.id ? 'active' : ''} key={section.id} onClick={() => focusPreviewSection(section.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{section.title}</strong></button>)}</div>
+          </aside>
+          <div className="drafting-preview-editor">
+            <div className="drafting-preview-editor-head"><strong><EditOutlined /> 正文内容</strong><span>{previewEdited ? '修改已自动保存' : '点击文本框即可编辑'}</span></div>
+            <article className="drafting-preview-document">
+              <h1>{project.name}<br />采购需求文件初稿</h1>
+              <p className="drafting-preview-meta">模板：{template.name} · 项目类型：{template.projectType} · 编制状态：初稿</p>
+              {draftedSections.map((section, index) => <section className={`drafting-preview-section ${activePreviewSection === section.id ? 'active' : ''}`} key={section.id} ref={(element) => { previewSectionRefs.current[section.id] = element; }} onClick={() => setActivePreviewSection(section.id)}><div className="drafting-preview-section-head"><span>{String(index + 1).padStart(2, '0')}</span><h2>第{index + 1}章 {section.title}</h2></div><Input.TextArea value={section.content} autoSize={{ minRows: 5, maxRows: 18 }} onChange={(event) => updateDraftSection(section.id, event.target.value)} /></section>)}
+            </article>
+          </div>
+        </div>
+        <div className="drafting-preview-footer"><span><FileDoneOutlined /> 初稿内容已生成，确认后进入文件形成流程</span><Space wrap><Button icon={<DownloadOutlined />} onClick={() => exportDraftPreview('Word')}>下载 Word</Button><Button icon={<FileTextOutlined />} onClick={() => exportDraftPreview('PDF')}>导出 PDF</Button><Button type="primary" icon={<FileDoneOutlined />} onClick={handleConfirmDraft}>确认定稿</Button></Space></div>
+      </Panel>}
     </>
   );
 }
 
-function AiAssistant({ onOpenSimilar, onCheck, onAddRequirements, onRegenerate, assistantRevision }: { onOpenSimilar: () => void; onCheck: () => void; onAddRequirements: () => void; onRegenerate: () => void; assistantRevision: number }) {
-  return <Panel title={<><ThunderboltFilled /> AI 需求助手 <StatusPill tone="green">在线</StatusPill></>} className="assistant-panel"><div className="assistant-message">续航不少于12小时，IP67，支持标准数据接口。{assistantRevision > 0 && <span>（已重新生成第 {assistantRevision + 1} 版）</span>}</div><div className="assistant-result"><strong><ThunderboltFilled /> 已识别到 3 项可结构化需求点</strong>{['续航 ≥ 12 小时', '防护等级 IP67', '支持标准 API 接口'].map((item, index) => <div className="assistant-item" key={item}><b>{item}</b><StatusPill tone={index === 2 ? 'orange' : 'green'}>置信度 {98 - index * 4}%</StatusPill><span>归类：技术要求 / {index === 1 ? '环境适应性' : '性能指标'}</span></div>)}<Space><Button type="primary" icon={<PlusOutlined />} onClick={onAddRequirements}>加入需求文档</Button><Button icon={<SyncOutlined />} onClick={onRegenerate}>重新生成</Button></Space></div><div className="quick-command">快捷指令{['检查技术参数是否设置不合理门槛', '按同类项目补全验收标准', '检查是否存在品牌倾向性表述'].map((item) => <Button key={item} block icon={<SafetyCertificateOutlined />} onClick={onCheck}>{item}</Button>)}</div><Input.Search placeholder="输入技术要求，AI 将自动结构化并归类..." enterButton={<ThunderboltFilled />} onSearch={onCheck} /></Panel>;
-}
+function ReferenceAiAssistant({ template, messages, input, isTyping, onInputChange, onSend, onAutoFill, onReset }: { template: ReferenceDraftTemplate; messages: ReferenceChatMessage[]; input: string; isTyping: boolean; onInputChange: (value: string) => void; onSend: (value: string) => void; onAutoFill: () => void; onReset: () => void }) {
+  void template;
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
-function AuditPanel({ resolved, onResolve, onRecheck, onViewBasis, onClose, onOpenModal }: { resolved: Record<number, string>; onResolve: (index: number, action: string) => void; onRecheck: () => void; onViewBasis: (index: number) => void; onClose: () => void; onOpenModal: (key: ModalKey) => void }) {
-  return <Panel title={<><ThunderboltFilled /> 智能检查结果 <StatusPill tone="purple">{4 - Object.keys(resolved).length} 项问题</StatusPill></>} extra={<Button type="text" icon={<CloseCircleFilled />} onClick={onClose} />} className="audit-panel"><div className="audit-summary"><span>🔴 高风险 {auditProblems.filter((item) => item.level === '高风险').length - Object.keys(resolved).filter((key) => auditProblems[Number(key)].level === '高风险').length}</span><span>🟠 中风险 {auditProblems.filter((item) => item.level === '中风险').length - Object.keys(resolved).filter((key) => auditProblems[Number(key)].level === '中风险').length}</span></div>{auditProblems.map((item, index) => { const status = resolved[index]; return <div className={`audit-card ${status ? 'resolved' : item.level === '高风险' ? 'high' : 'medium'}`} key={item.title}><div className="audit-card-head"><strong>{index + 1} {item.title}</strong><StatusPill tone={status ? 'green' : item.level === '高风险' ? 'red' : 'orange'}>{status ? '已处理' : item.level}</StatusPill></div>{status ? <><p className="audit-resolution">处理方式：{status === '采纳' ? '采纳建议' : status === '人工修改' ? '人工修改' : '人工保留'}</p><div className="audit-suggestion">{status === '人工保留' ? '已记录人工处理意见，将保留原文并在提交审核时提示。' : item.suggestion}</div></> : <><span className="audit-label">原文</span><div className="audit-original">“{item.original}”</div><span className="audit-label">问题原因</span><p>{item.reason}</p><div className="audit-suggestion"><strong>💡 修改建议</strong><br />{item.suggestion}</div><div className="audit-actions"><Button type="primary" size="small" onClick={() => onResolve(index, '采纳')}>采纳</Button><Button size="small" onClick={() => onResolve(index, '人工修改')}>人工修改</Button><Button size="small" onClick={() => { onResolve(index, '人工保留'); onOpenModal('ignore'); }}>忽略</Button><Button size="small" icon={<LinkOutlined />} onClick={() => onViewBasis(index)}>查看依据</Button></div></>}</div>; })}<Space direction="vertical" style={{ width: '100%' }}><Button block className="purple-button" icon={<SyncOutlined />} onClick={onRecheck}>重新检查</Button><Button block icon={<DownloadOutlined />} onClick={() => onOpenModal('ai-record')}>生成检查报告</Button></Space></Panel>;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
+
+  const resetAssistant = () => {
+    onReset();
+  };
+
+  return <Panel title={<div className="assistant-panel-title"><div className="assistant-panel-title-main"><span className="assistant-panel-title-icon"><ThunderboltFilled /></span><span><strong>AI需求拟制助手</strong><small>基于采购意向的智能对话拟写</small></span></div><StatusPill tone="green">多轮在线</StatusPill></div>} extra={<Space size={6}><Button size="small" type="text" icon={<DiffOutlined />} onClick={onAutoFill}>自动填充</Button><Button size="small" type="text" icon={<SyncOutlined />} onClick={resetAssistant}>重置</Button></Space>} className="assistant-panel drafting-assistant-panel">
+    <div className="assistant-chat-list">
+      {messages.map((msg) => <div key={msg.id} className={`assistant-chat-item ${msg.role === 'user' ? 'user' : 'ai'}`}><div className="assistant-chat-avatar">{msg.role === 'ai' ? <ThunderboltFilled /> : <UserOutlined />}</div><div className="assistant-chat-bubble"><p>{msg.content}</p>{msg.suggestions && msg.suggestions.length > 0 && <div className="assistant-suggestion-list">{msg.suggestions.map((suggestion) => <Button key={`${msg.id}-${suggestion}`} size="small" onClick={() => onSend(suggestion)}>{suggestion}</Button>)}</div>}</div></div>)}
+      {isTyping && <div className="assistant-chat-item ai"><div className="assistant-chat-avatar"><ThunderboltFilled /></div><div className="assistant-chat-bubble assistant-typing"><span /><span /><span /></div></div>}
+      <div ref={messagesEndRef} />
+    </div>
+    <div className="assistant-compose"><Input value={input} onChange={(event) => onInputChange(event.target.value)} onPressEnter={() => onSend(input)} placeholder="输入采购意向描述..." /><Button type="primary" icon={<SendOutlined />} onClick={() => onSend(input)} disabled={!input.trim()}>发送</Button></div>
+  </Panel>;
 }
 
 type DocumentSourceKey = 'basic' | 'requirements' | 'technical' | 'commercial' | 'delivery' | 'acceptance';
@@ -1604,13 +2085,785 @@ const documentChapterSources: Array<{ title: string; source: DocumentSourceKey }
   { title: '验收要求', source: 'acceptance' },
 ];
 
-function DocumentsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
+type DocumentFlowStep = 'upload' | 'parse' | 'scoring' | 'quality' | 'review' | 'output';
+
+const documentFlowSteps = [
+  { key: 'upload' as DocumentFlowStep, label: '上传采购需求', shortLabel: '需求上传', description: '继续补充需求文件并确认文件齐全', icon: UploadOutlined },
+  { key: 'parse' as DocumentFlowStep, label: 'AI解析与文件生成', shortLabel: 'AI解析', description: '识别需求字段并生成采购文件初稿', icon: ThunderboltFilled },
+  { key: 'scoring' as DocumentFlowStep, label: '评分及合同编制', shortLabel: '评分编制', description: '引入评分指标、合同条款和配套附件', icon: DiffOutlined },
+  { key: 'quality' as DocumentFlowStep, label: '质量校验', shortLabel: '质量校验', description: '检查一致性、评分对应性、格式和法规要素', icon: SafetyCertificateOutlined },
+  { key: 'review' as DocumentFlowStep, label: '人工校审', shortLabel: '人工校审', description: '在线编辑、批注和多级审核', icon: AuditOutlined },
+  { key: 'output' as DocumentFlowStep, label: '定稿输出', shortLabel: '定稿输出', description: '通过检查后导出正式采购文件', icon: FileDoneOutlined },
+];
+
+const documentParseTasks = [
+  { label: '识别项目名称与编号', icon: FileTextOutlined },
+  { label: '提取采购数量与品种', icon: FileSearchOutlined },
+  { label: '解析技术参数指标', icon: ToolOutlined },
+  { label: '提取服务要求条款', icon: SafetyCertificateOutlined },
+  { label: '识别交付时间与地点', icon: ClockCircleOutlined },
+  { label: '提取预算与资质信息', icon: FundOutlined },
+  { label: '生成采购文件草稿', icon: FileDoneOutlined },
+];
+
+type ScoreRecommendation = {
+  id: string;
+  title: string;
+  score: number;
+  metric: string;
+  basis: string;
+  source: '已发布评审模板' | '历史同类项目';
+};
+
+const publishedScoreRecommendations: ScoreRecommendation[] = [
+  { id: 'score-performance', title: '核心性能指标响应', score: 25, metric: '续航、防护等级、整机重量等技术指标逐项响应，全部满足得满分，每偏离 1 项扣 5 分。', basis: '货物类公开招标标准评审模板 V2.4', source: '已发布评审模板' },
+  { id: 'score-interface', title: '系统兼容与接口能力', score: 15, metric: '提供标准 REST API / SDK 对接方案、接口清单及联调计划，方案完整且可验证得满分。', basis: '已发布评审模板 · 技术服务能力项', source: '已发布评审模板' },
+  { id: 'score-delivery', title: '交付与实施方案', score: 10, metric: '交付计划、安装调试、培训安排清晰，承诺周期每提前 5 天加 1 分，最高 10 分。', basis: '2025 年同类项目评审规则复用', source: '历史同类项目' },
+  { id: 'score-service', title: '售后服务与质保承诺', score: 10, metric: '质保期、响应时间、备件保障和服务团队配置可量化，提供服务承诺函和响应 SLA。', basis: '已发布评审模板 · 售后服务项', source: '已发布评审模板' },
+  { id: 'score-case', title: '同类项目实施经验', score: 10, metric: '近 3 年完成 2 个及以上同类项目，每提供 1 份可核验合同或验收证明得 5 分，最高 10 分。', basis: '历史同类项目成交文件对比', source: '历史同类项目' },
+];
+
+const historicalScoreRecommendations: ScoreRecommendation[] = [
+  { id: 'history-objective-performance', title: '可验证技术指标响应', score: 30, metric: '围绕续航、IP 防护、接口兼容性和环境适应性逐项响应；每项提供检测或演示依据，按满足程度分档计分。', basis: '3 个历史同类项目共同采用，客观可验证', source: '历史同类项目' },
+  { id: 'history-delivery', title: '交付、安装与培训方案', score: 15, metric: '明确供货、安装调试、培训的时间节点和人员安排；计划完整、节点可追踪得满分。', basis: '2025 年园区智能巡检终端采购', source: '历史同类项目' },
+  { id: 'history-service', title: '售后响应与质保期', score: 10, metric: '整机质保不少于 3 年，故障 4 小时内响应，提供备件及升级服务计划。', basis: '厂区巡检设备采购项目成交文件', source: '历史同类项目' },
+  { id: 'history-evidence', title: '履约案例与验收结果', score: 5, metric: '提供同类项目合同、验收报告和用户反馈，材料真实、完整、可核验。', basis: '历史同类项目验收档案', source: '历史同类项目' },
+];
+
+type DocumentQualityFinding = {
+  id: string;
+  title: string;
+  level: '高风险' | '中风险' | '提示';
+  location: string;
+  issue: string;
+  suggestion: string;
+  resolved?: boolean;
+};
+
+const defaultDocumentQualityFindings: DocumentQualityFinding[] = [
+  { id: 'quality-score', title: '评分指标与技术需求存在缺项', level: '高风险', location: '第二章 · 评分标准 · 技术评审', issue: '技术要求包含“标准 API 接口”和“IP67”指标，但评分表中没有对应的评分项，技术响应无法形成闭环。', suggestion: '引入“核心性能指标响应”和“系统兼容与接口能力”评分项，并关联技术要求原文。' },
+  { id: 'quality-delivery', title: '交付时间表述不一致', level: '中风险', location: '第四章 · 合同条款 · 交付安排', issue: '采购需求要求 45 日内交付，商务要求仅写“按计划完成”，缺少可执行时间节点。', suggestion: '统一为“合同生效后 45 日内完成供货，到货后 7 个工作日内完成安装调试”。' },
+  { id: 'quality-format', title: '附件表格字段不完整', level: '中风险', location: '附件 2 · 报价表', issue: '报价表缺少税率、含税单价和质保期字段，无法完整支撑评审及合同转化。', suggestion: '补充含税单价、税率、质保期、交付周期和备注字段。' },
+  { id: 'quality-law', title: '法规要素待人工确认', level: '提示', location: '第一章 · 投标人须知 · 资格要求', issue: '文件已包含基本资格要求，仍需确认是否补充信用承诺、联合体限制和政府采购政策支持条款。', suggestion: '按照当前采购方式和项目类型核对最新法规要素，并在发布前由法务复核。' },
+];
+
+const documentContractClauses = [
+  { id: 'clause-after-sale', title: '售后服务与响应', text: '供应商提供 7×24 小时服务受理，故障报修后 4 小时内响应，必要时 24 小时内到达现场；重大故障应在 48 小时内提出解决方案。', source: '技术要求 + 历史履约案例' },
+  { id: 'clause-warranty', title: '质保期限', text: '整机质保期不少于 3 年，自最终验收合格之日起计算；质保期内因产品质量导致的维修、更换和运输费用由供应商承担。', source: '商务要求 + 已发布模板' },
+  { id: 'clause-delivery', title: '交付与安装调试', text: `合同生效后 45 日内完成供货，到货后 7 个工作日内完成安装调试并通过初步验收，交付地点为采购单位指定地点。`, source: '采购数量、交付时间和地点' },
+  { id: 'clause-acceptance', title: '验收与整改', text: '验收按照采购需求中的数量、性能、资料和服务承诺逐项核验；不合格项应在 7 个工作日内完成整改并申请复验。', source: '验收要求与技术指标映射' },
+];
+
+const documentPackageFiles = [
+  { name: '采购文件主件.docx', type: '主件', description: '含采购公告、投标人须知、采购需求、评审标准、合同条款', icon: <FileTextOutlined /> },
+  { name: '附件 1 · 投标函.docx', type: '附件', description: '自动带入项目名称、采购编号和投标有效期', icon: <FileDoneOutlined /> },
+  { name: '附件 2 · 分项报价表.xlsx', type: '附件', description: '含数量、含税单价、税率、总价和质保期字段', icon: <DiffOutlined /> },
+  { name: '附件 3 · 技术响应表.xlsx', type: '附件', description: '按技术指标逐项生成响应、偏离和证明材料列', icon: <ToolOutlined /> },
+];
+
+type ReferenceDocumentAiKind = 'suggestion' | 'warning' | 'info' | 'success';
+
+type ReferenceDocumentAiMessage = {
+  id: string;
+  type: ReferenceDocumentAiKind;
+  title: string;
+  content: string;
+  action?: string;
+  actionLabel?: string;
+};
+
+const referenceDocumentAiMessages: Record<DocumentFlowStep, ReferenceDocumentAiMessage[]> = {
+  upload: [
+    { id: 'doc-upload-ready', type: 'info', title: '文件格式检测', content: '已加载上一阶段确认的需求初稿，支持继续上传 PDF、DOCX、XLSX 等补充文件。文件齐全后即可开始 AI 解析。' },
+    { id: 'doc-upload-budget', type: 'suggestion', title: '建议补充预算明细', content: '当前需求文件中未检测到详细预算明细表，建议上传预算审核报告以完善采购文件预算条款。', action: 'upload_budget', actionLabel: '上传预算文件' },
+  ],
+  parse: [
+    { id: 'doc-parse-complete', type: 'success', title: '需求解析完成', content: '已识别项目名称、采购数量、技术参数、服务要求、交付时间地点及需求初稿内容，解析结果将作为后续文件编制的统一数据源。' },
+    { id: 'doc-parse-template', type: 'suggestion', title: '推荐标准文本模板', content: '已根据项目类型匹配标准采购文件模板，可直接套用生成采购文件初稿。', action: 'apply_template', actionLabel: '套用模板' },
+  ],
+  scoring: [
+    { id: 'doc-score-optimize', type: 'suggestion', title: '评分指标优化建议', content: '建议将技术方案拆分为核心性能、接口兼容、实施交付和售后质保等可核验指标，确保评分项与技术需求逐项对应。', action: 'optimize_scoring', actionLabel: '一键采纳' },
+    { id: 'doc-score-contract', type: 'info', title: '合同条款已自动生成', content: '已根据采购需求生成交付验收、质保售后、付款方式和违约责任等合同条款。' },
+    { id: 'doc-score-attachments', type: 'success', title: '附件配套完成', content: '投标函、报价表、技术响应表等配套附件已按项目字段生成，可直接预览和下载。' },
+  ],
+  quality: [
+    { id: 'doc-quality-risk', type: 'warning', title: '质量问题需要处理', content: '检测到评分与技术要求对应性、交付时间表述和报价表字段等问题，建议优先处理高风险问题。', action: 'fix_high_risk', actionLabel: '查看高风险问题' },
+    { id: 'doc-quality-score', type: 'suggestion', title: '评分标准建议细化', content: '技术方案评分项需要补充量化分档和证明材料要求，建议在当前步骤一键修复或定位到评分章节。', action: 'fix_scoring', actionLabel: '查看修改建议' },
+    { id: 'doc-quality-format', type: 'info', title: '格式规范检查', content: '系统会继续检查章节编号、附件目录、表格字段和法规要素完整性，问题位置均可一键定位。' },
+  ],
+  review: [
+    { id: 'doc-review-comments', type: 'suggestion', title: '批注智能汇总', content: '当前审核意见会关联具体章节和文档版本，支持回复、闭环和多级审核留痕。', action: 'view_comments', actionLabel: '查看批注' },
+    { id: 'doc-review-approval', type: 'warning', title: '审批状态提醒', content: '评分标准或模板调整需要经过部门及分管领导审批，审批记录会同步保存在文件版本中。' },
+    { id: 'doc-review-edit', type: 'suggestion', title: '智能修改建议', content: '可选中文本后添加批注，也可以使用在线编辑器直接修改正文内容。', action: 'adjust_score', actionLabel: '打开评分章节' },
+  ],
+  output: [
+    { id: 'doc-output-check', type: 'success', title: '定稿检查已就绪', content: '需求一致性、评分对应性、质量校验和多级校审完成后，即可导出正式采购文件。' },
+    { id: 'doc-output-export', type: 'suggestion', title: '导出建议', content: '建议同时导出 Word 和 PDF 两种格式，Word 用于存档编辑，PDF 用于正式发布；配套附件可一并导出。' },
+    { id: 'doc-output-summary', type: 'info', title: '编制过程可追溯', content: '系统会保留 AI 解析、评分引入、问题修复、批注和审批等全过程版本记录。' },
+  ],
+};
+
+function ReferenceDocumentsAssistant({ step, messages, appliedIds, onApply }: { step: DocumentFlowStep; messages: ReferenceDocumentAiMessage[]; appliedIds: string[]; onApply: (item: ReferenceDocumentAiMessage) => void }) {
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'ai'; text: string }>>([]);
+  const [input, setInput] = useState('');
+  const [typing, setTyping] = useState(false);
+  const chatEndRef = React.useRef<HTMLDivElement>(null);
+  const replies: Array<{ keywords: string[]; text: string }> = [
+    { keywords: ['评分', '分值', '指标'], text: '当前建议优先检查评分指标与技术要求的对应关系。可以在“评分及合同编制”步骤一键采纳推荐指标，再根据项目实际情况调整权重。' },
+    { keywords: ['质量', '问题', '风险'], text: '当前质量校验会从需求一致性、评分对应性、格式规范性和法规完整性四个维度检查，并显示问题位置、风险等级和修改建议。' },
+    { keywords: ['合同', '质保', '售后'], text: '合同草案已根据采购需求自动生成售后服务、质保期、交付验收、付款方式和违约责任等条款，可在评分及合同编制步骤查看。' },
+    { keywords: ['批注', '审核', '校审'], text: '人工校审支持在线编辑、选中文本添加批注、回复和闭环，并按初审、复审、终审记录审批状态。' },
+    { keywords: ['定稿', '导出', 'word', 'pdf'], text: '完成质量问题处理和多级校审后进入定稿输出，可导出 Word、PDF 及投标函、报价表、技术响应表等附件。' },
+  ];
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, typing]);
+
+  const send = () => {
+    const text = input.trim();
+    if (!text) return;
+    setChatMessages((items) => [...items, { id: `user-${Date.now()}`, role: 'user', text }]);
+    setInput('');
+    setTyping(true);
+    window.setTimeout(() => {
+      const matched = replies.find((item) => item.keywords.some((keyword) => text.includes(keyword)));
+      setChatMessages((items) => [...items, { id: `ai-${Date.now()}`, role: 'ai', text: matched?.text || `当前正在处理“${documentFlowSteps.find((item) => item.key === step)?.label}”。您可以询问评分、质量、合同、校审或定稿输出相关问题。` }]);
+      setTyping(false);
+    }, 650);
+  };
+
+  const kindConfig: Record<ReferenceDocumentAiKind, { icon: React.ReactNode; className: string; label: string }> = {
+    suggestion: { icon: <ThunderboltFilled />, className: 'suggestion', label: 'AI建议' },
+    warning: { icon: <WarningFilled />, className: 'warning', label: '风险提醒' },
+    info: { icon: <InfoCircleOutlined />, className: 'info', label: '提示' },
+    success: { icon: <CheckCircleFilled />, className: 'success', label: '已完成' },
+  };
+
+  return <aside className="reference-document-assistant">
+    <div className="reference-document-assistant-head"><div><span><ThunderboltFilled /></span><div><strong>AI 智能助手</strong><small>实时分析 · 智能推荐</small></div></div><StatusPill tone="green">在线</StatusPill></div>
+    <div className="reference-document-ai-list">
+      {messages.map((item) => { const config = kindConfig[item.type]; const applied = appliedIds.includes(item.id); return <div className={`reference-document-ai-card ${config.className}`} key={item.id}><div className="reference-document-ai-card-head"><span>{config.icon}</span><div><em>{config.label}</em><strong>{item.title}</strong></div></div><p>{item.content}</p>{item.action && (applied ? <div className="reference-document-ai-applied"><CheckCircleFilled /> 已采纳</div> : <Button size="small" onClick={() => onApply(item)} icon={<ThunderboltFilled />}>{item.actionLabel || '一键采纳'}</Button>)}</div>; })}
+      {chatMessages.length > 0 && <div className="reference-document-chat-history"><span>对话记录</span>{chatMessages.map((item) => <div className={`reference-document-chat-message ${item.role}`} key={item.id}><b>{item.role === 'user' ? '我' : <ThunderboltFilled />}</b><p>{item.text}</p></div>)}{typing && <div className="reference-document-chat-message ai"><b><ThunderboltFilled /></b><p className="reference-document-typing"><i /><i /><i /></p></div>}<div ref={chatEndRef} /></div>}
+      {!chatMessages.length && !messages.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前步骤暂无智能推荐" />}
+    </div>
+    <div className="reference-document-ai-compose"><Input value={input} onChange={(event) => setInput(event.target.value)} onPressEnter={send} placeholder="向AI助手提问..." suffix={<Button type="text" icon={<SendOutlined />} disabled={!input.trim()} onClick={send} />} /></div>
+  </aside>;
+}
+
+function ReferenceDocumentsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
+  const { project } = useProjectWorkflow();
+  const location = useLocation();
+  const inheritedRequirementDraft = confirmedRequirementDraft?.projectId === project.id ? confirmedRequirementDraft : null;
+  const inheritedRequirementSection = (keywords: RegExp) => inheritedRequirementDraft?.sections.find((section) => keywords.test(`${section.title}${section.content}`))?.content || '';
+  const compactContent = (content: string, fallback: string, length = 92) => {
+    if (!content) return fallback;
+    const normalized = content.replace(/\s+/g, ' ').trim();
+    return `${normalized.slice(0, length)}${normalized.length > length ? '...' : ''}`;
+  };
+  const inheritedOverviewContent = inheritedRequirementSection(/概况|基本信息|采购范围/);
+  const inheritedTechnicalContent = inheritedRequirementSection(/技术|规格|参数/);
+  const inheritedCommercialContent = inheritedRequirementSection(/商务|交付|质保|付款|售后/);
+  const availableTemplates = procurementTemplateLibrary.filter((item) => item.status !== '已停用');
+  const fallbackTemplate: ProcurementTemplate = { id: 'TPL-FALLBACK', name: '集团通用采购文件模板', type: '货物类', method: '通用', version: 'V1.0', chapters: 6, status: '已启用', updated: '2026-10-09', owner: '采购管理部', description: '适用于各类采购方式的通用文件骨架，可按项目数据自动填充。' };
+  const templateOptions = availableTemplates.length ? availableTemplates : [fallbackTemplate];
+  const requestedTemplateId = new URLSearchParams(location.search).get('templateId');
+  const requestedTemplateIndex = templateOptions.findIndex((item) => item.id === requestedTemplateId);
+  const initialTemplateIndex = requestedTemplateIndex >= 0 ? requestedTemplateIndex : 0;
+  const allSourceKeys = documentGenerationSources.map((item) => item.key);
+  const [currentStep, setCurrentStep] = useState<DocumentFlowStep>('parse');
+  const [maxReachedStep, setMaxReachedStep] = useState(1);
+  const [selectedTemplate, setSelectedTemplate] = useState(initialTemplateIndex);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([inheritedRequirementDraft ? `${project.name}-需求文件初稿.docx` : '采购需求说明_v0.2.docx']);
+  const [parseStatus, setParseStatus] = useState<'idle' | 'parsing' | 'done'>('done');
+  const [parsedFields, setParsedFields] = useState([
+    { label: '项目名称', value: project.name, icon: <ProjectOutlined /> },
+    { label: '采购数量', value: project.quantity, icon: <FundOutlined /> },
+    { label: '采购方式', value: project.method, icon: <FileProtectOutlined /> },
+    { label: '预算金额', value: project.budget, icon: <BankOutlined /> },
+    { label: '交付时间', value: `合同生效后 45 日内（计划 ${project.planDate}）`, icon: <ClockCircleOutlined /> },
+    { label: '交付地点', value: '采购单位指定地点 / 总部园区 B 座收货区', icon: <GlobalOutlined /> },
+    { label: '技术参数', value: compactContent(inheritedTechnicalContent, '连续运行≥12小时、IP67防护、支持标准数据接口'), icon: <ToolOutlined /> },
+    { label: '服务要求', value: compactContent(inheritedCommercialContent, '整机质保不少于3年，7×24小时受理，4小时内响应'), icon: <SafetyCertificateOutlined /> },
+  ]);
+  const initialScores = templateOptions[selectedTemplate]?.status === '已启用' ? publishedScoreRecommendations : historicalScoreRecommendations;
+  const [scoreItems, setScoreItems] = useState<ScoreRecommendation[]>(initialScores);
+  const [acceptedScoreIds, setAcceptedScoreIds] = useState<string[]>([]);
+  const [scoringTab, setScoringTab] = useState<'scoring' | 'contract' | 'attachments'>('scoring');
+  const [qualityFindings, setQualityFindings] = useState<DocumentQualityFinding[]>(defaultDocumentQualityFindings);
+  const [selectedFindingId, setSelectedFindingId] = useState(defaultDocumentQualityFindings[0]?.id || '');
+  const [qualityFilter, setQualityFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [qualityChecking, setQualityChecking] = useState(false);
+  const [qualityRan, setQualityRan] = useState(false);
+  const [reviewLevel, setReviewLevel] = useState(0);
+  const [reviewActionStatus, setReviewActionStatus] = useState<'pending' | 'approved' | 'returned'>('pending');
+  const [reviewActionText, setReviewActionText] = useState('等待提交当前审核节点');
+  const [activeReviewSection, setActiveReviewSection] = useState<DocumentSourceKey>('basic');
+  const [reviewRightTab, setReviewRightTab] = useState<'comments' | 'flow'>('comments');
+  const [reviewCommentText, setReviewCommentText] = useState('');
+  const [comments, setComments] = useState<Array<{ author: string; role: string; text: string; time: string }>>([
+    { author: '王强', role: '采购审核人', text: '请确认技术参数中的防护等级和验收抽检比例是否保持一致。', time: '今天 10:18' },
+    { author: '陈志远', role: '分管领导', text: '评分指标建议增加可验证的证明材料要求。', time: '今天 09:46' },
+  ]);
+  const [editorTouched, setEditorTouched] = useState(false);
+  const [activeReviewNodeId, setActiveReviewNodeId] = useState('technical-2');
+  const [selectedReviewText, setSelectedReviewText] = useState('');
+  const [showReviewCommentBox, setShowReviewCommentBox] = useState(false);
+  const [reviewAnnotationText, setReviewAnnotationText] = useState('');
+  const [replyingAnnotationId, setReplyingAnnotationId] = useState<string | null>(null);
+  const [replyAnnotationText, setReplyAnnotationText] = useState('');
+  const [annotations, setAnnotations] = useState<Array<{ id: string; author: string; role: string; text: string; selectedText: string; sectionId: string; replies: Array<{ author: string; text: string }>; resolved: boolean; time: string }>>([
+    { id: 'annotation-1', author: '王强', role: '采购审核人', text: '请确认该指标是否已经在验收标准中设置对应的抽检方式。', selectedText: '防护等级不低于 IP67', sectionId: 'technical-2', replies: [{ author: '张明', text: '已补充现场抽检和检测报告核验要求。' }], resolved: false, time: '今天 10:18' },
+    { id: 'annotation-2', author: '陈志远', role: '分管领导', text: '评分指标建议补充可验证的证明材料要求，避免评分结果缺乏客观依据。', selectedText: '评分指标与技术需求逐项对应', sectionId: 'commercial-2', replies: [], resolved: false, time: '今天 09:46' },
+  ]);
+  const reviewNodeRefs = React.useRef<Record<string, HTMLElement | null>>({});
+  const [finalized, setFinalized] = useState(false);
+  const [packageGenerated, setPackageGenerated] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<typeof documentPackageFiles[number] | null>(null);
+  const [appliedAssistantIds, setAppliedAssistantIds] = useState<string[]>([]);
+
+  const stepIndex = documentFlowSteps.findIndex((item) => item.key === currentStep);
+  const currentStepMeta = documentFlowSteps[stepIndex] || documentFlowSteps[0];
+  const selectedTemplateMeta = templateOptions[selectedTemplate] || templateOptions[0];
+  const unresolvedFindings = qualityFindings.filter((finding) => !finding.resolved);
+  const scoreTotal = scoreItems.reduce((sum, item) => sum + (acceptedScoreIds.includes(item.id) ? item.score : 0), 0);
+  const selectedFinding = qualityFindings.find((finding) => finding.id === selectedFindingId) || unresolvedFindings[0] || qualityFindings[0];
+  const qualityScore = Math.max(58, 100 - unresolvedFindings.length * 9);
+  const parsePercent = parseStatus === 'done' ? 100 : parseStatus === 'parsing' ? 66 : 0;
+  const selectedSourceCount = allSourceKeys.length;
+  const outputReady = reviewLevel >= 3 || finalized;
+
+  const jumpToStep = (step: DocumentFlowStep) => {
+    const nextIndex = documentFlowSteps.findIndex((item) => item.key === step);
+    if (nextIndex < 0) return;
+    setMaxReachedStep((current) => Math.max(current, nextIndex));
+    setCurrentStep(step);
+  };
+
+  const handleStepClick = (step: DocumentFlowStep) => {
+    const nextIndex = documentFlowSteps.findIndex((item) => item.key === step);
+    if (nextIndex > maxReachedStep) {
+      message.info('请按当前流程完成前置步骤后再进入该环节');
+      return;
+    }
+    setCurrentStep(step);
+  };
+
+  const advanceStep = () => {
+    if (currentStep === 'parse' && parseStatus !== 'done') {
+      message.warning('请等待 AI 解析完成后再继续');
+      return;
+    }
+    if (currentStep === 'quality' && unresolvedFindings.length > 0) {
+      message.warning(`还有 ${unresolvedFindings.length} 项质量问题未处理，请先修复或确认风险`);
+      return;
+    }
+    if (currentStep === 'review') {
+      if (reviewLevel >= 3) {
+        jumpToStep('output');
+        return;
+      }
+      const stageLabel = ['初审', '复审', '终审'][reviewLevel] || '终审';
+      const nextLevel = Math.min(3, reviewLevel + 1);
+      setReviewLevel(nextLevel);
+      setReviewActionStatus('pending');
+      setReviewActionText(nextLevel >= 3 ? '终审已提交，定稿输出内容已形成' : `${stageLabel}已提交，等待下一环节处理`);
+      if (nextLevel >= 3) {
+        setPackageGenerated(true);
+        setMaxReachedStep((current) => Math.max(current, documentFlowSteps.findIndex((item) => item.key === 'output')));
+        setCurrentStep('output');
+        message.success('终审已提交，已进入定稿输出，可预览并下载主件及附件');
+      } else {
+        message.success(`已提交${stageLabel}，当前审批节点已更新`);
+      }
+      return;
+    }
+    const nextStep = documentFlowSteps[stepIndex + 1];
+    if (!nextStep) return;
+    setMaxReachedStep((current) => Math.max(current, stepIndex + 1));
+    setCurrentStep(nextStep.key);
+    message.success(`已进入“${nextStep.label}”`);
+  };
+
+  const startRequirementParse = (fileName: string) => {
+    setUploadedFiles((files) => files.includes(fileName) ? files : [...files, fileName]);
+    setCurrentStep('parse');
+    setMaxReachedStep((current) => Math.max(current, 1));
+    setParseStatus('parsing');
+    setQualityRan(false);
+    setFinalized(false);
+    setPackageGenerated(false);
+    message.info(`正在解析“${fileName}”，AI 将识别项目名称、数量、技术参数和服务要求`);
+    window.setTimeout(() => {
+      setParseStatus('done');
+      setParsedFields((fields) => fields.map((field) => field.label === '技术参数'
+        ? { ...field, value: compactContent(inheritedTechnicalContent, '连续运行≥12小时、IP67防护、支持标准数据接口') }
+        : field.label === '服务要求'
+          ? { ...field, value: compactContent(inheritedCommercialContent, '整机质保不少于3年，7×24小时受理，4小时内响应') }
+          : field));
+      message.success('需求文件解析完成，已匹配标准采购文件模板');
+    }, 900);
+  };
+
+  const handleTemplateApply = () => {
+    const template = selectedTemplateMeta;
+    if (!template) return;
+    const nextScores = template.status === '已启用' ? publishedScoreRecommendations : historicalScoreRecommendations;
+    setScoreItems(nextScores);
+    setAcceptedScoreIds([]);
+    setTemplateOpen(false);
+    message.success(`已匹配《${template.name}》${template.version}，后续章节将按模板自动填充`);
+  };
+
+  const applyAssistant = (item: ReferenceDocumentAiMessage) => {
+    setAppliedAssistantIds((ids) => ids.includes(item.id) ? ids : [...ids, item.id]);
+    if (item.action === 'apply_template') {
+      setTemplateOpen(true);
+    } else if (item.action === 'optimize_scoring' || item.action === 'adjust_score') {
+      setAcceptedScoreIds(scoreItems.map((score) => score.id));
+      jumpToStep('scoring');
+      setScoringTab('scoring');
+      message.success('已将 AI 推荐评分指标带入评分标准，可继续人工微调');
+    } else if (item.action === 'fix_high_risk' || item.action === 'fix_scoring') {
+      jumpToStep('quality');
+      setQualityFilter(item.action === 'fix_high_risk' ? 'high' : 'all');
+    } else if (item.action === 'view_comments') {
+      jumpToStep('review');
+      setReviewRightTab('comments');
+    } else if (item.action === 'upload_budget') {
+      jumpToStep('upload');
+    }
+  };
+
+  const acceptScore = (id: string) => {
+    setAcceptedScoreIds((ids) => ids.includes(id) ? ids : [...ids, id]);
+    message.success('评分指标已采纳');
+  };
+
+  const acceptAllScores = () => {
+    setAcceptedScoreIds(scoreItems.map((item) => item.id));
+    message.success('已一键采纳全部 AI 推荐评分指标');
+  };
+
+  const runQualityCheck = () => {
+    setQualityChecking(true);
+    setQualityRan(false);
+    window.setTimeout(() => {
+      setQualityChecking(false);
+      setQualityRan(true);
+      message.success('AI 质量校验完成，问题位置和修复建议已更新');
+    }, 900);
+  };
+
+  const fixFinding = (id: string) => {
+    setQualityFindings((findings) => findings.map((finding) => finding.id === id ? { ...finding, resolved: true } : finding));
+    message.success('问题已修复，并生成版本留痕');
+  };
+
+  const fixAllFindings = () => {
+    setQualityFindings((findings) => findings.map((finding) => ({ ...finding, resolved: true })));
+    message.success('已一键修复全部质量问题，请在人工校审中复核修改结果');
+  };
+
+  const locateFinding = (finding: DocumentQualityFinding) => {
+    setSelectedFindingId(finding.id);
+    message.info(`已定位至${finding.location}`);
+  };
+
+  const submitComment = () => {
+    const text = reviewCommentText.trim();
+    if (!text) {
+      message.warning('请输入审核意见');
+      return;
+    }
+    setComments((items) => [{ author: '张明', role: '当前编制人', text, time: '刚刚' }, ...items]);
+    setReviewCommentText('');
+    message.success('批注已添加到当前版本');
+  };
+
+  const handleReviewEditorInput = () => {
+    setEditorTouched(true);
+    if (reviewActionStatus === 'returned') {
+      setReviewActionStatus('pending');
+      setReviewActionText('正文已修改，请重新提交当前审核节点');
+    }
+  };
+
+  const approveCurrentReview = () => {
+    if (reviewActionStatus === 'returned') {
+      message.info('请先修改正文并重新提交当前审核节点');
+      return;
+    }
+    if (reviewLevel >= 3) {
+      setReviewActionStatus('approved');
+      setReviewActionText('终审已通过，定稿输出内容已确认');
+      setPackageGenerated(true);
+      jumpToStep('output');
+      message.success('终审已通过，已进入定稿输出');
+      return;
+    }
+    const stageLabel = ['初审', '复审', '终审'][reviewLevel] || '终审';
+    const nextLevel = Math.min(3, reviewLevel + 1);
+    setReviewLevel(nextLevel);
+    setReviewActionStatus('approved');
+    setReviewActionText(nextLevel >= 3 ? `${stageLabel}已通过，定稿输出内容已形成` : `${stageLabel}已通过，等待提交下一审核节点`);
+    if (nextLevel >= 3) {
+      setPackageGenerated(true);
+      setMaxReachedStep((current) => Math.max(current, documentFlowSteps.findIndex((item) => item.key === 'output')));
+      setCurrentStep('output');
+      message.success(`${stageLabel}已通过，已进入定稿输出，可下载主件及附件`);
+    } else {
+      message.success(`${stageLabel}已通过，审核节点已推进`);
+    }
+  };
+
+  const returnReviewForRevision = () => {
+    const stageLabel = ['初审', '复审', '终审'][reviewLevel] || '当前审核';
+    if (reviewLevel >= 3) setReviewLevel(2);
+    setReviewActionStatus('returned');
+    setReviewActionText(`${stageLabel}已退回修改，请完善正文后重新提交`);
+    setShowReviewCommentBox(true);
+    setReviewRightTab('comments');
+    message.warning(`${stageLabel}已退回修改，页面已保留当前版本并等待重新提交`);
+  };
+
+  const addReviewAnnotation = () => {
+    const text = reviewAnnotationText.trim();
+    if (!text) {
+      message.warning('请输入批注内容');
+      return;
+    }
+    setAnnotations((items) => [...items, {
+      id: `annotation-${Date.now()}`,
+      author: '张明',
+      role: '当前编制人',
+      text,
+      selectedText: selectedReviewText || '当前章节正文',
+      sectionId: activeReviewNodeId,
+      replies: [],
+      resolved: false,
+      time: '刚刚',
+    }]);
+    setReviewAnnotationText('');
+    setSelectedReviewText('');
+    setShowReviewCommentBox(false);
+    setReviewRightTab('comments');
+    message.success('正文批注已添加，并关联当前目录章节');
+  };
+
+  const handleReviewTextSelection = () => {
+    const selection = window.getSelection();
+    const text = selection?.toString().trim() || '';
+    if (text.length > 2) {
+      setSelectedReviewText(text);
+      setShowReviewCommentBox(true);
+    }
+  };
+
+  const locateReviewNode = (nodeId: string) => {
+    setActiveReviewNodeId(nodeId);
+    window.setTimeout(() => {
+      reviewNodeRefs.current[nodeId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
+  };
+
+  const toggleAnnotationResolved = (id: string) => {
+    setAnnotations((items) => items.map((annotation) => annotation.id === id ? { ...annotation, resolved: !annotation.resolved } : annotation));
+  };
+
+  const handleAnnotationReply = (id: string) => {
+    const text = replyAnnotationText.trim();
+    if (!text) {
+      message.warning('请输入回复内容');
+      return;
+    }
+    setAnnotations((items) => items.map((annotation) => annotation.id === id ? { ...annotation, replies: [...annotation.replies, { author: '张明', text }] } : annotation));
+    setReplyAnnotationText('');
+    setReplyingAnnotationId(null);
+    message.success('回复已添加');
+  };
+
+  const finalizeDocument = () => {
+    if (reviewLevel < 3) {
+      message.warning('请先完成初审、复审和终审');
+      return;
+    }
+    if (unresolvedFindings.length > 0) {
+      message.warning('仍有质量问题未处理，暂不能定稿');
+      return;
+    }
+    setFinalized(true);
+    setPackageGenerated(true);
+    message.success('采购文件已定稿，主件及配套附件已生成');
+  };
+
+  const exportDocument = (format: 'Word' | 'PDF') => {
+    const technicalText = inheritedTechnicalContent || '连续运行不少于12小时，防护等级不低于IP67，支持标准数据接口并提供逐项响应。';
+    const commercialText = inheritedCommercialContent || '合同生效后45日内完成交付，整机质保不少于3年，提供7×24小时售后受理。';
+    const body = `<h1>${escapeDocumentHtml(project.name)}<br />采购文件</h1><p class="document-export-meta">项目编号：${escapeDocumentHtml(project.id)}　采购方式：${escapeDocumentHtml(project.method)}　版本：V1.4</p><h2>第一章 项目基本情况</h2><p>项目名称：${escapeDocumentHtml(project.name)}</p><p>采购单位：${escapeDocumentHtml(project.department)}　预算金额：${escapeDocumentHtml(project.budget)}　采购数量：${escapeDocumentHtml(project.quantity)}</p><h2>第二章 采购需求与技术要求</h2><p>${escapeDocumentHtml(inheritedOverviewContent || project.intention)}</p><p>${escapeDocumentHtml(technicalText)}</p><h2>第三章 评分标准</h2><p>技术及服务评分共 ${scoreTotal || 100} 分，评分指标与技术需求逐项对应，并要求提供可验证证明材料。</p><h2>第四章 合同及验收要求</h2><p>${escapeDocumentHtml(commercialText)}</p><p>验收应覆盖数量、性能、资料完整性和售后承诺，抽检结果及整改记录纳入验收档案。</p><h2>附件目录</h2><p>投标函、报价表、技术响应表及资格证明文件。</p>`;
+    downloadDocumentExport(`${project.name}-采购文件`, body, format);
+  };
+
+  const downloadAttachment = (file: typeof documentPackageFiles[number]) => {
+    const fileBaseName = file.name.replace(/\.(docx|xlsx)$/i, '');
+    const technicalText = inheritedTechnicalContent || '连续运行不少于12小时，防护等级不低于IP67，支持标准数据接口。';
+    const attachmentBody = file.name.includes('投标函')
+      ? `<h1>投标函</h1><p>项目名称：${escapeDocumentHtml(project.name)}</p><p>项目编号：${escapeDocumentHtml(project.id)}</p><p>我方已认真阅读采购文件，愿按采购文件要求承担供货、安装调试、验收及售后服务责任。</p><p>投标人（盖章）：　　　　　　　　　日期：　　　　</p>`
+      : file.name.includes('报价表')
+        ? `<h1>分项报价表</h1><p>项目名称：${escapeDocumentHtml(project.name)}</p><table border="1" cellspacing="0" cellpadding="6"><tr><th>序号</th><th>采购内容</th><th>数量</th><th>含税单价</th><th>税率</th><th>含税合价</th><th>质保期</th></tr><tr><td>1</td><td>${escapeDocumentHtml(project.name)}</td><td>${escapeDocumentHtml(project.quantity)}</td><td></td><td></td><td></td><td>不少于3年</td></tr></table>`
+        : `<h1>技术响应表</h1><p>项目名称：${escapeDocumentHtml(project.name)}</p><table border="1" cellspacing="0" cellpadding="6"><tr><th>序号</th><th>采购技术要求</th><th>投标响应</th><th>偏离情况</th><th>证明材料</th></tr><tr><td>1</td><td>${escapeDocumentHtml(technicalText)}</td><td>满足</td><td>无偏离</td><td>检测报告 / 产品彩页</td></tr></table>`;
+    setPackageGenerated(true);
+    if (file.name.toLowerCase().endsWith('.xlsx')) {
+      const blob = new Blob([buildDocumentExportHtml(fileBaseName, attachmentBody)], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${fileBaseName}.xls`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      message.success(`${file.name} 已下载`);
+      return;
+    }
+    downloadDocumentExport(fileBaseName, attachmentBody, 'Word');
+  };
+
+  const downloadSelectedAttachment = (file: typeof documentPackageFiles[number]) => {
+    if (file.name.includes('采购文件主件')) {
+      exportDocument('Word');
+      return;
+    }
+    downloadAttachment(file);
+  };
+
+  const completeAndReturn = () => {
+    if (!finalized) {
+      message.warning('请先确认定稿后再返回工作台');
+      return;
+    }
+    onCompleteStage?.();
+    go('/procurement');
+  };
+
+  const enterSupplierVerification = () => {
+    if (!finalized) {
+      message.warning('请先确认定稿后再进入供应商核查');
+      return;
+    }
+    message.success('采购文件已定稿，正在进入供应商核查');
+    go('/procurement/suppliers');
+  };
+
+  const chapterText: Record<DocumentSourceKey, string> = {
+    basic: `项目编号：${project.id}\n项目名称：${project.name}\n采购单位：${project.department}\n采购方式：${project.method}\n预算金额：${project.budget}`,
+    commercial: '投标人应具备独立承担民事责任的能力，近三年无重大违法记录。技术评审、商务评审及价格评审应采用客观、量化、可验证的评分标准。',
+    requirements: inheritedOverviewContent || project.intention,
+    technical: inheritedTechnicalContent || '连续运行能力不低于12小时；防护等级不低于IP67；支持标准数据接口；投标人应逐项响应并提供检测或验证依据。',
+    delivery: inheritedCommercialContent || `合同生效后45日内完成供货、安装与调试，交付地点为采购单位指定地点。整机质保不少于3年，售后故障4小时内响应。`,
+    acceptance: '采用到货清点、现场功能测试和抽样检测相结合的方式组织验收。技术指标、数量、资料完整性和售后服务承诺均应纳入验收记录。',
+  };
+
+  const reviewOutline = [
+    { id: 'basic-0', level: 1, title: '第一章 项目基本情况', source: 'basic' as DocumentSourceKey, content: '本章用于确认采购项目基础信息、采购方式和预算边界，是采购文件其他章节引用项目数据的统一来源。' },
+    { id: 'basic-1', level: 2, title: '1.1 项目概况', source: 'basic' as DocumentSourceKey, content: chapterText.basic },
+    { id: 'basic-2', level: 2, title: '1.2 采购单位与项目背景', source: 'basic' as DocumentSourceKey, content: `采购单位：${project.department}\n项目负责人：${project.owner}\n项目背景：${project.intention}` },
+    { id: 'commercial-0', level: 1, title: '第二章 投标人须知及评审办法', source: 'commercial' as DocumentSourceKey, content: '本章明确投标人资格条件、评审方法、评分指标和报价规则，评分内容应与第三章技术需求保持对应。' },
+    { id: 'commercial-1', level: 2, title: '2.1 投标人资格要求', source: 'commercial' as DocumentSourceKey, content: '投标人应具备独立承担民事责任的能力，持有有效营业执照，具有良好的商业信誉和健全的财务会计制度，近三年内在经营活动中没有重大违法记录。' },
+    { id: 'commercial-2', level: 2, title: '2.2 评审方法与评分标准', source: 'commercial' as DocumentSourceKey, content: '评分指标与技术需求逐项对应，技术及服务评分应设置清晰分档、评价依据和证明材料要求，确保评分客观、量化、可复核。' },
+    { id: 'commercial-3', level: 3, title: '2.2.1 技术响应评分', source: 'commercial' as DocumentSourceKey, content: '技术方案、核心性能、接口兼容性、交付实施和售后服务等指标，按满足程度和验证材料完整性分档计分。' },
+    { id: 'commercial-4', level: 3, title: '2.2.2 商务响应评分', source: 'commercial' as DocumentSourceKey, content: '围绕交付周期、质保期限、服务响应和同类项目经验设置商务评分项，不得设置与项目履约无关的限制条件。' },
+    { id: 'requirements-0', level: 1, title: '第三章 采购需求', source: 'requirements' as DocumentSourceKey, content: '本章说明采购范围、数量和项目目标，内容来自已确认的采购需求文件并作为技术、商务和验收条款的基础。' },
+    { id: 'requirements-1', level: 2, title: '3.1 采购范围与数量', source: 'requirements' as DocumentSourceKey, content: chapterText.requirements },
+    { id: 'technical-2', level: 2, title: '3.2 技术参数要求', source: 'technical' as DocumentSourceKey, content: chapterText.technical },
+    { id: 'technical-3', level: 3, title: '3.2.1 核心性能指标', source: 'technical' as DocumentSourceKey, content: '连续运行能力不低于12小时；防护等级不低于 IP67；关键性能指标应提供检测报告、产品彩页或现场演示作为响应依据。' },
+    { id: 'technical-4', level: 3, title: '3.2.2 接口与兼容性要求', source: 'technical' as DocumentSourceKey, content: '支持标准数据接口和现有系统对接，投标人应提供接口清单、联调计划及兼容性验证说明。' },
+    { id: 'delivery-2', level: 2, title: '3.3 服务与商务要求', source: 'delivery' as DocumentSourceKey, content: chapterText.delivery },
+    { id: 'delivery-3', level: 3, title: '3.3.1 交付、安装与培训', source: 'delivery' as DocumentSourceKey, content: '合同生效后45日内完成供货、安装与调试，到货后7个工作日内完成初步联调，并按采购单位要求提供操作培训。' },
+    { id: 'delivery-4', level: 3, title: '3.3.2 售后服务与质保', source: 'delivery' as DocumentSourceKey, content: '整机质保不少于3年，提供7×24小时受理，故障报修后4小时内响应，必要时24小时内到达现场。' },
+    { id: 'contract-0', level: 1, title: '第四章 合同专用条款', source: 'delivery' as DocumentSourceKey, content: '合同专用条款应与采购需求、评分承诺和验收标准保持一致，重点明确交付、质保、付款及违约责任。' },
+    { id: 'contract-1', level: 2, title: '4.1 交付与安装调试', source: 'delivery' as DocumentSourceKey, content: '供应商应在合同生效后45日内完成供货、安装和调试，交付地点为采购单位指定地点，相关运输、安装和调试费用已包含在报价中。' },
+    { id: 'contract-2', level: 2, title: '4.2 付款与违约责任', source: 'commercial' as DocumentSourceKey, content: '验收合格后按合同约定办理付款。逾期交付、未按要求整改或服务承诺未兑现的，按合同专用条款承担违约责任。' },
+    { id: 'contract-3', level: 2, title: '4.3 售后服务与质保期', source: 'delivery' as DocumentSourceKey, content: '质保期内因产品质量导致的维修、更换和运输费用由供应商承担，质保期自最终验收合格之日起计算。' },
+    { id: 'acceptance-0', level: 1, title: '第五章 验收标准', source: 'acceptance' as DocumentSourceKey, content: '验收标准应逐项对应采购需求和技术参数，形成到货、功能、性能、资料和服务承诺的完整验收记录。' },
+    { id: 'acceptance-1', level: 2, title: '5.1 到货与资料验收', source: 'acceptance' as DocumentSourceKey, content: '核对设备型号、数量、外观、配件和随货资料，产品合格证、检测报告、使用说明书和质保凭证应齐全。' },
+    { id: 'acceptance-2', level: 2, title: '5.2 性能与功能验收', source: 'acceptance' as DocumentSourceKey, content: '采用现场功能测试和抽样检测相结合的方式，重点核验连续运行不少于12小时、防护等级达到 IP67、接口联调通过等指标。' },
+    { id: 'acceptance-3', level: 2, title: '5.3 整改与复验', source: 'acceptance' as DocumentSourceKey, content: '验收不合格的，供应商应在7个工作日内完成整改并申请复验；复验记录、整改前后对比材料应纳入项目档案。' },
+    { id: 'attachment-0', level: 1, title: '第六章 投标文件格式', source: 'commercial' as DocumentSourceKey, content: '本章提供投标函、报价表、技术响应表等标准附件，附件字段应与采购需求、评分标准和合同条款保持一致。' },
+    { id: 'attachment-1', level: 2, title: '6.1 投标函', source: 'commercial' as DocumentSourceKey, content: '投标人应确认项目名称、采购编号、投标有效期、报价承诺和合同履行承诺。' },
+    { id: 'attachment-2', level: 2, title: '6.2 分项报价表', source: 'commercial' as DocumentSourceKey, content: '报价表应包含数量、含税单价、税率、含税合价、质保期、交付周期和备注等字段。' },
+    { id: 'attachment-3', level: 2, title: '6.3 技术响应表', source: 'technical' as DocumentSourceKey, content: '技术响应表按技术参数逐项列示采购要求、投标响应、偏离情况和证明材料索引。' },
+  ];
+
+  const renderAttachmentPreview = (file: typeof documentPackageFiles[number]) => {
+    const technicalText = inheritedTechnicalContent || '连续运行不少于12小时，防护等级不低于IP67，支持标准数据接口。';
+    const commercialText = inheritedCommercialContent || '合同生效后45日内完成交付，整机质保不少于3年，提供7×24小时售后受理。';
+    if (file.name.includes('采购文件主件')) {
+      return <div className="reference-document-file-preview reference-document-file-preview-document"><div className="reference-document-file-preview-meta"><strong>采购文件主件</strong><span>项目编号：{project.id} · 模板：《{selectedTemplateMeta?.name}》 · V1.4</span></div><div className="reference-document-file-preview-sheet"><h1>{project.name}<br />采购文件</h1><p className="document-meta">采购单位：{project.department}　采购方式：{project.method}　预算金额：{project.budget}</p>{reviewOutline.map((node) => <section key={node.id}><h2>{node.title}</h2>{node.content.split('\n').map((paragraph, index) => <p key={`${node.id}-preview-${index}`}>{paragraph}</p>)}</section>)}</div></div>;
+    }
+    if (file.name.includes('投标函')) {
+      return <div className="reference-document-file-preview"><div className="reference-document-file-preview-meta"><strong>附件 1 · 投标函</strong><span>自动带入项目名称、采购编号和投标有效期</span></div><div className="reference-document-file-preview-sheet"><h1>投标函</h1><p>致：{project.department}</p><p>我方已认真阅读《{project.name}》采购文件，愿按照采购文件规定参加本项目投标，并对采购数量、技术要求、交付时间、验收标准和合同条款作出完整响应。</p><div className="reference-document-file-preview-fields"><div><span>项目名称</span><strong>{project.name}</strong></div><div><span>项目编号</span><strong>{project.id}</strong></div><div><span>采购方式</span><strong>{project.method}</strong></div><div><span>投标有效期</span><strong>90 日历日</strong></div><div><span>交付期限</span><strong>合同生效后 45 日内</strong></div><div><span>质保承诺</span><strong>不少于 3 年</strong></div></div><p>我方承诺：如中标，将按约定完成供货、安装调试、培训、验收及售后服务，并承担相应违约责任。</p><div className="reference-document-file-preview-signature"><span>投标人（盖章）：　　　　　　　　　</span><span>日期：　　　年　月　日</span></div></div></div>;
+    }
+    if (file.name.includes('报价表')) {
+      return <div className="reference-document-file-preview"><div className="reference-document-file-preview-meta"><strong>附件 2 · 分项报价表</strong><span>数量、价格、税率、质保期和交付周期字段已生成</span></div><div className="reference-document-file-preview-sheet"><h1>分项报价表</h1><p className="document-meta">项目名称：{project.name}　项目编号：{project.id}</p><table className="reference-document-file-preview-table"><thead><tr><th>序号</th><th>采购内容</th><th>单位</th><th>数量</th><th>含税单价（元）</th><th>税率</th><th>含税合价（元）</th><th>质保期</th></tr></thead><tbody><tr><td>1</td><td>{project.name}</td><td>套</td><td>{project.quantity}</td><td>待投标人填报</td><td>13%</td><td>待计算</td><td>不少于3年</td></tr><tr><td colSpan={4}>合计</td><td>—</td><td>—</td><td>待计算</td><td>—</td></tr></tbody></table><div className="reference-document-file-preview-note">填报说明：报价应包含设备、运输、安装、调试、培训、税费和质保期内服务等全部费用。</div></div></div>;
+    }
+    return <div className="reference-document-file-preview"><div className="reference-document-file-preview-meta"><strong>附件 3 · 技术响应表</strong><span>按技术指标逐项生成采购要求、投标响应、偏离和证明材料列</span></div><div className="reference-document-file-preview-sheet"><h1>技术响应表</h1><p className="document-meta">项目名称：{project.name}　项目编号：{project.id}</p><table className="reference-document-file-preview-table"><thead><tr><th>序号</th><th>采购技术要求</th><th>投标响应</th><th>偏离情况</th><th>证明材料索引</th></tr></thead><tbody><tr><td>1</td><td>连续运行能力不低于12小时</td><td>完全满足</td><td>无偏离</td><td>产品检测报告</td></tr><tr><td>2</td><td>防护等级不低于 IP67</td><td>完全满足</td><td>无偏离</td><td>型式试验报告</td></tr><tr><td>3</td><td>{technicalText}</td><td>完全满足</td><td>无偏离</td><td>技术彩页 / 现场演示</td></tr><tr><td>4</td><td>{commercialText}</td><td>完全满足</td><td>无偏离</td><td>售后服务承诺函</td></tr></tbody></table><div className="reference-document-file-preview-note">响应说明：投标人应逐项填写响应内容；存在偏离时应在偏离情况栏说明，并提供对应证明材料。</div></div></div>;
+  };
+
+  const renderUploadStep = () => <div className="reference-document-step">
+    <div className="reference-document-step-heading"><div><h2>上传采购需求文件</h2><p>上传已确认的采购需求，AI 将自动识别关键信息并匹配标准文本模板</p></div><StatusPill tone="blue">支持 PDF / DOCX / XLSX</StatusPill></div>
+    <Upload.Dragger className="reference-document-upload-zone" multiple accept=".pdf,.doc,.docx,.xls,.xlsx" showUploadList={false} beforeUpload={(file) => { startRequirementParse(file.name); return false; }}>
+      <p className="reference-document-upload-icon"><CloudUploadOutlined /></p><p className="reference-document-upload-title">点击或拖拽文件到此处上传</p><p className="reference-document-upload-desc">支持采购需求说明、预算审批、技术参数表等材料，单个文件不超过 20MB</p><Button icon={<UploadOutlined />}>选择文件</Button>
+    </Upload.Dragger>
+    <div className="reference-document-section-caption"><span>已上传文件</span><small>{uploadedFiles.length} 个文件</small></div>
+    <div className="reference-document-file-list">{uploadedFiles.map((file, index) => <div className="reference-document-file" key={file}><div className="reference-document-file-icon"><FileTextOutlined /></div><div><strong>{file}</strong><span>{index === 0 ? '采购需求主文件 · 1.8 MB' : '补充材料 · 已上传'}</span></div><StatusPill tone={parseStatus === 'parsing' && index === uploadedFiles.length - 1 ? 'orange' : 'green'}>{parseStatus === 'parsing' && index === uploadedFiles.length - 1 ? '解析中' : '已识别'}</StatusPill><Button type="text" icon={<EyeOutlined />} onClick={() => message.info(`已打开 ${file} 预览`)} /></div>)}</div>
+    <div className="reference-document-tip"><ThunderboltFilled /><div><strong>AI 解析提示</strong><span>上传后将识别项目名称、采购数量、技术参数、服务要求、交付时间和地点，并自动关联后续评分、合同和验收章节。</span></div></div>
+    <div className="reference-document-bottom-actions"><Button onClick={() => message.success('草稿已保存')}>保存草稿</Button><Button type="primary" icon={<ThunderboltFilled />} disabled={!uploadedFiles.length || parseStatus === 'parsing'} onClick={() => startRequirementParse(uploadedFiles[uploadedFiles.length - 1])}>{parseStatus === 'parsing' ? 'AI 正在解析...' : '开始 AI 解析'}</Button></div>
+  </div>;
+
+  const renderParseStep = () => <div className="reference-document-step">
+    <div className="reference-document-step-heading"><div><h2>AI 解析与文件生成</h2><p>识别需求字段、匹配标准模板，并自动填充采购文件初稿</p></div><StatusPill tone={parseStatus === 'done' ? 'green' : 'orange'}>{parseStatus === 'done' ? '解析完成' : '解析中'}</StatusPill></div>
+    <div className="reference-document-progress-card"><div className="reference-document-progress-head"><div><strong>{parseStatus === 'done' ? '需求文件解析完成' : '正在解析采购需求文件'}</strong><span>{parseStatus === 'done' ? '已识别 8 类关键字段，匹配 1 个标准采购文件模板' : '正在提取项目基础信息、技术参数及商务要求...'}</span></div><b>{parsePercent}%</b></div><Progress percent={parsePercent} showInfo={false} strokeColor="#2563eb" /><div className="reference-document-task-grid">{documentParseTasks.map((task, index) => { const done = parseStatus === 'done' || index < 4; return <div className={done ? 'done' : 'pending'} key={task.label}><span>{done ? <CheckCircleFilled /> : <task.icon />}</span>{task.label}</div>; })}</div></div>
+    <div className="reference-document-section-caption"><span>识别结果</span><small>可在后续校审阶段继续修改</small></div>
+    <div className="reference-document-parsed-grid">{parsedFields.map((field) => <div className="reference-document-parsed-field" key={field.label}><span>{field.icon}</span><div><small>{field.label}</small><strong>{field.value}</strong></div></div>)}</div>
+    <div className="reference-document-template-match"><div className="reference-document-template-match-icon"><DiffOutlined /></div><div><small>AI 推荐标准模板</small><strong>《{selectedTemplateMeta?.name}》 {selectedTemplateMeta?.version}</strong><span>{selectedTemplateMeta?.description}</span></div><Button onClick={() => setTemplateOpen(true)}>更换模板</Button></div>
+    <div className="reference-document-bottom-actions"><Button icon={<EyeOutlined />} onClick={() => message.info('已打开解析后的采购需求预览')}>查看解析原文</Button><Button type="primary" icon={<ArrowRightOutlined />} disabled={parseStatus !== 'done'} onClick={advanceStep}>确认并进入评分编制</Button></div>
+  </div>;
+
+  const renderScoringStep = () => <div className="reference-document-step">
+    <div className="reference-document-step-heading"><div><h2>评分标准与合同编制</h2><p>配置评分标准、生成合同条款及配套附件，AI 智能推荐评分指标</p></div><StatusPill tone={scoreTotal === 100 ? 'green' : 'orange'}>{scoreTotal === 100 ? '评分已完整' : `已采纳 ${scoreTotal} 分`}</StatusPill></div>
+    <PageTabs active={scoringTab} onChange={(key) => setScoringTab(key as 'scoring' | 'contract' | 'attachments')} items={[{ key: 'scoring', label: '评分标准' }, { key: 'contract', label: '合同条款' }, { key: 'attachments', label: '配套附件' }]} />
+    {scoringTab === 'scoring' && <div className="reference-document-scoring-content"><div className="reference-document-ai-banner"><div className="reference-document-ai-banner-icon"><ThunderboltFilled /></div><div><strong>AI 智能评分推荐</strong><p>基于已发布评审模板及历史同类项目，推荐 {scoreItems.length} 项客观、量化、可验证指标。当前总分：<b>{scoreTotal} 分</b>{scoreTotal !== 100 && <em>（可一键采纳调整至 100 分）</em>}</p></div><Button type="primary" icon={<ThunderboltFilled />} onClick={acceptAllScores}>一键采纳全部</Button></div><div className="reference-document-list-card"><div className="reference-document-list-card-head"><strong>评分指标明细</strong><span>总分 <b className={scoreTotal === 100 ? 'complete' : ''}>{scoreTotal} / 100</b></span></div>{scoreItems.map((item) => { const accepted = acceptedScoreIds.includes(item.id); return <div className="reference-document-score-row" key={item.id}><div className="reference-document-score-main"><span className="reference-document-score-type">{item.source === '已发布评审模板' ? '技术分' : '历史推荐'}</span><strong>{item.title}</strong><StatusPill tone="purple">AI 推荐</StatusPill><b>{item.score} 分</b>{accepted ? <span className="reference-document-accepted"><CheckOutlined /> 已采纳</span> : <Button size="small" onClick={() => acceptScore(item.id)}>采纳</Button>}</div><p>{item.metric}</p><small>推荐依据：{item.basis}</small></div>; })}<Button type="link" icon={<PlusOutlined />} onClick={() => message.info('可在模板管理中新增自定义评分项')}>添加自定义评分项</Button></div><div className="reference-document-approval-card"><ClockCircleOutlined /><div><strong>评分模板审批</strong><span>当前评分模板已提交部门审批，调整模板后需要分管领导确认</span></div><StatusPill tone="orange">审批中 · 陈志远</StatusPill></div></div>}
+    {scoringTab === 'contract' && <div className="reference-document-contract-content"><div className="reference-document-ai-banner"><div className="reference-document-ai-banner-icon"><ThunderboltFilled /></div><div><strong>AI 已自动生成合同草案</strong><p>依据采购需求自动填充售后服务、质保期限、交付要求、付款方式等条款</p></div><Button onClick={() => message.success('合同草案已保存为当前版本')}>保存草案</Button></div><div className="reference-document-contract-card"><div className="reference-document-contract-head"><div><strong>政府采购合同（草案）</strong><span>合同编号：GZHT-2026-0357 · 自动生成</span></div><Button icon={<DownloadOutlined />} onClick={() => exportDocument('Word')}>下载草案</Button></div>{documentContractClauses.map((clause, index) => <section key={clause.id}><h3>第{index + 1}条 {clause.title}</h3><p>{clause.text}</p><small>生成依据：{clause.source}</small></section>)}</div></div>}
+    {scoringTab === 'attachments' && <div className="reference-document-attachments-content"><div className="reference-document-ai-banner"><div className="reference-document-ai-banner-icon"><FileDoneOutlined /></div><div><strong>配套附件已自动生成</strong><p>投标函、报价表、技术响应表等附件已按项目字段和评分指标生成，可预览后下载。</p></div><Button type="primary" onClick={() => { setPackageGenerated(true); message.success('配套附件已生成'); }}>一键生成附件</Button></div><div className="reference-document-attachment-list">{documentPackageFiles.map((file) => <div key={file.name}><span className="reference-document-file-icon">{file.icon}</span><div><strong>{file.name}</strong><span>{file.type} · {file.description}</span></div><Button icon={<EyeOutlined />} onClick={() => setPreviewAttachment(file)}>预览</Button><Button icon={<DownloadOutlined />} onClick={() => downloadSelectedAttachment(file)}>下载</Button></div>)}</div></div>}
+    <div className="reference-document-bottom-actions"><Button onClick={() => setScoringTab('contract')}>查看合同草案</Button><Button type="primary" icon={<ArrowRightOutlined />} onClick={advanceStep}>进入质量校验</Button></div>
+  </div>;
+
+  const renderQualityStep = () => {
+    const visibleFindings = qualityFindings.filter((finding) => qualityFilter === 'all' || (qualityFilter === 'high' && finding.level === '高风险') || (qualityFilter === 'medium' && finding.level === '中风险') || (qualityFilter === 'low' && finding.level === '提示'));
+    const highCount = unresolvedFindings.filter((finding) => finding.level === '高风险').length;
+    const mediumCount = unresolvedFindings.filter((finding) => finding.level === '中风险').length;
+    const lowCount = unresolvedFindings.filter((finding) => finding.level === '提示').length;
+    return <div className="reference-document-step">
+      <div className="reference-document-step-heading"><div><h2>AI 质量校验</h2><p>对采购文件进行全维度智能质量检查，识别风险问题并提供修改建议</p></div><StatusPill tone={unresolvedFindings.length ? 'orange' : 'green'}>{unresolvedFindings.length ? `待处理 ${unresolvedFindings.length} 项` : '全部问题已修复'}</StatusPill></div>
+      <div className="reference-document-quality-summary"><div><span>问题总数</span><strong>{qualityFindings.length}</strong><small>已修复 {qualityFindings.length - unresolvedFindings.length} / 待处理 {unresolvedFindings.length}</small></div><div className="high"><span>高风险</span><strong>{highCount}</strong><small>需立即处理</small></div><div className="medium"><span>中风险</span><strong>{mediumCount}</strong><small>建议处理</small></div><div className="low"><span>提示</span><strong>{lowCount}</strong><small>可选处理</small></div></div>
+      <div className="reference-document-quality-actions"><Button type="primary" loading={qualityChecking} icon={<SafetyCertificateOutlined />} onClick={runQualityCheck}>{qualityChecking ? '正在校验中...' : '一键重新校验'}</Button>{unresolvedFindings.length > 0 && <Button className="reference-document-fix-all" icon={<ThunderboltFilled />} onClick={fixAllFindings}>一键修复全部 ({unresolvedFindings.length})</Button>}<span className="reference-document-quality-status">{qualityRan ? <><CheckCircleFilled /> AI 校验已完成</> : '等待开始质量校验'}</span></div>
+      <div className="reference-document-quality-layout"><div className="reference-document-quality-list"><div className="reference-document-filter">{(['all', 'high', 'medium', 'low'] as const).map((filter) => { const count = filter === 'all' ? qualityFindings.length : filter === 'high' ? qualityFindings.filter((finding) => finding.level === '高风险').length : filter === 'medium' ? qualityFindings.filter((finding) => finding.level === '中风险').length : qualityFindings.filter((finding) => finding.level === '提示').length; const label = filter === 'all' ? '全部' : filter === 'high' ? '高风险' : filter === 'medium' ? '中风险' : '提示'; return <button type="button" className={qualityFilter === filter ? `active ${filter}` : ''} onClick={() => setQualityFilter(filter)} key={filter}>{label} ({count})</button>; })}</div>{visibleFindings.map((finding) => <div className={`reference-document-quality-item ${selectedFinding?.id === finding.id ? 'selected' : ''} ${finding.resolved ? 'resolved' : ''}`} onClick={() => { setSelectedFindingId(finding.id); }} key={finding.id}><div className={`reference-document-risk-icon ${finding.level === '高风险' ? 'high' : finding.level === '中风险' ? 'medium' : 'low'}`}>{finding.level === '高风险' ? <WarningFilled /> : finding.level === '中风险' ? <WarningFilled /> : <InfoCircleOutlined />}</div><div><div className="reference-document-quality-item-tags"><StatusPill tone={finding.level === '高风险' ? 'red' : finding.level === '中风险' ? 'orange' : 'blue'}>{finding.level}</StatusPill>{finding.resolved && <StatusPill tone="green">已修复</StatusPill>}</div><strong>{finding.title}</strong><p>{finding.issue}</p><span><BookOutlined /> {finding.location}</span></div><ArrowRightOutlined /></div>)}</div><div className="reference-document-quality-detail">{selectedFinding ? <><div className="reference-document-quality-detail-head"><strong>问题详情</strong><StatusPill tone={selectedFinding.resolved ? 'green' : selectedFinding.level === '高风险' ? 'red' : 'orange'}>{selectedFinding.resolved ? '已修复' : selectedFinding.level}</StatusPill></div><h3>{selectedFinding.title}</h3><label>问题描述</label><p>{selectedFinding.issue}</p><label>问题位置</label><div className="reference-document-location"><BookOutlined />{selectedFinding.location}</div><label>修改建议</label><div className="reference-document-suggestion"><ThunderboltFilled /><p>{selectedFinding.suggestion}</p></div><div className="reference-document-detail-actions"><Button icon={<EyeOutlined />} onClick={() => locateFinding(selectedFinding)}>一键定位</Button><Button type="primary" disabled={selectedFinding.resolved} onClick={() => fixFinding(selectedFinding.id)}>一键修复</Button></div></> : <Empty description="暂无问题" />}</div></div>
+      <div className="reference-document-bottom-actions"><Button onClick={runQualityCheck}>重新检查</Button><Button type="primary" icon={<ArrowRightOutlined />} onClick={advanceStep}>进入人工校审</Button></div>
+    </div>;
+  };
+
+  const renderReviewStep = () => <div className="reference-document-step reference-document-review-step">
+    <div className="reference-document-step-heading"><div><h2>人工在线校审</h2><p>在线编辑正文、添加审核批注，完成初审、复审和终审后定稿</p></div><StatusPill tone={reviewLevel >= 3 ? 'green' : 'blue'}>{reviewLevel >= 3 ? '校审完成' : `第 ${reviewLevel + 1} 轮审核`}</StatusPill></div>
+    <div className="reference-document-review-layout"><aside className="reference-document-review-outline"><div className="reference-document-review-outline-head"><strong>文档目录</strong><span>{documentChapterSources.length} 章</span></div>{documentChapterSources.map((chapter, index) => <button type="button" className={activeReviewSection === chapter.source ? 'active' : ''} onClick={() => setActiveReviewSection(chapter.source)} key={chapter.source}><span>{String(index + 1).padStart(2, '0')}</span>{chapter.title}<ArrowRightOutlined /></button>)}<div className="reference-document-review-save"><CheckCircleFilled /> {editorTouched ? '修改已自动保存' : '版本已自动保存'}<small>V1.4 · 刚刚</small></div></aside><section className="reference-document-review-editor"><div className="reference-document-editor-toolbar"><Space size={2}><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => message.info('已撤销上一处编辑')} /><Button type="text" icon={<ArrowRightOutlined />} onClick={() => message.info('已恢复下一处编辑')} /><Divider type="vertical" /><Select size="small" defaultValue="正文" options={[{ value: '正文', label: '正文' }, { value: '标题 1', label: '标题 1' }]} /><Button type="text" onClick={() => message.info('已应用粗体格式')}><strong>B</strong></Button><Button type="text" onClick={() => message.info('已应用下划线格式')}><u>U</u></Button><Button type="text" icon={<LinkOutlined />} onClick={() => message.info('请选择文本后插入链接')} /><Button type="text" className="purple-button" icon={<ThunderboltFilled />} onClick={() => message.success('AI 修改建议已插入正文')}>AI 优化</Button></Space><Button type="text" icon={<HistoryOutlined />} onClick={() => onOpenModal('version')}>版本记录</Button></div><article className="reference-document-review-editor-body" contentEditable suppressContentEditableWarning onInput={() => setEditorTouched(true)}><h1>{project.name}<br />采购文件</h1><p className="document-meta">项目编号：{project.id}　采购单位：{project.department}　模板：《{selectedTemplateMeta?.name}》　版本：V1.4</p><h2>{documentChapterSources.find((chapter) => chapter.source === activeReviewSection)?.title}</h2><p>{chapterText[activeReviewSection]}</p><p>本章节由 AI 解析结果、标准文本模板及已确认的采购需求自动生成，校审人员可直接在正文中修改。所有修改将记录版本和审核人。</p><h3>校审提示</h3><p>请重点确认技术参数、评分指标、合同条款和验收标准之间的一致性，避免出现不可验证或无法执行的表述。</p></article><div className="reference-document-editor-footer"><span>字数 {(1200 + chapterText[activeReviewSection].length).toLocaleString()}</span><span>第 {Math.max(1, documentChapterSources.findIndex((chapter) => chapter.source === activeReviewSection) + 1)} / {documentChapterSources.length} 章</span><span><CheckCircleFilled /> 自动保存</span></div></section><aside className="reference-document-review-right"><PageTabs active={reviewRightTab} onChange={(key) => setReviewRightTab(key as 'comments' | 'flow')} items={[{ key: 'comments', label: `批注 ${comments.length}` }, { key: 'flow', label: '审批流程' }]} />{reviewRightTab === 'comments' ? <div className="reference-document-comments"><div className="reference-document-comment-list">{comments.map((comment, index) => <div className="reference-document-comment" key={`${comment.author}-${index}`}><div className="reference-document-comment-avatar">{comment.author.slice(0, 1)}</div><div><div><strong>{comment.author}</strong><small>{comment.role} · {comment.time}</small></div><p>{comment.text}</p><Button type="link" size="small" onClick={() => message.info('回复编辑已打开')}>回复</Button></div></div>)}</div><Input.TextArea rows={3} value={reviewCommentText} onChange={(event) => setReviewCommentText(event.target.value)} placeholder="输入审核意见或批注..." /><Button block type="primary" icon={<MessageOutlined />} onClick={submitComment}>添加批注</Button></div> : <div className="reference-document-review-flow">{['编制提交', '部门初审', '分管复审', '领导终审'].map((label, index) => <div className={reviewLevel >= index ? 'done' : reviewLevel === index - 1 ? 'current' : ''} key={label}><span>{reviewLevel >= index ? <CheckOutlined /> : index + 1}</span><div><strong>{label}</strong><small>{reviewLevel >= index ? `${index === 0 ? '张明' : index === 1 ? '王强' : '陈志远'} · 已完成` : '待处理'}</small></div></div>)}</div>}</aside></div>
+    <div className="reference-document-review-actions"><Button danger onClick={() => message.warning('已退回当前编制人修改，意见已记录')}>退回修改</Button><span>当前审核人：{reviewLevel === 0 ? '王强' : reviewLevel === 1 ? '陈志远' : '领导审批中'}</span><Button onClick={() => message.success('审核意见已保存')}>保存意见</Button><Button type="primary" icon={<SendOutlined />} onClick={reviewLevel >= 3 ? () => jumpToStep('output') : advanceStep}>{reviewLevel >= 3 ? '查看定稿输出' : reviewLevel === 0 ? '提交初审' : reviewLevel === 1 ? '提交复审' : '提交终审'}</Button></div>
+  </div>;
+
+  const renderReviewStepV2 = () => {
+    const currentNode = reviewOutline.find((node) => node.id === activeReviewNodeId) || reviewOutline[0];
+    const openAnnotationCount = annotations.filter((annotation) => !annotation.resolved).length;
+    const reviewStatusTone = reviewActionStatus === 'returned' ? 'orange' : reviewLevel >= 3 || reviewActionStatus === 'approved' ? 'green' : 'blue';
+    const reviewStatusLabel = reviewActionStatus === 'returned' ? '已退回修改' : reviewLevel >= 3 ? '校审完成' : reviewActionStatus === 'approved' ? '当前节点已通过' : `第 ${reviewLevel + 1} 轮审核`;
+    const renderAnnotatedText = (text: string, sectionId: string) => {
+      const relevantAnnotations = annotations.filter((annotation) => annotation.sectionId === sectionId && annotation.selectedText && text.includes(annotation.selectedText));
+      if (!relevantAnnotations.length) return text;
+      const parts: React.ReactNode[] = [];
+      let cursor = 0;
+      relevantAnnotations.forEach((annotation, index) => {
+        const start = text.indexOf(annotation.selectedText, cursor);
+        if (start < 0) return;
+        if (start > cursor) parts.push(<React.Fragment key={`${annotation.id}-before`}>{text.slice(cursor, start)}</React.Fragment>);
+        parts.push(<mark className={`reference-document-annotation-highlight ${annotation.resolved ? 'resolved' : ''}`} key={annotation.id} title={annotation.text} onClick={() => { setReviewRightTab('comments'); message.info(`已打开 ${annotation.author} 的批注`); }}>{annotation.selectedText}<sup>{index + 1}</sup></mark>);
+        cursor = start + annotation.selectedText.length;
+      });
+      if (cursor < text.length) parts.push(<React.Fragment key="annotation-tail">{text.slice(cursor)}</React.Fragment>);
+      return parts;
+    };
+
+    return <div className="reference-document-step reference-document-review-step">
+       <div className="reference-document-step-heading"><div><h2>人工在线校审</h2><p>多级目录定位正文，支持选中文本添加批注、回复和闭环，并完成初审、复审和终审</p></div><StatusPill tone={reviewStatusTone}>{reviewStatusLabel}</StatusPill></div>
+      <div className="reference-document-review-layout reference-document-review-layout-v2">
+        <aside className="reference-document-review-outline">
+           <div className="reference-document-review-outline-head"><strong><BookOutlined /> 章节目录</strong><span>{reviewOutline.length} 项 · 点击定位</span></div>
+           <div className="reference-document-review-outline-list">{reviewOutline.map((node, index) => <button type="button" className={`reference-document-review-outline-item level-${node.level} ${activeReviewNodeId === node.id ? 'active' : ''}`} onClick={() => { locateReviewNode(node.id); setShowReviewCommentBox(false); }} key={node.id}><span className="reference-document-outline-number">{node.level === 1 ? String(index + 1).padStart(2, '0') : node.title.split(' ')[0]}</span>{node.level === 1 ? <BookOutlined /> : <span className="reference-document-outline-dot" /> }<strong>{node.title}</strong><ArrowRightOutlined /></button>)}</div>
+          <div className="reference-document-review-attachment"><PaperClipOutlined /><span>附件目录</span><b>{documentPackageFiles.length}</b></div>
+          <div className="reference-document-review-save"><CheckCircleFilled /> {editorTouched ? '修改已自动保存' : '版本已自动保存'}<small>V1.4 · 刚刚</small></div>
+        </aside>
+        <section className="reference-document-review-editor">
+          <div className="reference-document-editor-toolbar"><Space size={2}><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => message.info('已撤销上一处编辑')} /><Button type="text" icon={<ArrowRightOutlined />} onClick={() => message.info('已恢复下一处编辑')} /><Divider type="vertical" /><Select size="small" defaultValue="正文" options={[{ value: '正文', label: '正文' }, { value: '标题 1', label: '标题 1' }, { value: '标题 2', label: '标题 2' }]} /><Button type="text" onClick={() => message.info('已应用粗体格式')}><strong>B</strong></Button><Button type="text" onClick={() => message.info('已应用下划线格式')}><u>U</u></Button><Button type="text" icon={<LinkOutlined />} onClick={() => message.info('请选择文本后插入链接')} /><Button type="text" icon={<MessageOutlined />} onClick={() => { setSelectedReviewText(''); setShowReviewCommentBox(true); }}>添加批注</Button><Button type="text" className="purple-button" icon={<ThunderboltFilled />} onClick={() => message.success('AI 修改建议已插入正文')}>AI 优化</Button></Space><Space size={4}><Button type="text" icon={<HistoryOutlined />} onClick={() => onOpenModal('version')}>版本记录</Button><StatusPill tone="green">自动保存</StatusPill></Space></div>
+          <div className="reference-document-review-editor-body">
+             <article className="reference-document-review-document-copy" contentEditable suppressContentEditableWarning onInput={handleReviewEditorInput} onMouseUp={(event) => { const nodeElement = (event.target as HTMLElement).closest('[data-review-node-id]') as HTMLElement | null; const nodeId = nodeElement?.dataset.reviewNodeId; if (nodeId) setActiveReviewNodeId(nodeId); handleReviewTextSelection(); }}>
+               <div className="reference-document-review-breadcrumb">采购文件 / 全文校审</div>
+               <h1>{project.name}<br />采购文件</h1>
+               <p className="document-meta">项目编号：{project.id}　采购单位：{project.department}　模板：《{selectedTemplateMeta?.name}》　版本：V1.4</p>
+               <div className="reference-document-review-document-sections">{reviewOutline.map((node) => <section className={`reference-document-review-document-section level-${node.level} ${activeReviewNodeId === node.id ? 'active' : ''}`} id={`review-node-${node.id}`} data-review-node-id={node.id} ref={(element) => { reviewNodeRefs.current[node.id] = element; }} onClick={() => setActiveReviewNodeId(node.id)} key={node.id}><div className="reference-document-review-current-heading"><span>{node.level === 1 ? '章节' : `第 ${node.title.split(' ')[0]} 节`}</span><h2>{node.title}</h2></div>{node.content.split('\n').map((paragraph, index) => <p key={`${node.id}-paragraph-${index}`}>{renderAnnotatedText(paragraph, node.id)}</p>)}</section>)}</div>
+               <div className="reference-document-review-source-note"><InfoCircleOutlined /><span>全文由 AI 解析结果、标准文本模板及已确认的采购需求自动生成。左侧目录仅用于定位正文，正文内容连续展示；请选中需要讨论的文字，系统会在对应章节保留批注标记。</span></div>
+               <h3>校审关注点</h3>
+               <ul><li>技术参数、评分指标和验收标准应逐项对应。</li><li>交付、质保、售后服务等承诺应能在合同条款中执行。</li><li>修改正文后将保留版本、操作人和批注留痕。</li></ul>
+             </article>
+            {showReviewCommentBox && <div className="reference-document-inline-comment"><div><MessageOutlined /><strong>为正文添加批注</strong></div>{selectedReviewText ? <p>选中文本：“{selectedReviewText.slice(0, 90)}{selectedReviewText.length > 90 ? '...' : ''}”</p> : <p>当前未选中文字，批注将关联到“{currentNode.title}”。</p>}<Input.TextArea rows={3} value={reviewAnnotationText} onChange={(event) => setReviewAnnotationText(event.target.value)} placeholder="输入批注内容..." /><div><Button size="small" onClick={() => { setShowReviewCommentBox(false); setSelectedReviewText(''); setReviewAnnotationText(''); }}>取消</Button><Button type="primary" size="small" icon={<MessageOutlined />} onClick={addReviewAnnotation}>添加批注</Button></div></div>}
+          </div>
+           <div className="reference-document-editor-footer"><span>字数 {(1200 + reviewOutline.reduce((total, node) => total + node.content.length, 0)).toLocaleString()}</span><span>当前定位：{currentNode.title}</span><span><CheckCircleFilled /> {editorTouched ? '修改已自动保存' : '自动保存'}</span></div>
+        </section>
+        <aside className="reference-document-review-right">
+          <PageTabs active={reviewRightTab} onChange={(key) => setReviewRightTab(key as 'comments' | 'flow')} items={[{ key: 'comments', label: `批注 ${openAnnotationCount}` }, { key: 'flow', label: '审批流程' }]} />
+           {reviewRightTab === 'comments' ? <div className="reference-document-comments reference-document-annotations"><div className="reference-document-comment-list">{annotations.map((annotation) => { const node = reviewOutline.find((item) => item.id === annotation.sectionId); return <div className={`reference-document-annotation ${annotation.resolved ? 'resolved' : ''}`} key={annotation.id}><div className="reference-document-annotation-head"><div className="reference-document-comment-avatar">{annotation.author.slice(0, 1)}</div><div><strong>{annotation.author}</strong><small>{annotation.role} · {annotation.time}</small></div>{annotation.resolved && <StatusPill tone="green">已闭环</StatusPill>}</div><button type="button" className="reference-document-annotation-quote" onClick={() => { locateReviewNode(annotation.sectionId); setShowReviewCommentBox(false); }}>{node?.title || '当前章节'}<span>“{annotation.selectedText.slice(0, 32)}{annotation.selectedText.length > 32 ? '...' : ''}”</span></button><p>{annotation.text}</p>{annotation.replies.map((reply, index) => <div className="reference-document-annotation-reply" key={`${annotation.id}-reply-${index}`}><strong>{reply.author}</strong><span>{reply.text}</span></div>)}<div className="reference-document-annotation-actions"><Button type="link" size="small" onClick={() => setReplyingAnnotationId(replyingAnnotationId === annotation.id ? null : annotation.id)}>回复</Button><Button type="link" size="small" onClick={() => toggleAnnotationResolved(annotation.id)}>{annotation.resolved ? '取消闭环' : '确认闭环'}</Button></div>{replyingAnnotationId === annotation.id && <div className="reference-document-annotation-reply-box"><Input.TextArea rows={2} value={replyAnnotationText} onChange={(event) => setReplyAnnotationText(event.target.value)} placeholder="输入回复内容..." /><Space size={4}><Button size="small" onClick={() => { setReplyingAnnotationId(null); setReplyAnnotationText(''); }}>取消</Button><Button type="primary" size="small" icon={<SendOutlined />} onClick={() => handleAnnotationReply(annotation.id)}>发送回复</Button></Space></div>}</div>; })}</div><div className="reference-document-comment-hint"><MessageOutlined /><span>在正文中选中文字即可添加批注，批注会自动关联到对应目录章节。</span><Button type="link" size="small" onClick={() => { setShowReviewCommentBox(true); setReviewRightTab('comments'); }}>当前章节批注</Button></div></div> : <div className="reference-document-review-flow">{['编制提交', '部门初审', '分管复审', '领导终审'].map((label, index) => <div className={reviewLevel >= index ? 'done' : reviewLevel === index - 1 ? 'current' : ''} key={label}><span>{reviewLevel >= index ? <CheckOutlined /> : index + 1}</span><div><strong>{label}</strong><small>{reviewLevel >= index ? `${index === 0 ? '张明' : index === 1 ? '王强' : '陈志远'} · 已完成` : '待处理'}</small></div></div>)}</div>}
+        </aside>
+      </div>
+      <div className="reference-document-review-actions"><div className="reference-document-review-status"><span>当前状态</span><StatusPill tone={reviewStatusTone}>{reviewStatusLabel}</StatusPill><small>{reviewActionText}</small></div><Space><Button danger icon={<CloseCircleFilled />} onClick={returnReviewForRevision}>退回修改</Button><Button icon={<CheckCircleFilled />} disabled={reviewActionStatus === 'returned'} onClick={approveCurrentReview}>审核通过</Button><Button type="primary" icon={<SendOutlined />} onClick={advanceStep}>{reviewLevel >= 3 ? '查看定稿输出' : reviewActionStatus === 'returned' ? `重新提交${['初审', '复审', '终审'][reviewLevel] || '审核'}` : reviewLevel === 0 ? '提交初审' : reviewLevel === 1 ? '提交复审' : '提交终审'}</Button></Space></div>
+    </div>;
+  };
+
+  const renderOutputStep = () => <div className="reference-document-step reference-document-output-step">
+    <div className="reference-document-step-heading"><div><h2>定稿输出</h2><p>校审完成后生成正式采购文件及投标函、报价表、技术响应表等附件</p></div><StatusPill tone={finalized ? 'green' : outputReady ? 'blue' : 'orange'}>{finalized ? '已定稿' : outputReady ? '待确认定稿' : '等待终审'}</StatusPill></div>
+    <div className={`reference-document-final-banner ${finalized ? 'success' : ''}`}><div><span>{finalized ? <CheckCircleFilled /> : <SafetyCertificateOutlined />}</span><div><strong>{finalized ? '采购文件已定稿' : outputReady ? '校审已完成，可以确认定稿' : '等待终审提交'}</strong><p>{finalized ? '主件和配套附件已形成正式版本，可导出 Word 和 PDF 文件。' : outputReady ? '主件正文和配套附件已形成可预览、可下载版本，确认定稿后将锁定正式版本。' : '完成终审提交后即可进入定稿输出并查看文件内容。'}</p></div></div>{outputReady && !finalized && <Button type="primary" onClick={finalizeDocument}>确认定稿</Button>}</div>
+    <div className="reference-document-output-grid"><div className="reference-document-output-card"><div className="reference-document-output-card-head"><div><FileDoneOutlined /><strong>采购文件主件</strong></div><StatusPill tone={finalized ? 'green' : outputReady ? 'blue' : 'orange'}>{finalized ? '已生成' : outputReady ? '可下载' : '待定稿'}</StatusPill></div><p>包含采购公告、投标人须知、采购需求、评审标准、合同条款和验收要求等标准章节。</p><div><Button icon={<EyeOutlined />} disabled={!outputReady} onClick={() => setPreviewAttachment(documentPackageFiles[0])}>预览主件</Button><Button type="primary" icon={<DownloadOutlined />} disabled={!outputReady} onClick={() => exportDocument('Word')}>下载 Word 主件</Button><Button icon={<DownloadOutlined />} disabled={!outputReady} onClick={() => exportDocument('PDF')}>导出 PDF</Button></div></div><div className="reference-document-output-card"><div className="reference-document-output-card-head"><div><PaperClipOutlined /><strong>配套附件</strong></div><StatusPill tone={packageGenerated ? 'green' : outputReady ? 'blue' : 'gray'}>{packageGenerated ? `${documentPackageFiles.length} 份` : outputReady ? '可生成' : '待生成'}</StatusPill></div><p>投标函、分项报价表、技术响应表和资格证明材料清单，字段已与采购需求及评分指标关联。</p><div><Button icon={<EyeOutlined />} onClick={() => { jumpToStep('scoring'); setScoringTab('attachments'); }}>查看附件</Button><Button type="primary" disabled={!outputReady} onClick={() => { setPackageGenerated(true); message.success('附件包已生成，可在下方逐项下载'); }}>生成附件包</Button></div></div></div>
+    <div className="reference-document-output-preview"><div className="reference-document-output-preview-head"><div><FileSearchOutlined /><strong>采购文件正文预览</strong></div><span>{reviewOutline.length} 个目录节点 · {outputReady ? '已形成输出' : '等待终审'}</span></div><div className="reference-document-output-preview-body"><aside><strong>目录</strong>{reviewOutline.filter((node) => node.level === 1).map((node) => <button type="button" key={node.id} onClick={() => document.getElementById(`output-node-${node.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{node.title}<span>{reviewOutline.filter((child) => child.id === node.id || child.id.startsWith(`${node.id.split('-')[0]}-`)).length} 节</span></button>)}</aside><article><h1>{project.name}<br />采购文件</h1><p className="document-meta">项目编号：{project.id}　采购单位：{project.department}　版本：V1.4</p>{reviewOutline.map((node) => <section id={`output-node-${node.id}`} key={node.id}><h2>{node.title}</h2>{node.content.split('\n').map((paragraph, index) => <p key={`${node.id}-output-${index}`}>{paragraph}</p>)}</section>)}</article></div></div>
+    <div className="reference-document-output-attachments"><div className="reference-document-output-attachments-head"><div><PaperClipOutlined /><strong>配套附件下载</strong></div><span>投标函、报价表、技术响应表</span></div>{documentPackageFiles.slice(1).map((file) => <div className="reference-document-output-attachment" key={file.name}><span className="reference-document-file-icon">{file.icon}</span><div><strong>{file.name}</strong><small>{file.type} · {file.description}</small></div><Button size="small" icon={<EyeOutlined />} onClick={() => setPreviewAttachment(file)}>预览</Button><Button size="small" type="primary" icon={<DownloadOutlined />} disabled={!outputReady} onClick={() => downloadAttachment(file)}>下载</Button></div>)}</div>
+    <div className="reference-document-output-checklist"><div className="reference-document-section-caption"><span>定稿前检查清单</span><small>{finalized ? '全部完成' : outputReady ? '输出内容已形成' : '请完成终审后输出'}</small></div>{['需求字段已解析并与正文一致', '评分指标与技术需求逐项对应', '质量校验问题已处理', '初审、复审、终审已完成', '主件及投标附件字段已完整', '模板版本和审批记录已留痕'].map((item, index) => <div key={item}><CheckCircleFilled className={finalized || (outputReady && index < 5) || index < 3 ? 'checked' : ''} /><span>{item}</span><small>{finalized || (outputReady && index < 5) || index < 3 ? '已完成' : '待确认'}</small></div>)}</div>
+    <div className="reference-document-output-history"><div><HistoryOutlined /><div><strong>版本记录</strong><span>V1.4 · {project.owner} · {finalized ? '已定稿' : outputReady ? '终审完成待定稿' : '校审进行中'} · 2026-10-09 10:30</span></div></div><Button onClick={() => onOpenModal('version')}>查看完整记录</Button></div>
+    {finalized && <div className="reference-document-next-stage"><div className="reference-document-next-stage-info"><span className="reference-document-next-stage-icon"><TeamOutlined /></span><div><strong>下一步：供应商核查</strong><p>采购文件已定稿，将带入候选供应商添加、联合核查和风险确认流程。</p></div></div><Button type="primary" icon={<ArrowRightOutlined />} onClick={enterSupplierVerification}>进入供应商核查</Button></div>}
+    <div className="reference-document-bottom-actions"><Button onClick={() => jumpToStep('review')}>返回人工校审</Button><Button type="primary" icon={<TeamOutlined />} disabled={!finalized} onClick={enterSupplierVerification}>进入供应商核查</Button><Button onClick={completeAndReturn}>完成并返回工作台</Button></div>
+  </div>;
+
+  const renderCurrentStep = () => {
+    if (currentStep === 'upload') return renderUploadStep();
+    if (currentStep === 'parse') return renderParseStep();
+    if (currentStep === 'scoring') return renderScoringStep();
+    if (currentStep === 'quality') return renderQualityStep();
+    if (currentStep === 'review') return renderReviewStepV2();
+    return renderOutputStep();
+  };
+
+  return <>
+    <PageTitle breadcrumb={['采购需求', '采购文件', project.name]} title="采购文件编制" subtitle={`基于《${selectedTemplateMeta?.name}》生成 · ${currentStepMeta.label}`} actions={<><Button icon={<DiffOutlined />} onClick={() => setTemplateOpen(true)}>模板选择</Button><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('version')}>版本记录</Button><Button icon={<DownloadOutlined />} onClick={() => exportDocument('Word')}>导出 Word</Button></>} />
+    <div className="reference-document-page">
+      <div className="reference-document-stepbar">{documentFlowSteps.map((step, index) => { const reached = index <= maxReachedStep; const active = step.key === currentStep; const StepIcon = step.icon; return <React.Fragment key={step.key}><button type="button" className={`reference-document-stepbar-item ${active ? 'active' : ''} ${index < stepIndex ? 'completed' : ''} ${reached ? 'reached' : 'disabled'}`} onClick={() => handleStepClick(step.key)}><span className="reference-document-stepbar-icon">{index < stepIndex ? <CheckOutlined /> : <StepIcon />}</span><strong>{step.shortLabel}</strong><small>{step.description}</small></button>{index < documentFlowSteps.length - 1 && <div className={`reference-document-stepbar-line ${index < maxReachedStep ? 'completed' : ''}`} />}</React.Fragment>; })}</div>
+      {currentStep !== 'review' && <div className="reference-document-project-info"><div className="reference-document-project-heading"><div><span>当前项目</span><h3>{project.name}</h3><p>{project.id} · {project.category} · <StatusPill tone="blue">编制中</StatusPill></p></div><div className="reference-document-project-progress"><strong>{Math.round(((stepIndex + 1) / documentFlowSteps.length) * 100)}%</strong><span>流程进度</span></div></div><div className="reference-document-project-fields"><div><small>项目编号</small><strong>{project.id}</strong></div><div><small>采购方式</small><strong>{project.method}</strong></div><div><small>采购预算</small><strong>{project.budget}</strong></div><div><small>采购单位</small><strong>{project.department}</strong></div><div><small>采购负责人</small><strong>{project.owner}</strong></div><div><small>交付截止</small><strong>45 日内</strong></div><div><small>交付地点</small><strong>总部园区 B 座</strong></div><div><small>创建日期</small><strong>{project.createdAt}</strong></div></div></div>}
+      <div className="reference-document-main"><main className="reference-document-content">{renderCurrentStep()}</main><ReferenceDocumentsAssistant step={currentStep} messages={referenceDocumentAiMessages[currentStep]} appliedIds={appliedAssistantIds} onApply={applyAssistant} /></div>
+    </div>
+     <Modal open={templateOpen} title={<ModalTitle icon={<DiffOutlined />} title="选择采购文件模板" subtitle="根据项目类型和采购方式匹配标准文本模板" />} width={720} centered onCancel={() => setTemplateOpen(false)} footer={[<Button key="cancel" onClick={() => setTemplateOpen(false)}>取消</Button>, <Button key="apply" type="primary" onClick={handleTemplateApply}>应用模板</Button>]}>
+       <div className="reference-document-template-modal-list">{templateOptions.map((template, index) => <div className={`reference-document-template-modal-option ${selectedTemplate === index ? 'selected' : ''}`} key={template.id} onClick={() => setSelectedTemplate(index)}><Radio checked={selectedTemplate === index} /><div><strong>{template.name}</strong><span>{template.version} · {template.chapters} 个标准章节 · {template.owner}</span><small>{template.description}</small></div>{template.status === '已启用' && index === 0 && <StatusPill tone="green">推荐</StatusPill>}</div>)}</div><Alert type="info" showIcon message="如需调整已发布模板，系统会在人工校审中展示部门及分管领导审批流程；未发布模板将参考历史同类项目生成客观、量化的评分标准。" />
+     </Modal>
+     <Modal open={Boolean(previewAttachment)} title={<ModalTitle icon={<FileSearchOutlined />} title={previewAttachment ? `${previewAttachment.name} 预览` : '附件预览'} subtitle="已带入当前项目字段，支持查看正文和表格数据" />} width={1080} centered destroyOnClose onCancel={() => setPreviewAttachment(null)} footer={[<Button key="close" onClick={() => setPreviewAttachment(null)}>关闭</Button>, <Button key="download" type="primary" icon={<DownloadOutlined />} disabled={!previewAttachment} onClick={() => { if (previewAttachment) downloadSelectedAttachment(previewAttachment); }}>下载当前附件</Button>]}>
+       {previewAttachment && renderAttachmentPreview(previewAttachment)}
+     </Modal>
+   </>;
+}
+
+type ApprovalState = 'not_required' | 'draft' | 'pending' | 'approved';
+
+function LegacyDocumentsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
   const { workflow, project } = useProjectWorkflow();
-  const templateNames = ['《' + project.type + '类' + project.method + '标准采购文件》', '《集团通用采购文件模板》'];
+  const location = useLocation();
+  const availableTemplates = procurementTemplateLibrary.filter((item) => item.status !== '已停用');
+  const templateNames = availableTemplates.length ? availableTemplates.map((item) => `《${item.name}》`) : ['《集团通用采购文件模板》'];
+  const requestedTemplateId = new URLSearchParams(location.search).get('templateId');
+  const requestedTemplateIndex = availableTemplates.findIndex((item) => item.id === requestedTemplateId);
+  const initialTemplateIndex = requestedTemplateIndex >= 0 ? requestedTemplateIndex : 0;
   const allSourceKeys = documentGenerationSources.map((item) => item.key);
   const [templateOpen, setTemplateOpen] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState(0);
-  const [generatedTemplate, setGeneratedTemplate] = useState(0);
+  const [selectedTemplate, setSelectedTemplate] = useState(initialTemplateIndex);
+  const [generatedTemplate, setGeneratedTemplate] = useState(initialTemplateIndex);
   const [selectedSources, setSelectedSources] = useState<DocumentSourceKey[]>(allSourceKeys);
   const [appliedSources, setAppliedSources] = useState<DocumentSourceKey[]>(allSourceKeys);
   const [generatedAt, setGeneratedAt] = useState('2024-06-05 11:06');
@@ -1721,6 +2974,419 @@ function DocumentsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: Mo
       <div className="template-generation-summary"><strong>本次生成预览</strong><span>将带入 {selectedSources.length} 项数据源，生成 {selectedChapterCount} 个章节</span><div>{documentGenerationSources.filter((item) => selectedSources.includes(item.key)).map((item) => <Tag color="blue" key={item.key}>{item.label}</Tag>)}</div></div>
       <Alert type="info" showIcon message="生成后将覆盖当前文档草稿内容，未勾选的数据章节会保留待补充占位；模板、来源和生成版本会记录在文档留痕中。" />
     </Modal>
+  </>;
+}
+
+function DocumentsPage({ onOpenModal, onCompleteStage }: { onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
+  const { workflow, project } = useProjectWorkflow();
+  const location = useLocation();
+  const inheritedRequirementDraft = confirmedRequirementDraft?.projectId === project.id ? confirmedRequirementDraft : null;
+  const inheritedRequirementSection = (keywords: RegExp) => inheritedRequirementDraft?.sections.find((section) => keywords.test(`${section.title}${section.content}`))?.content || '';
+  const inheritedOverviewContent = inheritedRequirementSection(/概况|基本信息|采购范围/);
+  const inheritedTechnicalContent = inheritedRequirementSection(/技术|规格|参数/);
+  const inheritedCommercialContent = inheritedRequirementSection(/商务|交付|质保|付款|售后/);
+  const compactInheritedContent = (content: string, fallback: string) => {
+    if (!content) return fallback;
+    const normalized = content.replace(/\s+/g, ' ').trim();
+    return `${normalized.slice(0, 82)}${normalized.length > 82 ? '...' : ''}`;
+  };
+  const availableTemplates = procurementTemplateLibrary.filter((item) => item.status !== '已停用');
+  const templateOptions: ProcurementTemplate[] = availableTemplates.length ? availableTemplates : [{ id: 'fallback-template', name: '集团通用采购文件模板', type: '货物类', method: '通用', version: 'V1.0', chapters: 6, status: '已启用', updated: new Date().toISOString().slice(0, 10), owner: '采购管理部', description: '通用采购文件骨架，可按项目数据自动填充。' }];
+  const templateNames = templateOptions.map((item) => `《${item.name}》`);
+  const requestedTemplateId = new URLSearchParams(location.search).get('templateId');
+  const requestedTemplateIndex = templateOptions.findIndex((item) => item.id === requestedTemplateId);
+  const initialTemplateIndex = requestedTemplateIndex >= 0 ? requestedTemplateIndex : 0;
+  const allSourceKeys = documentGenerationSources.map((item) => item.key);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState(initialTemplateIndex);
+  const [generatedTemplate, setGeneratedTemplate] = useState(initialTemplateIndex);
+  const [selectedSources, setSelectedSources] = useState<DocumentSourceKey[]>(allSourceKeys);
+  const [appliedSources, setAppliedSources] = useState<DocumentSourceKey[]>(allSourceKeys);
+  const [generatedAt, setGeneratedAt] = useState(inheritedRequirementDraft?.updatedAt || '2026-10-09 10:30');
+  const [aiContinuation, setAiContinuation] = useState(false);
+  const [activeChapter, setActiveChapter] = useState<DocumentSourceKey>('basic');
+  const [activeRightTab, setActiveRightTab] = useState<'score' | 'quality' | 'contract'>('score');
+  const [scoringPanelTab, setScoringPanelTab] = useState<'score' | 'contract' | 'attachments'>('score');
+  const [requirementFile, setRequirementFile] = useState(inheritedRequirementDraft ? `${project.name}-需求文件初稿.docx` : '采购需求说明_v0.2.docx');
+  const [documentFlowStep, setDocumentFlowStep] = useState<DocumentFlowStep>('parse');
+  const [maxDocumentFlowStep, setMaxDocumentFlowStep] = useState(1);
+  const [parseStatus, setParseStatus] = useState<'idle' | 'parsing' | 'done'>('done');
+  const [parsedFields, setParsedFields] = useState([
+    { key: 'name', label: '项目名称', value: project.name },
+    { key: 'quantity', label: '采购数量', value: project.quantity || '120 台' },
+    { key: 'technical', label: '技术参数', value: compactInheritedContent(inheritedTechnicalContent, '续航 ≥ 12 小时 · IP67 · 标准 API') },
+    { key: 'service', label: '服务要求', value: compactInheritedContent(inheritedCommercialContent, '运输、安装、调试、培训及 3 年质保') },
+    { key: 'delivery', label: '交付时间 / 地点', value: '45 日内 · 总部园区 B 座收货区' },
+  ]);
+  const defaultTemplate = templateOptions[initialTemplateIndex];
+  const [scoreItems, setScoreItems] = useState<ScoreRecommendation[]>(defaultTemplate.status === '已启用' ? publishedScoreRecommendations : historicalScoreRecommendations);
+  const [approvalState, setApprovalState] = useState<ApprovalState>(defaultTemplate.status === '已启用' ? 'not_required' : 'draft');
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [approvalNote, setApprovalNote] = useState('建议补充技术指标与历史项目评分依据，调整后提交分管领导审批。');
+  const [qualityRan, setQualityRan] = useState(false);
+  const [qualityFindings, setQualityFindings] = useState<DocumentQualityFinding[]>(defaultDocumentQualityFindings);
+  const [packageGenerated, setPackageGenerated] = useState(false);
+  const [editorTouched, setEditorTouched] = useState(false);
+  const [reviewLevel, setReviewLevel] = useState(0);
+  const [finalized, setFinalized] = useState(false);
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [comments, setComments] = useState([{ author: '王强', role: '采购审核人', text: '请确认评分项与续航、IP67 等技术指标逐项对应。', time: '今天 10:18' }]);
+  const hasSource = (source: DocumentSourceKey) => appliedSources.includes(source);
+  const generatedChapterCount = documentChapterSources.filter((chapter) => hasSource(chapter.source)).length;
+  const generatedProgress = Math.round((generatedChapterCount / documentChapterSources.length) * 100);
+  const selectedChapterCount = documentChapterSources.filter((chapter) => selectedSources.includes(chapter.source)).length;
+  const sourceNames = documentGenerationSources.filter((item) => appliedSources.includes(item.key)).map((item) => item.label).join('、');
+  const selectedTemplateMeta = templateOptions[selectedTemplate] || templateOptions[0];
+  const generatedTemplateMeta = templateOptions[generatedTemplate] || templateOptions[0];
+  const scoreTotal = scoreItems.reduce((total, item) => total + item.score, 0);
+  const unresolvedCount = qualityFindings.filter((item) => !item.resolved).length;
+  const qualityScore = Math.min(100, 76 + qualityFindings.filter((item) => item.resolved).length * 6 + (qualityRan ? 4 : 0));
+  const statusLabel = finalized ? '已定稿' : reviewLevel === 3 ? '终审完成' : reviewLevel === 2 ? '复审中' : reviewLevel === 1 ? '初审中' : 'AI 编制中';
+  const flowStepIndex = Math.max(0, documentFlowSteps.findIndex((item) => item.key === documentFlowStep));
+  const currentFlowMeta = documentFlowSteps[flowStepIndex] || documentFlowSteps[1];
+
+  const openDocumentFlowStep = (step: DocumentFlowStep) => {
+    const index = documentFlowSteps.findIndex((item) => item.key === step);
+    if (index < 0 || index > maxDocumentFlowStep) return;
+    setDocumentFlowStep(step);
+    if (step === 'scoring') { setActiveRightTab('score'); setScoringPanelTab('score'); }
+    if (step === 'quality') setActiveRightTab('quality');
+    if (step === 'review') setActiveRightTab('quality');
+    message.info(`已切换到${documentFlowSteps[index].label}`);
+  };
+
+  const advanceDocumentFlow = () => {
+    const nextIndex = Math.min(flowStepIndex + 1, documentFlowSteps.length - 1);
+    const nextStep = documentFlowSteps[nextIndex];
+    setMaxDocumentFlowStep((value) => Math.max(value, nextIndex));
+    setDocumentFlowStep(nextStep.key);
+    if (nextStep.key === 'scoring') { setActiveRightTab('score'); setScoringPanelTab('score'); }
+    if (nextStep.key === 'quality') setActiveRightTab('quality');
+    if (nextStep.key === 'review') setActiveRightTab('quality');
+    message.success(`已进入${nextStep.label}`);
+  };
+
+  const completeQualityStage = () => {
+    setQualityRan(true);
+    setActiveRightTab('quality');
+    if (unresolvedCount > 0) {
+      message.warning(`质量校验已完成，请先处理 ${unresolvedCount} 项问题后再进入人工校审`);
+      return;
+    }
+    advanceDocumentFlow();
+  };
+
+  const completeReviewStage = () => {
+    if (reviewLevel < 3) {
+      advanceReview();
+      return;
+    }
+    advanceDocumentFlow();
+  };
+
+  const handleRequirementUpload = (file: { name: string }) => {
+    setRequirementFile(file.name);
+    setDocumentFlowStep('parse');
+    setMaxDocumentFlowStep(1);
+    setParseStatus('parsing');
+    setQualityRan(false);
+    setQualityFindings(defaultDocumentQualityFindings.map((finding) => ({ ...finding, resolved: false })));
+    setPackageGenerated(false);
+    setReviewLevel(0);
+    setFinalized(false);
+    message.info(`正在解析“${file.name}”，识别项目字段并匹配标准模板`);
+    window.setTimeout(() => {
+      setParseStatus('done');
+      setParsedFields([
+        { key: 'name', label: '项目名称', value: project.name },
+        { key: 'quantity', label: '采购数量', value: project.quantity || '120 台' },
+        { key: 'technical', label: '技术参数', value: '续航 ≥ 12 小时 · IP67 · 标准 API' },
+        { key: 'service', label: '服务要求', value: '运输、安装、调试、培训及 3 年质保' },
+        { key: 'delivery', label: '交付时间 / 地点', value: '45 日内 · 总部园区 B 座收货区' },
+      ]);
+      setAppliedSources([...allSourceKeys]);
+      message.success('需求文件解析完成，已识别 5 类字段并匹配标准文件模板');
+    }, 650);
+    return false;
+  };
+  const selectTemplate = (index: number) => {
+    const target = templateOptions[index];
+    setSelectedTemplate(index);
+    setScoreItems(target.status === '已启用' ? publishedScoreRecommendations : historicalScoreRecommendations);
+    setApprovalState(target.status === '已启用' ? 'not_required' : 'draft');
+    if (target.status === '已启用') message.success(`已匹配已发布模板《${target.name}》`);
+    else message.info(`模板《${target.name}》尚未发布，将参考历史同类项目生成评分标准`);
+  };
+  const openTemplateGenerator = () => {
+    setSelectedTemplate(generatedTemplate);
+    setSelectedSources([...appliedSources]);
+    setTemplateOpen(true);
+  };
+  const toggleSource = (key: DocumentSourceKey) => {
+    setSelectedSources((sources) => sources.includes(key) ? sources.filter((item) => item !== key) : [...sources, key]);
+  };
+  const generateFromTemplate = () => {
+    if (!selectedSources.length) {
+      message.warning('至少勾选一项数据源后才能生成采购文件');
+      return;
+    }
+    setAppliedSources([...selectedSources]);
+    setGeneratedTemplate(selectedTemplate);
+    setGeneratedAt(new Date().toLocaleString('zh-CN'));
+    setPackageGenerated(false);
+    setTemplateOpen(false);
+    message.success(`已按${templateNames[selectedTemplate]}生成采购文件初稿，形成 ${selectedChapterCount} 个章节`);
+  };
+  const runQualityCheck = () => {
+    setQualityRan(true);
+    setActiveRightTab('quality');
+    message.success(`AI 质量校验完成：发现 ${unresolvedCount} 项待处理问题`);
+  };
+  const locateFinding = (finding: DocumentQualityFinding) => {
+    const chapter: DocumentSourceKey = finding.location.includes('评分') || finding.location.includes('报价') ? 'commercial' : finding.location.includes('合同') ? 'delivery' : 'basic';
+    setActiveChapter(chapter);
+    setActiveRightTab('quality');
+    message.info(`已定位到${finding.location}，编辑器已切换到对应章节`);
+  };
+  const fixFinding = (finding: DocumentQualityFinding) => {
+    setQualityFindings((items) => items.map((item) => item.id === finding.id ? { ...item, resolved: true } : item));
+    message.success(`已按建议修复“${finding.title}”，修改已写入当前版本`);
+  };
+  const fixAllFindings = () => {
+    setQualityFindings((items) => items.map((item) => ({ ...item, resolved: true })));
+    message.success('已一键修复可自动处理的问题，法规要素仍建议人工复核');
+  };
+  const importScoreItem = () => message.success('评分指标已引入第二章评分标准，可继续手工调整分值');
+  const importAllScores = () => {
+    message.success(`已一键引入 ${scoreItems.length} 项评分指标，共 ${scoreTotal} 分，并完成技术需求关联`);
+    setActiveChapter('commercial');
+  };
+  const generatePackage = () => {
+    setPackageGenerated(true);
+    setGeneratedAt(new Date().toLocaleString('zh-CN'));
+    message.success('采购文件主件及投标函、报价表、技术响应表已生成');
+  };
+  const exportDocument = (format: 'Word' | 'PDF') => {
+    const editorBody = document.querySelector('.document-body');
+    const body = editorBody?.innerHTML || `<h1>${escapeDocumentHtml(project.name)}采购文件</h1><p>当前文档暂无可导出的正文内容。</p>`;
+    downloadDocumentExport(`${project.name}-采购文件`, body, format);
+  };
+  const addComment = () => {
+    if (!commentText.trim()) {
+      message.warning('请先填写审核意见');
+      return;
+    }
+    setComments((items) => [{ author: '张明', role: '采购经办人', text: commentText.trim(), time: '刚刚' }, ...items]);
+    setCommentText('');
+    setCommentOpen(false);
+    setEditorTouched(true);
+    message.success('审核批注已添加，并写入版本留痕');
+  };
+  const advanceReview = () => {
+    if (!qualityRan) {
+      message.warning('请先完成 AI 质量校验，再提交人工校审');
+      setActiveRightTab('quality');
+      return;
+    }
+    if (reviewLevel === 0 && unresolvedCount > 0) {
+      message.warning(`还有 ${unresolvedCount} 项质量问题未处理，请修复或人工确认后再提交初审`);
+      setActiveRightTab('quality');
+      return;
+    }
+    if (reviewLevel >= 3) {
+      message.info('多级校审已完成，可以进行定稿输出');
+      return;
+    }
+    const nextLevel = reviewLevel + 1;
+    setReviewLevel(nextLevel);
+    message.success(nextLevel === 1 ? '已提交初审，审核人将收到待办' : nextLevel === 2 ? '初审完成，已提交复审' : '复审完成，已进入终审并形成校审记录');
+  };
+  const finalizeDocument = () => {
+    if (reviewLevel < 3) {
+      message.warning('请先完成初审、复审和终审后再定稿');
+      return;
+    }
+    if (unresolvedCount > 0) {
+      message.warning(`还有 ${unresolvedCount} 项质量问题未处理，暂不能定稿`);
+      setActiveRightTab('quality');
+      return;
+    }
+    setFinalized(true);
+    setPackageGenerated(true);
+    message.success('采购文件已定稿，Word、PDF及附件包均可正式输出');
+  };
+  const submitForReview = () => {
+    if (!finalized) {
+      message.warning('请先完成定稿输出，再提交供应商核查');
+      return;
+    }
+    if (onCompleteStage && !onCompleteStage()) return;
+    message.success('采购文件已提交，正在进入供应商核查');
+    go('/procurement/suppliers');
+  };
+  const approvalCompleted = approvalState === 'approved' ? 4 : approvalState === 'pending' ? 2 : approvalState === 'draft' ? 1 : 4;
+  const approvalSteps = ['需求部门确认', '采购负责人复核', '分管领导审批', '法务 / 财务会签'];
+
+  return <>
+    <PageTitle
+      breadcrumb={['采购需求', '采购文件', project.method + '文件']}
+      title="采购文件编制"
+      subtitle={`${inheritedRequirementDraft ? '承接上一步需求拟制初稿 · ' : ''}基于《${generatedTemplateMeta.name}》生成 · 最近生成 ${generatedAt}`}
+      actions={<><Upload showUploadList={false} accept=".doc,.docx,.pdf,.xls,.xlsx" beforeUpload={handleRequirementUpload}><Button icon={<UploadOutlined />}>上传需求文件</Button></Upload><Button icon={<DiffOutlined />} onClick={openTemplateGenerator}>匹配模板并生成初稿</Button><Button icon={<SafetyCertificateOutlined />} className="purple-button" onClick={runQualityCheck}>AI 质量校验</Button><Button icon={<MessageOutlined />} onClick={() => setCommentOpen(true)}>审核批注</Button><Button icon={<HistoryOutlined />} onClick={() => onOpenModal('version')}>版本记录</Button><Button icon={<DownloadOutlined />} onClick={() => exportDocument('Word')}>导出 Word</Button><Button icon={<FileTextOutlined />} onClick={() => exportDocument('PDF')}>导出 PDF</Button><Button type="primary" icon={<FileDoneOutlined />} onClick={finalizeDocument}>定稿输出</Button></>}
+    />
+    {!workflow.materialsReady && <Alert className="workflow-gate-alert" type="warning" showIcon message="当前阶段还缺少项目立项依据" description="请先补充必备材料，材料齐全后才能提交采购文件并进入供应商核查。" action={<Button type="primary" onClick={() => onOpenModal('upload')}>立即补充材料</Button>} />}
+    <div className="document-status-bar"><div className="document-status-project"><span className="status-kicker">当前项目</span><strong>{project.name}</strong><span>{project.id} · {project.department} · 采购负责人 {project.owner}</span></div><div className="document-status-metrics"><div><span>预算</span><strong>{project.budget}</strong></div><div><span>采购方式</span><strong>{project.method}</strong></div><div><span>文件状态</span><StatusPill tone={finalized ? 'green' : reviewLevel >= 2 ? 'blue' : 'purple'}>{statusLabel}</StatusPill></div></div></div>
+    <div className="document-reference-stepbar">
+      {documentFlowSteps.map((step, index) => {
+        const StepIcon = step.icon;
+        const isDone = index < flowStepIndex;
+        const isCurrent = index === flowStepIndex;
+        const isClickable = index <= maxDocumentFlowStep;
+        return <div className="document-reference-stepbar-item" key={step.key}>
+          <button type="button" disabled={!isClickable} className={`${isDone ? 'done' : ''} ${isCurrent ? 'current' : ''} ${!isClickable ? 'disabled' : ''}`} onClick={() => openDocumentFlowStep(step.key)}>
+            <span>{isDone ? <CheckOutlined /> : <StepIcon />}</span>
+            <div><strong>{step.label}</strong><small>{isDone ? '已完成' : isCurrent ? '当前步骤' : '待开始'}</small></div>
+          </button>
+          {index < documentFlowSteps.length - 1 && <i className={index < flowStepIndex ? 'done' : ''} />}
+        </div>;
+      })}
+    </div>
+    <div className="document-flow-stage-card">
+      <div>
+        <span>当前步骤 · {currentFlowMeta.label}</span>
+        <strong>{currentFlowMeta.description}</strong>
+        <p>{documentFlowStep === 'parse' ? '已承接上一阶段需求初稿，系统将继续解析新增文件并更新采购文件内容。' : documentFlowStep === 'scoring' ? '可从已发布评审模板或历史同类项目引入评分指标、合同条款和附件。' : documentFlowStep === 'quality' ? '请处理高风险和中风险问题，确认采购需求、评分、格式及法规要素形成闭环。' : documentFlowStep === 'review' ? '正文支持直接修改、审核批注和多级校审，意见会关联当前文档版本。' : documentFlowStep === 'output' ? '完成定稿后可导出正式 Word、PDF 及投标函、报价表等附件。' : '如有补充材料，可在当前页面继续上传并重新解析。'}</p>
+      </div>
+      <Space wrap>
+        {documentFlowStep === 'parse' && <Button type="primary" icon={<DiffOutlined />} onClick={advanceDocumentFlow}>确认解析并进入评分编制</Button>}
+        {documentFlowStep === 'scoring' && <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => { setPackageGenerated(true); setGeneratedAt(new Date().toLocaleString('zh-CN')); advanceDocumentFlow(); }}>完成编制并进入质量校验</Button>}
+        {documentFlowStep === 'quality' && <Button type="primary" icon={<SafetyCertificateOutlined />} onClick={completeQualityStage}>完成校验并进入人工校审</Button>}
+        {documentFlowStep === 'review' && <Button type="primary" icon={<AuditOutlined />} onClick={completeReviewStage}>{reviewLevel < 3 ? `提交${['初审', '复审', '终审'][reviewLevel]}` : '提交校审并进入定稿输出'}</Button>}
+        {documentFlowStep === 'output' && <><StatusPill tone={finalized ? 'green' : 'blue'}>{finalized ? '已定稿' : '待定稿'}</StatusPill><Button type="primary" icon={<FileDoneOutlined />} onClick={finalized ? () => exportDocument('Word') : finalizeDocument}>{finalized ? '下载正式 Word' : '确认定稿并输出'}</Button></>}
+      </Space>
+    </div>
+    {documentFlowStep === 'upload' && <div className="document-flow-stage-content">
+      <div className="document-flow-content-heading"><div><span>第一步 · 需求文件导入</span><h2>上传采购需求文件</h2><p>上传需求说明、技术清单、预算及立项材料，AI 将在下一步统一解析并生成采购文件草稿。</p></div><StatusPill tone={parseStatus === 'done' ? 'green' : 'orange'}>{parseStatus === 'done' ? '文件已就绪' : '待解析'}</StatusPill></div>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} xl={14}>
+          <Panel className="document-stage-card" title={<><CloudUploadOutlined /> 需求文件上传区</>} extra={<span className="document-stage-hint">支持 PDF / Word / Excel</span>}>
+            <Upload.Dragger className="document-stage-upload" showUploadList={false} multiple accept=".doc,.docx,.pdf,.xls,.xlsx" beforeUpload={handleRequirementUpload}><p className="upload-icon"><CloudUploadOutlined /></p><strong>拖拽文件到此处，或点击上传</strong><span>支持单个文件不超过 50MB，系统会自动识别项目名称、数量、技术参数、服务要求和交付信息</span></Upload.Dragger>
+            <div className="document-stage-file-row"><span className="document-stage-file-icon"><FileTextOutlined /></span><div><strong>{requirementFile}</strong><small>{parseStatus === 'parsing' ? '正在上传并准备解析...' : parseStatus === 'done' ? '已上传 · 可开始 AI 解析' : '等待上传'}</small></div><StatusPill tone={parseStatus === 'done' ? 'green' : parseStatus === 'parsing' ? 'orange' : 'gray'}>{parseStatus === 'done' ? '已就绪' : parseStatus === 'parsing' ? '处理中' : '待上传'}</StatusPill></div>
+          </Panel>
+        </Col>
+        <Col xs={24} xl={10}>
+          <Panel className="document-stage-card" title={<><FileSearchOutlined /> 已识别项目上下文</>}>
+            <div className="document-stage-facts"><div><span>项目名称</span><strong>{project.name}</strong></div><div><span>项目编号</span><strong>{project.id}</strong></div><div><span>采购方式</span><strong>{project.method}</strong></div><div><span>当前模板</span><strong>{generatedTemplateMeta.name}</strong></div></div>
+            <div className="document-stage-tip"><InfoCircleOutlined /><span>{inheritedRequirementDraft ? '已承接上一阶段确认的需求初稿，上传补充文件后会合并解析。' : '当前项目已加载基础信息，上传需求文件后会补充技术、商务及交付字段。'}</span></div>
+          </Panel>
+        </Col>
+      </Row>
+      <div className="document-stage-action-bar"><span><CheckCircleFilled /> 文件准备完成后点击开始 AI 解析</span><Button type="primary" icon={<ThunderboltFilled />} disabled={parseStatus === 'parsing'} onClick={() => handleRequirementUpload({ name: requirementFile })}>开始 AI 解析</Button></div>
+    </div>}
+
+    {documentFlowStep === 'parse' && <div className="document-flow-stage-content">
+      <div className="document-flow-content-heading"><div><span>第二步 · AI智能处理</span><h2>AI解析与文件生成</h2><p>自动识别采购需求关键字段，匹配标准文本模板，并生成采购文件初稿。</p></div><StatusPill tone={parseStatus === 'done' ? 'green' : 'orange'}>{parseStatus === 'done' ? '解析完成' : '解析中'}</StatusPill></div>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} xl={14}>
+          <Panel className="document-stage-card" title={<><ThunderboltFilled /> AI智能解析进度</>} extra={<strong className="document-stage-progress-number">{parseStatus === 'done' ? '100%' : parseStatus === 'parsing' ? '68%' : '0%'}</strong>}>
+            <Progress percent={parseStatus === 'done' ? 100 : parseStatus === 'parsing' ? 68 : 0} status={parseStatus === 'parsing' ? 'active' : undefined} strokeColor={{ '0%': '#2f66eb', '100%': '#7256e8' }} />
+            <div className="document-parse-task-grid">{documentParseTasks.map((task, index) => { const TaskIcon = task.icon; const completed = parseStatus === 'done' || (parseStatus === 'parsing' && index < 5); return <div className={completed ? 'completed' : ''} key={task.label}><span>{completed ? <CheckCircleFilled /> : <TaskIcon />}</span><strong>{task.label}</strong></div>; })}</div>
+            <div className="document-stage-tip"><InfoCircleOutlined /><span>解析内容会自动写入采购公告、采购需求、技术要求、合同条款及验收要求章节。</span></div>
+          </Panel>
+        </Col>
+        <Col xs={24} xl={10}>
+          <Panel className="document-stage-card" title={<><FileSearchOutlined /> 解析结果概览</>} extra={<StatusPill tone="green">{parsedFields.length} 类字段</StatusPill>}>
+            <div className="document-parsed-result-grid">{parsedFields.map((field) => <div key={field.key}><span>{field.label}</span><strong title={field.value}>{field.value}</strong></div>)}</div>
+          </Panel>
+          <Panel className="document-stage-card" title={<><BookOutlined /> 标准文本模板匹配</>} extra={<StatusPill tone={selectedTemplateMeta.status === '已启用' ? 'green' : 'orange'}>{selectedTemplateMeta.status}</StatusPill>}>
+            <div className="document-template-result"><strong>{selectedTemplateMeta.name}</strong><span>{selectedTemplateMeta.chapters} 个标准章节 · {selectedTemplateMeta.version}</span><small>{selectedTemplateMeta.status === '已启用' ? '已发布模板可直接套用' : '未发布模板将参考历史同类项目生成标准'}</small></div>
+            <Button block icon={<DiffOutlined />} onClick={openTemplateGenerator}>调整模板并生成初稿</Button>
+          </Panel>
+        </Col>
+      </Row>
+      <div className="document-stage-action-bar"><Button icon={<SyncOutlined />} onClick={() => handleRequirementUpload({ name: requirementFile })}>重新解析</Button><span>解析结果将作为评分、合同、质量校验和人工校审的统一数据源</span></div>
+    </div>}
+
+    {documentFlowStep === 'scoring' && <div className="document-flow-stage-content">
+      <div className="document-flow-content-heading"><div><span>第三步 · 评分与合同</span><h2>评分标准与合同编制</h2><p>依据已发布评审模板和历史同类项目，生成客观量化的评分指标、合同条款及配套附件。</p></div><StatusPill tone="blue">AI推荐 {scoreTotal} 分</StatusPill></div>
+      <PageTabs active={scoringPanelTab} onChange={(key) => setScoringPanelTab(key as 'score' | 'contract' | 'attachments')} items={[{ key: 'score', label: '评分标准' }, { key: 'contract', label: '合同条款' }, { key: 'attachments', label: '配套附件' }]} />
+      {scoringPanelTab === 'score' && <div className="document-stage-tab-content"><div className="document-stage-ai-banner"><ThunderboltFilled /><div><strong>AI智能评分推荐</strong><span>{selectedTemplateMeta.status === '已启用' ? `依据${selectedTemplateMeta.name}生成` : '模板尚未发布，已参考 3 个历史同类项目生成客观标准'}，支持一键引入并关联技术要求。</span></div><Button type="primary" icon={<PlusOutlined />} onClick={importAllScores}>一键引入全部</Button></div><div className="document-stage-score-list">{scoreItems.map((item) => <div className="document-stage-score-card" key={item.id}><div><StatusPill tone={item.source === '已发布评审模板' ? 'blue' : 'purple'}>{item.source}</StatusPill><strong>{item.title}</strong><span>{item.score} 分</span></div><p>{item.metric}</p><small><BookOutlined /> {item.basis}</small><Button size="small" type="link" icon={<PlusOutlined />} onClick={importScoreItem}>一键引入</Button></div>)}</div><div className="document-stage-approval-note"><AuditOutlined /><span>需要调整已发布模板或使用未发布模板时，可提交分管领导审批后再发布。</span><Button type="link" onClick={() => setApprovalOpen(true)}>查看审批流程</Button></div></div>}
+      {scoringPanelTab === 'contract' && <div className="document-stage-tab-content"><div className="document-stage-ai-banner"><FileDoneOutlined /><div><strong>合同草案已根据需求自动生成</strong><span>已关联售后服务、质保期限、交付验收、付款和违约责任。</span></div><Button type="primary" onClick={() => go('/procurement/contracts/proposal')}>查看完整草案</Button></div><div className="document-stage-contract-list">{documentContractClauses.map((clause) => <div key={clause.id}><div><strong>{clause.title}</strong><small>{clause.source}</small></div><p>{clause.text}</p><Button size="small" type="link" icon={<PlusOutlined />} onClick={() => message.success(`“${clause.title}”已写入合同草案`)}>引入条款</Button></div>)}</div></div>}
+      {scoringPanelTab === 'attachments' && <div className="document-stage-tab-content"><div className="document-stage-ai-banner"><PaperClipOutlined /><div><strong>采购文件主件及配套附件</strong><span>投标函、分项报价表、技术响应表将与当前项目字段同步生成。</span></div><Button type="primary" icon={<FileDoneOutlined />} onClick={generatePackage}>{packageGenerated ? '重新生成' : '一键生成'}</Button></div><div className="document-stage-attachment-list">{documentPackageFiles.map((file) => <div key={file.name}><span className="document-stage-file-icon">{file.icon}</span><div><strong>{file.name}</strong><small>{file.type} · {file.description}</small></div><StatusPill tone={packageGenerated ? 'green' : 'gray'}>{packageGenerated ? '已生成' : '待生成'}</StatusPill><Button size="small" icon={<EyeOutlined />} onClick={() => message.info(`已打开预览：${file.name}`)}>预览</Button></div>)}</div></div>}
+    </div>}
+
+    {documentFlowStep === 'quality' && <div className="document-flow-stage-content">
+      <div className="document-flow-content-heading"><div><span>第四步 · AI质量控制</span><h2>质量校验</h2><p>检查采购需求一致性、评分与技术需求对应性、文件格式规范性及法规要素完整性。</p></div><StatusPill tone={unresolvedCount ? 'orange' : 'green'}>{unresolvedCount ? `${unresolvedCount} 项待处理` : '校验通过'}</StatusPill></div>
+      <div className="document-quality-summary"><div className="high"><span>高风险</span><strong>{qualityFindings.filter((item) => !item.resolved && item.level === '高风险').length}</strong><small>优先处理</small></div><div className="medium"><span>中风险</span><strong>{qualityFindings.filter((item) => !item.resolved && item.level === '中风险').length}</strong><small>建议修复</small></div><div className="low"><span>提示</span><strong>{qualityFindings.filter((item) => !item.resolved && item.level === '提示').length}</strong><small>人工确认</small></div><div className="passed"><span>质量评分</span><strong>{qualityScore}</strong><small>满分 100</small></div></div>
+      <Panel className="document-stage-card" title={<><SafetyCertificateOutlined /> AI检查结果</>} extra={<Space><Button icon={<SafetyCertificateOutlined />} onClick={runQualityCheck}>重新检查</Button><Button disabled={!unresolvedCount} onClick={fixAllFindings}>全部修复</Button></Space>}>
+        <Alert type={qualityRan ? unresolvedCount ? 'warning' : 'success' : 'info'} showIcon message={qualityRan ? unresolvedCount ? `检查完成，还有 ${unresolvedCount} 项问题待处理` : '检查通过，可进入人工校审' : '尚未运行本轮质量校验'} description="问题均标注了所在章节、风险等级和可执行修改建议，支持一键定位与修复。" />
+        <div className="document-quality-stage-list">{qualityFindings.map((finding) => <div className={`document-quality-stage-item ${finding.resolved ? 'resolved' : finding.level === '高风险' ? 'high' : ''}`} key={finding.id}><div className="document-quality-stage-head"><div><strong>{finding.title}</strong><span><EyeOutlined /> {finding.location}</span></div><StatusPill tone={finding.resolved ? 'green' : finding.level === '高风险' ? 'red' : finding.level === '中风险' ? 'orange' : 'blue'}>{finding.resolved ? '已修复' : finding.level}</StatusPill></div><p>{finding.issue}</p><div className="document-quality-stage-suggestion"><b>修改建议</b><span>{finding.suggestion}</span></div><Space size={6}><Button size="small" onClick={() => locateFinding(finding)}>一键定位</Button><Button size="small" type={finding.resolved ? 'default' : 'primary'} disabled={finding.resolved} onClick={() => fixFinding(finding)}>一键修复</Button></Space></div>)}</div>
+      </Panel>
+    </div>}
+
+    {documentFlowStep === 'output' && <div className="document-flow-stage-content">
+      <div className="document-flow-content-heading"><div><span>第六步 · 正式输出</span><h2>定稿输出</h2><p>确认全部校审结果后，导出正式采购文件 Word、PDF 及投标函、报价表、技术响应表等附件。</p></div><StatusPill tone={finalized ? 'green' : 'blue'}>{finalized ? '已定稿' : '待定稿'}</StatusPill></div>
+      <div className={`document-output-banner ${finalized ? 'done' : ''}`}><span><FileDoneOutlined /></span><div><strong>{finalized ? '采购文件已定稿' : '采购文件已完成多级校审'}</strong><p>{finalized ? '正式版本已生成，可下载 Word、PDF 及配套附件。' : '定稿检查清单待确认，确认后将生成正式版本并记录版本留痕。'}</p></div><strong className="document-output-percent">{finalized ? '100%' : '92%'}</strong></div>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={15}><Panel className="document-stage-card" title={<><CheckCircleFilled /> 定稿检查清单</>}><div className="document-output-checklist">{[{ label: '需求一致性校验', done: qualityRan && unresolvedCount === 0, icon: SafetyCertificateOutlined }, { label: '评分标准确认', done: scoreItems.length > 0, icon: DiffOutlined }, { label: '科室 / 部门审批', done: reviewLevel >= 2, icon: AuditOutlined }, { label: '批注问题闭环', done: comments.length > 0, icon: MessageOutlined }, { label: '终审完成', done: reviewLevel >= 3, icon: CheckCircleFilled }, { label: '正式定稿确认', done: finalized, icon: FileDoneOutlined }].map((item) => { const CheckIcon = item.icon; return <div className={item.done ? 'done' : ''} key={item.label}><span><CheckIcon /></span><strong>{item.label}</strong><StatusPill tone={item.done ? 'green' : 'orange'}>{item.done ? '已完成' : '待确认'}</StatusPill></div>; })}</div></Panel></Col>
+        <Col xs={24} lg={9}><Panel className="document-stage-card" title={<><DownloadOutlined /> 导出正式文件</>}><div className="document-output-export-list"><Button block icon={<DownloadOutlined />} onClick={() => exportDocument('Word')}>导出 Word 主件</Button><Button block icon={<FileTextOutlined />} onClick={() => exportDocument('PDF')}>导出 PDF 主件</Button><Button block icon={<PaperClipOutlined />} onClick={generatePackage}>{packageGenerated ? '重新生成并导出全部附件' : '生成并导出全部附件'}</Button></div><Alert type="info" showIcon message="Word 版本可继续编辑，PDF 版本适合正式发布。" /></Panel></Col>
+      </Row>
+      <Panel className="document-stage-card" title={<><HistoryOutlined /> 版本记录</>}><div className="document-version-list"><div><strong>V1.4</strong><span>当前编制版本 · {generatedAt}</span><StatusPill tone={finalized ? 'green' : 'blue'}>{finalized ? '正式版' : '待定稿'}</StatusPill></div><div><strong>V1.3</strong><span>完成 AI 质量校验与评分标准调整</span><StatusPill tone="gray">历史版</StatusPill></div><div><strong>V1.0</strong><span>AI 根据需求拟制初稿</span><StatusPill tone="gray">AI生成</StatusPill></div></div></Panel>
+    </div>}
+
+    {documentFlowStep === 'review' && <Row gutter={[16, 16]} align="top" className="document-workbench-layout">
+      <Col xs={24} lg={5}>
+        <Panel className="document-sidebar-panel" title={<><FileSearchOutlined /> 需求解析</>} extra={<StatusPill tone={parseStatus === 'done' ? 'green' : 'orange'}>{parseStatus === 'done' ? '已识别' : parseStatus === 'parsing' ? '解析中' : '待上传'}</StatusPill>}>
+          <Upload.Dragger className="requirement-upload-dragger" showUploadList={false} accept=".doc,.docx,.pdf,.xls,.xlsx" beforeUpload={handleRequirementUpload}><p className="upload-icon"><CloudUploadOutlined /></p><strong>继续上传采购需求文件</strong><span>支持 Word / PDF / Excel，AI 自动识别并补充字段</span></Upload.Dragger>
+          <div className="document-source-file"><FileTextOutlined /><div><strong>{requirementFile}</strong><span>{parseStatus === 'parsing' ? '正在提取文本和表格...' : parseStatus === 'done' ? '已识别项目字段 · 需求文件 V0.2' : '等待上传需求文件'}</span></div>{parseStatus === 'done' && <CheckCircleFilled />}</div>
+          {parseStatus === 'parsing' && <Progress percent={68} status="active" showInfo={false} />}
+          <div className="parsed-field-list">{parsedFields.map((field) => <div key={field.key}><span>{field.label}</span><strong>{field.value}</strong></div>)}</div>
+        </Panel>
+        <Panel className="document-sidebar-panel" title={<><BookOutlined /> 标准模板匹配</>}>
+          <Select className="document-template-select" value={selectedTemplate} onChange={selectTemplate} options={templateOptions.map((item, index) => ({ value: index, label: `${item.name} · ${item.version}` }))} />
+          <div className="template-match-card"><div><span>匹配结果</span><strong>{selectedTemplateMeta.name}</strong></div><StatusPill tone={selectedTemplateMeta.status === '已启用' ? 'green' : 'orange'}>{selectedTemplateMeta.status}</StatusPill><p>{selectedTemplateMeta.status === '已启用' ? `已匹配 ${selectedTemplateMeta.chapters} 个标准章节，可自动填充项目字段。` : '模板尚未发布，将按历史同类项目生成客观量化评分标准。'}</p></div>
+          <Button block type="primary" icon={<ThunderboltFilled />} onClick={openTemplateGenerator}>匹配模板并生成初稿</Button><Button block icon={<AuditOutlined />} onClick={() => setApprovalOpen(true)}>调整模板 / 查看审批</Button>
+        </Panel>
+        <Panel className="document-sidebar-panel" title={<><ApartmentOutlined /> 文件导航 <StatusPill tone={generatedChapterCount === documentChapterSources.length ? 'green' : 'orange'}>{generatedChapterCount}/{documentChapterSources.length}</StatusPill></>}>
+          <div className="document-chapter-nav">{documentChapterSources.map((chapter, index) => { const generated = hasSource(chapter.source); const active = activeChapter === chapter.source; return <button type="button" className={`${active ? 'active' : ''} ${generated ? 'generated' : 'warning'}`} key={chapter.title} onClick={() => setActiveChapter(chapter.source)}><span>{generated ? <CheckCircleFilled /> : <WarningFilled />}</span><strong>{String(index + 1).padStart(2, '0')} {chapter.title}</strong>{!generated && <em>待补充</em>}</button>; })}</div><Progress percent={generatedProgress} showInfo={false} /><span className="muted-text">来源 {appliedSources.length} 项 · 章节完成度 {generatedProgress}%</span>
+        </Panel>
+        <Panel className="document-sidebar-panel" title={<><FileDoneOutlined /> 输出包</>}><div className="package-mini-summary"><strong>{packageGenerated ? '4' : '0'} / 4</strong><span>{packageGenerated ? '主件及附件已生成' : '等待生成主件及附件'}</span></div><Button block icon={<FileDoneOutlined />} onClick={generatePackage}>{packageGenerated ? '重新生成文件包' : '生成主件及附件'}</Button></Panel>
+      </Col>
+      <Col xs={24} lg={14}>
+        <Panel className="document-editor">
+          <div className="editor-toolbar"><Space wrap><Button type="text" icon={<ArrowLeftOutlined />} onClick={() => message.info('已撤销上一处编辑')} /><Button type="text" icon={<ArrowRightOutlined />} onClick={() => message.info('已恢复下一处编辑')} /><Divider type="vertical" /><Select defaultValue="正文" options={[{ value: '正文', label: '正文' }, { value: '标题 1', label: '标题 1' }, { value: '表格', label: '表格' }]} /><Select defaultValue="14" options={['12', '14', '16'].map((value) => ({ value, label: value }))} /><Button type="text" onClick={() => message.info('已应用粗体格式')}><strong>B</strong></Button><Button type="text" onClick={() => message.info('已应用下划线格式')}><u>U</u></Button><Button type="text" icon={<LinkOutlined />} onClick={() => message.info('请选择文本后插入链接')} /><Button type="text" icon={<MessageOutlined />} onClick={() => setCommentOpen(true)}>批注</Button><Button type="text" className="purple-button" icon={<ThunderboltFilled />} onClick={() => { setAiContinuation(true); setEditorTouched(true); message.success('AI 续写内容已插入文档'); }}>AI 续写</Button></Space><span className="editor-save-state">{editorTouched ? '● 修改未提交 · 自动保存中' : '✓ 已自动保存'}</span></div>
+          <article className={`document-body document-body-editable ${activeChapter}`} contentEditable suppressContentEditableWarning onInput={() => setEditorTouched(true)} onBlur={() => editorTouched && message.success('正文修改已自动保存')}>
+            <h1>{project.name}<br />{project.method}文件</h1><p className="document-meta">项目编号：{project.id}　采购人：{project.department}　编制日期：{project.createdAt}　模板：{`《${generatedTemplateMeta.name}》`}　版本：V1.4</p>
+            {hasSource('basic') ? <section className={`document-section ${activeChapter === 'basic' ? 'active' : ''}`} onClick={() => setActiveChapter('basic')}><h2>第一章 采购公告</h2><h3>一、项目基本情况</h3><p>项目编号：<b>{project.id}</b></p><p>项目名称：<b>{project.name}</b></p><p>预算金额：<b>{project.budget}</b></p><p>采购方式：<b>{project.method}</b></p><h3>二、采购单位与项目概况</h3><p>采购单位：<b>{project.department}</b>；项目负责人：<b>{project.owner}</b>。本项目围绕{project.name}开展采购，采购品类为{project.category}。</p></section> : <div className="generated-placeholder">未勾选“项目基础信息”，本章节已保留待补充占位。</div>}
+            {hasSource('commercial') ? <section className={`document-section ${activeChapter === 'commercial' ? 'active' : ''}`} onClick={() => setActiveChapter('commercial')}><h2>第二章 投标人与评审规则</h2><h3>一、投标人资格要求</h3><ol><li>具有独立承担民事责任的能力，持有有效营业执照；</li><li>具有良好的商业信誉和健全的财务会计制度；</li><li>具有履行合同所必需的设备和专业技术能力；</li><li>近三年内在经营活动中没有重大违法记录。</li></ol><h3>二、评审标准</h3><p>技术评审 {Math.max(60, scoreTotal)} 分、商务评审 20 分、价格评审 20 分，评审因素与采购需求保持一致。</p><ol className="score-preview-list">{scoreItems.slice(0, 5).map((item) => <li key={item.id}><b>{item.title}（{item.score} 分）</b>：{item.metric}</li>)}</ol></section> : <div className="generated-placeholder">未勾选“商务与评审规则”，投标资格和评分标准待补充。</div>}
+             {hasSource('requirements') ? <section className={`document-section ${activeChapter === 'requirements' ? 'active' : ''}`} onClick={() => setActiveChapter('requirements')}><h2>第三章 采购需求</h2><h3>一、采购范围与项目概况</h3><p>{inheritedOverviewContent || project.intention}</p><p>采购数量：{project.quantity || '120 台'}；需求文件识别结果已写入本章，最终采购范围以采购人确认版本为准。</p><h3>二、服务要求</h3><p>{inheritedCommercialContent || '供应商负责运输、安装、调试、培训和售后服务，服务过程应提交实施计划、培训记录和服务响应记录。'}</p></section> : <div className="generated-placeholder">未勾选“采购需求说明”，采购范围和项目概况待补充。</div>}
+             {hasSource('technical') ? <section className={`document-section ${activeChapter === 'technical' ? 'active' : ''}`} onClick={() => setActiveChapter('technical')}><h2>第四章 技术要求</h2><h3>一、核心技术指标</h3>{inheritedTechnicalContent && <p className="document-inherited-copy">上一步需求拟制内容：{inheritedTechnicalContent}</p>}<ol><li>连续运行能力不低于 12 小时，支持连续巡检工作模式；</li><li>防护等级不低于 IP67，满足现场防尘、防水使用环境；</li><li>支持标准数据接口，具备与现有系统对接的能力；</li><li>工作温度 -10℃ 至 45℃，支持手套触控，整机重量不超过 320g；</li><li>投标人须逐项响应技术参数，并提供检测或验证依据。</li></ol></section> : <div className="generated-placeholder">未勾选“技术参数”，技术指标章节待补充。</div>}
+             {hasSource('delivery') ? <section className={`document-section ${activeChapter === 'delivery' ? 'active' : ''}`} onClick={() => setActiveChapter('delivery')}><h2>第五章 合同条款与交付要求</h2><h3>一、交付安排</h3><p>供应商应在合同生效后 45 日内完成供货，到货后 7 个工作日内完成安装与调试，交付地点为采购单位指定地点（总部园区 B 座一层收货区）。</p><h3>二、售后与质保</h3><p>{inheritedCommercialContent || '整机质保不少于 3 年，提供 7×24 小时服务受理，故障 4 小时内响应；质保期内维修、更换及运输费用由供应商承担。'}</p><h3>三、付款与违约责任</h3><p>验收合格后按合同约定办理付款；逾期交付、未按要求整改或服务承诺未兑现的，按合同专用条款承担违约责任。</p></section> : <div className="generated-placeholder">未勾选“交付与合同要点”，合同专用条款待补充。</div>}
+            {hasSource('acceptance') ? <section className={`document-section ${activeChapter === 'acceptance' ? 'active' : ''}`} onClick={() => setActiveChapter('acceptance')}><h2>第六章 验收要求</h2><h3>一、验收方式</h3><p>采用到货清点、现场功能测试和抽样检测相结合的方式组织验收，数量、技术指标、资料完整性和服务承诺均应纳入验收记录。</p><h3>二、检测项目</h3><p>抽检不少于 10% 的设备进行外观和配件检查，全数设备进行开机功能测试，抽检不少于 5 台进行连续续航实测，实测时长不得低于 12 小时。</p><h3>三、整改与质保</h3><p>验收不合格的，应在 7 个工作日内完成整改并申请复验；供应商应提供不少于 3 年质保服务。</p></section> : <div className="generated-placeholder">未勾选“验收标准”，验收方式和质保要求待补充。</div>}
+            <p className="document-generated-note">本稿已根据勾选的数据源自动生成：{sourceNames || '暂无'}。正文支持直接修改、批注和多级校审，模板、来源及版本会记录在文档留痕中。</p><p className="editor-placeholder">继续输入内容，或将鼠标移至下方添加新章节...</p>{aiContinuation && <p className="ai-generated-copy">AI 续写：供应商应在合同签订后 45 日内完成供货、安装与调试，并提交完整的产品合格证明及售后服务承诺。</p>}
+          </article>
+          <div className="editor-footer"><span>字数 {(2400 + appliedSources.length * 160 + (aiContinuation ? 56 : 0)).toLocaleString()}</span><span>共 {Math.max(4, generatedChapterCount - 1)} 页</span><span>{editorTouched ? '修改已自动保存' : '自动保存'}</span><span>{project.owner} 正在编辑 · 批注 {comments.length} 条</span></div>
+        </Panel>
+        <Panel className="document-package-panel" title={<><FileDoneOutlined /> 采购文件主件及附件</>} extra={<Space><StatusPill tone={packageGenerated ? 'green' : 'orange'}>{packageGenerated ? '已生成' : '待生成'}</StatusPill><Button type="primary" size="small" icon={<ThunderboltFilled />} onClick={generatePackage}>{packageGenerated ? '重新生成' : '一键生成文件包'}</Button></Space>}><div className="document-package-grid">{documentPackageFiles.map((file) => <div className={`document-package-file ${packageGenerated ? 'generated' : ''}`} key={file.name}><span className="document-package-icon">{file.icon}</span><div><strong>{file.name}</strong><span>{file.type} · {file.description}</span></div><StatusPill tone={packageGenerated ? 'green' : 'gray'}>{packageGenerated ? '已生成' : '待生成'}</StatusPill></div>)}</div></Panel>
+      </Col>
+      <Col xs={24} lg={5}>
+        <Panel className="document-ai-panel" title={<><ThunderboltFilled /> AI 辅助建议 <StatusPill tone="green">在线</StatusPill></>}>
+          <PageTabs active={activeRightTab} onChange={(key) => setActiveRightTab(key as 'score' | 'quality' | 'contract')} items={[{ key: 'score', label: '评分推荐' }, { key: 'quality', label: `质量校验${unresolvedCount ? ` · ${unresolvedCount}` : ''}` }, { key: 'contract', label: '合同条款' }]} />
+          {activeRightTab === 'score' && <div className="document-ai-section"><div className="ai-source-banner"><span>{selectedTemplateMeta.status === '已启用' ? '依据已发布评审模板' : '未发布模板 · 已切换历史项目参考'}</span><strong>{scoreTotal} 分技术 / 商务建议</strong><small>{selectedTemplateMeta.status === '已启用' ? selectedTemplateMeta.name : '已比对 3 个历史同类采购项目'}</small></div>{selectedTemplateMeta.status !== '已启用' && <Alert type="warning" showIcon message="当前模板未发布" description="以下评分标准来自历史同类项目，采用客观、量化、细化指标，可先引入再提交领导审批。" />}{scoreItems.map((item) => <div className="score-recommendation-card" key={item.id}><div className="score-recommendation-head"><strong>{item.title}</strong><span>{item.score} 分</span></div><p>{item.metric}</p><small><BookOutlined /> {item.basis}</small><Button size="small" type="link" icon={<PlusOutlined />} onClick={importScoreItem}>一键引入</Button></div>)}<div className="ai-action-stack"><Button block type="primary" icon={<PlusOutlined />} onClick={importAllScores}>一键引入全部评分指标</Button><Button block icon={<AuditOutlined />} onClick={() => setApprovalOpen(true)}>调整模板并走领导审批</Button></div></div>}
+          {activeRightTab === 'quality' && <div className="document-ai-section"><div className="quality-ai-summary"><div><strong>{qualityScore}</strong><span>质量评分</span></div><div><strong>{unresolvedCount}</strong><span>待处理问题</span></div><div><strong>{qualityFindings.length}</strong><span>检查维度</span></div></div><Alert type={qualityRan ? unresolvedCount ? 'warning' : 'success' : 'info'} showIcon message={qualityRan ? unresolvedCount ? `已完成检查，还有 ${unresolvedCount} 项问题待处理` : '检查通过，可提交多级校审' : '尚未运行质量校验'} description="检查采购需求一致性、评分对应性、文件格式和法规要素完整性。" /><Space className="quality-action-row"><Button type="primary" icon={<SafetyCertificateOutlined />} onClick={runQualityCheck}>重新检查</Button><Button disabled={!unresolvedCount} onClick={fixAllFindings}>全部修复</Button></Space><div className="quality-finding-list">{qualityFindings.map((finding) => <div className={`quality-finding ${finding.resolved ? 'resolved' : finding.level === '高风险' ? 'high' : ''}`} key={finding.id}><div className="quality-finding-head"><strong>{finding.title}</strong><StatusPill tone={finding.resolved ? 'green' : finding.level === '高风险' ? 'red' : finding.level === '中风险' ? 'orange' : 'blue'}>{finding.resolved ? '已修复' : finding.level}</StatusPill></div><span className="quality-finding-location"><EyeOutlined /> {finding.location}</span><p>{finding.issue}</p><div className="quality-finding-suggestion"><b>修改建议</b><span>{finding.suggestion}</span></div><Space size={4}><Button size="small" onClick={() => locateFinding(finding)}>一键定位</Button><Button size="small" type={finding.resolved ? 'default' : 'primary'} disabled={finding.resolved} onClick={() => fixFinding(finding)}>一键修复</Button></Space></div>)}</div></div>}
+          {activeRightTab === 'contract' && <div className="document-ai-section"><div className="ai-source-banner"><span>基于采购需求自动生成</span><strong>4 项合同条款建议</strong><small>已关联售后、质保、交付和验收要求</small></div>{documentContractClauses.map((clause) => <div className="contract-clause-card" key={clause.id}><div><strong>{clause.title}</strong><small>{clause.source}</small></div><p>{clause.text}</p><Button size="small" type="link" icon={<PlusOutlined />} onClick={() => message.success(`“${clause.title}”已写入合同草案`)}>引入合同草案</Button></div>)}<Button block type="primary" icon={<FileDoneOutlined />} onClick={() => go('/procurement/contracts/proposal')}>查看合同草案</Button></div>}
+        </Panel>
+        <Panel className="document-review-panel" title={<><AuditOutlined /> 多级校审与状态</>} extra={<StatusPill tone={reviewLevel >= 3 ? 'green' : 'blue'}>{statusLabel}</StatusPill>}><div className="review-status-steps">{['初审', '复审', '终审'].map((step, index) => <div className={reviewLevel > index ? 'done' : reviewLevel === index && reviewLevel > 0 ? 'current' : ''} key={step}><span>{reviewLevel > index ? <CheckOutlined /> : index + 1}</span><strong>{step}</strong><small>{reviewLevel > index ? '已完成' : reviewLevel === index + 1 ? '进行中' : '待开始'}</small></div>)}</div><div className="review-comment-summary"><MessageOutlined /><div><strong>{comments.length} 条审核意见</strong><span>支持批注、反馈和版本留痕</span></div><Button type="link" size="small" onClick={() => setCommentOpen(true)}>查看</Button></div><Button block type="primary" icon={<SendOutlined />} onClick={advanceReview}>{reviewLevel === 0 ? '提交初审' : reviewLevel === 1 ? '提交复审' : reviewLevel === 2 ? '提交终审' : '校审已完成'}</Button><Button block icon={<FolderOpenOutlined />} onClick={() => go('/procurement/documents/gate')}>查看审批状态</Button><Button block type="link" icon={<ArrowRightOutlined />} disabled={!finalized} onClick={submitForReview}>提交并进入供应商核查</Button></Panel>
+      </Col>
+    </Row>}
+    <Modal open={templateOpen} title={<ModalTitle icon={<DiffOutlined />} title="匹配模板并生成采购文件初稿" subtitle="AI 已解析采购需求，可选择已发布模板或历史项目参考模板" />} width={760} centered onCancel={() => setTemplateOpen(false)} footer={[<Button key="cancel" onClick={() => setTemplateOpen(false)}>取消</Button>, <Button key="create" type="primary" icon={<DiffOutlined />} disabled={!selectedSources.length} onClick={generateFromTemplate}>生成采购文件初稿</Button>]}>
+      <div className="template-detection"><strong>✣ AI 需求解析结果</strong><div><span>项目名称 <b>{project.name}</b></span><span>采购数量 <b>{project.quantity || '120 台'}</b></span><span>技术参数 <b>5 项已识别</b></span><span>交付地点 <b>总部园区 B 座</b></span></div></div><h3>可用标准文本模板</h3>{templateNames.map((item, index) => <div className={`template-option ${selectedTemplate === index ? 'selected' : ''}`} key={item} onClick={() => selectTemplate(index)}><Radio checked={selectedTemplate === index} /><FileTextOutlined /><div><strong>{item}</strong><span>{templateOptions[index].version} · {templateOptions[index].chapters} 个章节 · {templateOptions[index].status === '已启用' ? '已发布模板' : '未发布，使用历史同类项目参考'}</span></div><StatusPill tone={templateOptions[index].status === '已启用' ? 'green' : 'orange'}>{templateOptions[index].status === '已启用' ? '已发布' : '待审批'}</StatusPill></div>)}<div className="template-source-heading"><h3>自动填充数据源</h3><Checkbox checked={selectedSources.length === documentGenerationSources.length} indeterminate={selectedSources.length > 0 && selectedSources.length < documentGenerationSources.length} onChange={(event) => setSelectedSources(event.target.checked ? [...allSourceKeys] : [])}>全选</Checkbox></div><div className="template-source-grid">{documentGenerationSources.map((item) => <div className={`template-source-option ${selectedSources.includes(item.key) ? 'selected' : ''}`} key={item.key} onClick={() => toggleSource(item.key)}><Checkbox checked={selectedSources.includes(item.key)} onClick={(event) => event.stopPropagation()} onChange={() => toggleSource(item.key)} /><div><strong>{item.label}</strong><span>{item.description}</span></div></div>)}</div><div className="template-generation-summary"><strong>生成预览</strong><span>将带入 {selectedSources.length} 项数据源，生成 {selectedChapterCount} 个章节，并生成主件、投标函、报价表和技术响应表</span></div><Alert type="info" showIcon message="生成后仍可在在线编辑器中修改正文、添加批注并进入多级校审。" />
+    </Modal>
+    <Modal open={approvalOpen} title={<ModalTitle icon={<AuditOutlined />} title="模板调整与领导审批" subtitle={`${selectedTemplateMeta.name} · ${approvalState === 'pending' ? '审批中' : approvalState === 'approved' ? '审批通过' : selectedTemplateMeta.status === '已启用' ? '已发布模板' : '未发布模板'}`} />} width={760} centered onCancel={() => setApprovalOpen(false)} footer={[<Button key="close" onClick={() => setApprovalOpen(false)}>关闭</Button>, approvalState === 'draft' && <Button key="submit" type="primary" onClick={() => { setApprovalState('pending'); message.success('模板调整申请已提交至分管领导审批'); }}>发起领导审批</Button>, approvalState === 'pending' && <Button key="approve" type="primary" onClick={() => { setApprovalState('approved'); message.success('已模拟领导审批通过，模板可继续完善并发布'); }}>模拟审批通过</Button>, approvalState === 'approved' && <Button key="publish" type="primary" onClick={() => { message.success('模板调整已发布，新版本将用于后续文件生成'); setApprovalOpen(false); }}>发布新版本</Button>] }>
+      <div className="approval-flow-intro"><strong><AuditOutlined /> 模板变更必须留存审批链路</strong><span>{selectedTemplateMeta.status === '已启用' ? '当前为已发布模板，调整评分权重或新增条款后将生成新版本。' : '当前模板未发布，系统先用历史同类项目生成评分标准，审批通过后才可作为标准模板使用。'}</span></div><div className="approval-flow-steps">{approvalSteps.map((step, index) => <div className={index < approvalCompleted ? 'done' : index === approvalCompleted ? 'current' : ''} key={step}><span>{index < approvalCompleted ? <CheckOutlined /> : index + 1}</span><strong>{step}</strong><small>{index < approvalCompleted ? '已完成 · 留痕' : index === approvalCompleted ? '待处理' : '待开始'}</small></div>)}</div><Form layout="vertical" className="modal-form"><Form.Item label="调整说明" required><Input.TextArea rows={4} value={approvalNote} onChange={(event) => setApprovalNote(event.target.value)} placeholder="请说明评分指标、章节结构或模板条款的调整原因" /></Form.Item></Form><div className="approval-history-list"><div><HistoryOutlined /><span>2026-10-08 09:30 · 张明提交模板调整建议</span><StatusPill tone="green">已记录</StatusPill></div><div><AuditOutlined /><span>2026-10-08 10:05 · 王强完成采购负责人复核</span><StatusPill tone={approvalState === 'draft' ? 'orange' : 'green'}>{approvalState === 'draft' ? '待审批' : '已完成'}</StatusPill></div></div>
+    </Modal>
+    <Modal open={commentOpen} title={<ModalTitle icon={<MessageOutlined />} title="新增审核批注" subtitle="意见会关联当前文档版本和定位章节" />} width={560} centered onCancel={() => setCommentOpen(false)} footer={[<Button key="cancel" onClick={() => setCommentOpen(false)}>取消</Button>, <Button key="add" type="primary" icon={<MessageOutlined />} onClick={addComment}>提交批注</Button>]}><Form layout="vertical" className="modal-form"><Form.Item label="批注内容" required><Input.TextArea rows={5} value={commentText} onChange={(event) => setCommentText(event.target.value)} placeholder="请填写需要修改、确认或反馈的内容" /></Form.Item><Alert type="info" showIcon message={`当前定位章节：${documentChapterSources.find((item) => item.source === activeChapter)?.title || '采购公告'} · 提交后所有校审人可见`} /></Form></Modal>
   </>;
 }
 
@@ -2597,6 +4263,125 @@ function RequirementReviewPage() {
   </>;
 }
 
+function HistoricalProjectsPage() {
+  const [keyword, setKeyword] = useState('');
+  const [category, setCategory] = useState('全部品类');
+  const [selectedProject, setSelectedProject] = useState<HistoricalProject | null>(null);
+  const visibleProjects = historicalProjects.filter((item) => {
+    const matchesKeyword = !keyword.trim() || `${item.name}${item.supplier}${item.id}`.toLowerCase().includes(keyword.trim().toLowerCase());
+    const matchesCategory = category === '全部品类' || item.category === category;
+    return matchesKeyword && matchesCategory;
+  });
+  const referenceProject = (item: HistoricalProject) => {
+    message.success(`已将“${item.name}”的技术与验收经验加入当前需求参考`);
+    go('/procurement/requirements');
+  };
+  const columns: ColumnsType<HistoricalProject> = [
+    { title: '项目名称', dataIndex: 'name', render: (value: string, record) => <div className="history-project-name"><strong>{value}</strong><span>{record.id} · {record.date}</span></div> },
+    { title: '中标价格', dataIndex: 'winningPrice', render: (value: string) => <strong className="history-price">{value}</strong> },
+    { title: '中标供应商', dataIndex: 'supplier', render: (value: string) => <div className="history-supplier"><span className="supplier-avatar"><BankOutlined /></span>{value}</div> },
+    { title: '采购品类', dataIndex: 'category', render: (value: string) => <Tag>{value}</Tag> },
+    { title: '采购数量', dataIndex: 'quantity' },
+    { title: '相似度', dataIndex: 'similarity', render: (value: number) => <StatusPill tone={value >= 90 ? 'green' : value >= 80 ? 'blue' : 'gray'}>{value}%</StatusPill> },
+    { title: '操作', key: 'action', render: (_, record) => <Space><Button size="small" onClick={() => setSelectedProject(record)}>查看详情</Button><Button size="small" type="primary" onClick={() => referenceProject(record)}>引用参考</Button></Space> },
+  ];
+  return <>
+    <PageTitle breadcrumb={['采购需求', '历史项目']} title="历史项目参考" subtitle="查看同类项目中标价格、中标供应商和已验证的技术与验收做法" actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/requirements')}>返回需求拟制</Button><Button type="primary" icon={<HistoryOutlined />} onClick={() => message.success('历史项目数据已刷新')}>刷新数据</Button></>} />
+    <Row gutter={[16, 16]} className="metric-grid"><Col xs={24} sm={12} xl={6}><MetricCard icon={<HistoryOutlined />} value={historicalProjects.length} label="匹配历史项目" badge="可引用" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<FundOutlined />} value="¥361,650" label="同类平均中标价" accent="green" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<TeamOutlined />} value="4" label="涉及中标供应商" accent="purple" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<SafetyCertificateOutlined />} value="3" label="可复用验收方案" accent="orange" /></Col></Row>
+    <Panel title={<><HistoryOutlined /> 历史项目清单 <span className="panel-count">已展示中标信息</span></>}>
+      <div className="history-filter-bar"><Input allowClear prefix={<SearchOutlined />} value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索项目名称、供应商或项目编号" /><Select value={category} onChange={setCategory} options={['全部品类', ...Array.from(new Set(historicalProjects.map((item) => item.category)))].map((item) => ({ value: item, label: item }))} /><Button icon={<DownloadOutlined />} onClick={() => message.success(`已导出 ${visibleProjects.length} 条历史项目记录`)}>导出数据</Button></div>
+      <Table<HistoricalProject> rowKey="id" columns={columns} dataSource={visibleProjects} pagination={{ pageSize: 6, showTotal: (total) => `共 ${total} 个历史项目` }} />
+    </Panel>
+    <Panel title={<><ToolOutlined /> 历史项目可复用内容</>}><div className="history-guidance-grid"><div><strong>价格参考</strong><span>系统仅用于预算测算与市场调查，不直接替代当前项目的询价或评审。</span></div><div><strong>技术指标</strong><span>优先引用可量化、可检测的指标，并结合当前使用环境重新确认。</span></div><div><strong>验收标准</strong><span>技术要求和验收要求自动成对展示，引用后仍可手工修改。</span></div></div></Panel>
+    <Modal open={Boolean(selectedProject)} title={<ModalTitle icon={<HistoryOutlined />} title={selectedProject?.name || ''} subtitle="历史成交项目详情 · 可作为当前需求编制参考" />} width={760} centered onCancel={() => setSelectedProject(null)} footer={[<Button key="close" onClick={() => setSelectedProject(null)}>关闭</Button>, <Button key="reference" type="primary" onClick={() => { if (selectedProject) referenceProject(selectedProject); }}>引用到当前需求</Button>]}>
+      {selectedProject && <div className="history-project-detail"><div className="history-detail-summary"><div><span>中标价格</span><strong>{selectedProject.winningPrice}</strong></div><div><span>中标供应商</span><strong>{selectedProject.supplier}</strong></div><div><span>采购数量</span><strong>{selectedProject.quantity}</strong></div><div><span>项目相似度</span><strong>{selectedProject.similarity}%</strong></div></div><h3>技术要求参考</h3><p>{selectedProject.technical}</p><h3>验收标准参考</h3><p>{selectedProject.acceptance}</p><Alert type="info" showIcon message="引用历史项目只会带入参考内容，系统不会覆盖当前已填写的技术、商务和验收要求。" /></div>}
+    </Modal>
+  </>;
+}
+
+function TemplateManagerPage() {
+  const [templates, setTemplates] = useState<ProcurementTemplate[]>(procurementTemplateLibrary);
+  const [templateKeyword, setTemplateKeyword] = useState('');
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<ProcurementTemplate | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [form] = Form.useForm();
+  const location = useLocation();
+  const openTemplateForm = (template?: ProcurementTemplate) => {
+    setEditingTemplate(template || null);
+    form.resetFields();
+    if (template) form.setFieldsValue(template);
+    setTemplateModalOpen(true);
+  };
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('mode') === 'create') openTemplateForm();
+  }, [location.search]);
+  const saveTemplate = async () => {
+    try {
+      const values = await form.validateFields();
+      const currentDate = new Date().toISOString().slice(0, 10);
+      const nextTemplate: ProcurementTemplate = {
+        id: editingTemplate?.id || `TPL-${String(Date.now()).slice(-3)}`,
+        name: values.name,
+        type: values.type,
+        method: values.method || '通用',
+        version: values.version || 'V1.0',
+        chapters: Number(values.chapters) || 6,
+        status: values.status || '草稿',
+        updated: currentDate,
+        owner: values.owner || '采购管理部',
+        description: values.description || '未填写模板说明',
+      };
+      const nextTemplates = editingTemplate ? templates.map((item) => item.id === editingTemplate.id ? nextTemplate : item) : [nextTemplate, ...templates];
+      procurementTemplateLibrary = nextTemplates;
+      setTemplates(nextTemplates);
+      setTemplateModalOpen(false);
+      message.success(editingTemplate ? '模板信息已更新' : '模板已创建，可用于生成采购文件初稿');
+    } catch {
+      // 表单校验提示由 Form.Item 展示。
+    }
+  };
+  const toggleTemplate = (template: ProcurementTemplate) => {
+    const status: ProcurementTemplate['status'] = template.status === '已启用' ? '已停用' : '已启用';
+    const nextTemplates = templates.map((item) => item.id === template.id ? { ...item, status, updated: new Date().toISOString().slice(0, 10) } : item);
+    procurementTemplateLibrary = nextTemplates;
+    setTemplates(nextTemplates);
+    message.success(`模板已${status === '已启用' ? '启用' : '停用'}`);
+  };
+  const deleteTemplate = (template: ProcurementTemplate) => Modal.confirm({ title: '删除模板', content: `确认删除“${template.name}”吗？删除后不会影响已生成的历史采购文件。`, okText: '确认删除', cancelText: '取消', okButtonProps: { danger: true }, onOk: () => { const nextTemplates = templates.filter((item) => item.id !== template.id); procurementTemplateLibrary = nextTemplates; setTemplates(nextTemplates); message.success('模板已删除'); } });
+  const visibleTemplates = templates.filter((item) => !templateKeyword.trim() || `${item.name}${item.description}${item.owner}`.toLowerCase().includes(templateKeyword.trim().toLowerCase()));
+  const selectedTemplate = templates.find((item) => item.id === selectedId);
+  const selectedProfile = getTemplateWorkflowProfile(selectedTemplate);
+  const handleStartDrafting = () => {
+    if (!selectedTemplate) {
+      message.warning('请先选择一个需求模板');
+      return;
+    }
+    message.success(`已选择“${selectedTemplate.name}”，正在进入流程引导式需求拟制`);
+    go(`/procurement/requirements?templateId=${encodeURIComponent(selectedTemplate.id)}`);
+  };
+  const columns: ColumnsType<ProcurementTemplate> = [
+    { title: '模板名称', dataIndex: 'name', render: (value: string, record) => <div className="template-name-cell"><span className="template-icon"><FileTextOutlined /></span><div><strong>{value}</strong><span>{record.description}</span></div></div> },
+    { title: '适用范围', key: 'scope', render: (_, record) => <div><Tag color="blue">{record.type}</Tag><span className="muted-text">{record.method}</span></div> },
+    { title: '版本 / 章节', key: 'version', render: (_, record) => `${record.version} · ${record.chapters} 章` },
+    { title: '状态', dataIndex: 'status', render: (value: ProcurementTemplate['status']) => <StatusPill tone={value === '已启用' ? 'green' : value === '草稿' ? 'orange' : 'gray'}>{value}</StatusPill> },
+    { title: '最近更新', dataIndex: 'updated' },
+    { title: '维护部门', dataIndex: 'owner' },
+    { title: '操作', key: 'action', render: (_, record) => <Space size="small"><Button type="link" size="small" onClick={() => { setSelectedId(record.id); message.success(`已选择“${record.name}”，点击下方“开始拟制”进入流程`); }}>选择</Button><Button type="link" size="small" onClick={() => openTemplateForm(record)}>编辑</Button><Button type="link" size="small" onClick={() => toggleTemplate(record)}>{record.status === '已启用' ? '停用' : '启用'}</Button><Button type="link" danger size="small" onClick={() => deleteTemplate(record)}>删除</Button></Space> },
+  ];
+  return <>
+    <PageTitle breadcrumb={['采购需求', '需求模板']} title="需求模板预制" subtitle="根据项目类型和预算匹配适用模板，按流程引导逐步完成需求拟制" actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/requirements')}>返回需求拟制</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => openTemplateForm()}>新建模板</Button></>} />
+    <div className="template-prebuilt-intro"><div><BookOutlined /><div><strong>选择需求模板开始拟制</strong><span>系统将把模板板块、拟制步骤和 AI 推荐能力同步到需求拟制工作台。</span></div></div><Space><StatusPill tone="green">{templates.filter((item) => item.status === '已启用').length} 个已启用</StatusPill><StatusPill tone="orange">{templates.filter((item) => item.status === '草稿').length} 个草稿</StatusPill></Space></div>
+    <Row gutter={[16, 16]} className="template-selection-grid">{visibleTemplates.map((template, index) => { const profile = getTemplateWorkflowProfile(template); const isSelected = selectedId === template.id; const templateIcon = template.type === '服务类' ? <TeamOutlined /> : template.type === '工程类' ? <ToolOutlined /> : <ProjectOutlined />; return <Col xs={24} md={12} key={template.id}><div className={`template-selection-card ${isSelected ? 'selected' : ''} ${template.status === '已停用' ? 'disabled' : ''}`} onClick={() => setSelectedId(template.id)} style={{ animationDelay: `${index * 60}ms` }}><div className="template-selection-head"><div className={`template-selection-icon ${isSelected ? 'selected' : ''}`}>{templateIcon}</div><div className="template-selection-title"><div><strong>{template.name}</strong>{isSelected && <CheckCircleFilled />}</div><span>{template.description}</span></div></div><div className="template-selection-tags"><Tag color="blue">{template.type}</Tag><Tag>预算 {profile.budgetRange}</Tag><Tag color="purple">{profile.sections.length} 个板块</Tag></div>{isSelected && <div className="template-selection-detail"><span className="template-detail-label">拟制板块（{profile.sections.length}）</span><div className="template-section-flow">{profile.sections.map((section, sectionIndex) => <span key={section}><b>{sectionIndex + 1}</b>{section}{sectionIndex < profile.sections.length - 1 && <em>·</em>}</span>)}</div><span className="template-detail-label">拟制步骤（{profile.steps.length} 步）</span><div className="template-step-preview">{profile.steps.map((step, stepIndex) => <div key={step.id}><b>{stepIndex + 1}</b><strong>{step.title}</strong><span>— {step.description}</span></div>)}</div></div>}<div className="template-selection-footer"><span>{template.version} · {template.method} · {template.owner}</span><StatusPill tone={template.status === '已启用' ? 'green' : template.status === '草稿' ? 'orange' : 'gray'}>{template.status}</StatusPill></div></div></Col>; })}</Row>
+    <div className="template-start-bar"><div className={`template-start-icon ${selectedTemplate ? 'selected' : ''}`}><CheckOutlined /></div><div className="template-start-copy"><strong>{selectedTemplate ? `已选择：${selectedTemplate.name}` : '请选择一个需求模板'}</strong><span>{selectedTemplate ? `将引导您完成 ${selectedProfile.steps.length} 个步骤，并生成 ${selectedProfile.sections.length} 个需求板块` : '选择后可进入流程引导式拟制'}</span></div><Button type="primary" size="large" icon={<ArrowRightOutlined />} disabled={!selectedTemplate} onClick={handleStartDrafting}>开始拟制</Button></div>
+    <Panel title={<><BookOutlined /> 模板版本管理 <span className="panel-count">模板变更会保留历史生成文件</span></>} extra={<Space><Input prefix={<SearchOutlined />} value={templateKeyword} onChange={(event) => setTemplateKeyword(event.target.value)} placeholder="搜索模板" style={{ width: 220 }} allowClear /><Button icon={<UploadOutlined />} onClick={() => message.info('支持导入 Word / Excel 模板，接入真实文件服务后可上传模板文件')}>导入模板</Button></Space>}><Table<ProcurementTemplate> rowKey="id" columns={columns} dataSource={visibleTemplates} pagination={{ pageSize: 8, showTotal: (total) => `共 ${total} 个模板` }} /></Panel>
+    <Panel title={<><SafetyCertificateOutlined /> 模板使用规则</>}><div className="template-rules-grid"><div><strong>自动匹配</strong><span>按项目类型、采购方式和模板状态推荐可用模板。</span></div><div><strong>自动填充</strong><span>项目基础信息、技术要求、商务要求和验收标准可带入对应章节。</span></div><div><strong>版本留痕</strong><span>模板每次编辑和启停都会保留操作时间，历史文件不受影响。</span></div></div></Panel>
+    <Modal open={templateModalOpen} title={<ModalTitle icon={<BookOutlined />} title={editingTemplate ? '编辑采购文件模板' : '新建采购文件模板'} subtitle="模板保存后即可在采购文件生成器中选择使用" />} width={680} centered onCancel={() => setTemplateModalOpen(false)} onOk={saveTemplate} okText="保存模板" cancelText="取消">
+      <Form form={form} layout="vertical" className="modal-form"><Row gutter={16}><Col span={16}><Form.Item name="name" label="模板名称" rules={[{ required: true, message: '请输入模板名称' }]}><Input placeholder="例如：货物类公开招标标准采购文件" /></Form.Item></Col><Col span={8}><Form.Item name="version" label="版本号" rules={[{ required: true, message: '请输入版本号' }]}><Input placeholder="V1.0" /></Form.Item></Col><Col span={12}><Form.Item name="type" label="适用类型" rules={[{ required: true, message: '请选择适用类型' }]}><Select placeholder="请选择" options={['货物类', '服务类', '工程类'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col><Col span={12}><Form.Item name="method" label="适用采购方式"><Select placeholder="通用" options={['通用', '公开招标', '竞争性磋商', '询价采购'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col><Col span={12}><Form.Item name="chapters" label="章节数量" rules={[{ required: true, message: '请输入章节数量' }]}><Input type="number" min={1} /></Form.Item></Col><Col span={12}><Form.Item name="status" label="初始状态"><Select defaultValue="草稿" options={['草稿', '已启用', '已停用'].map((item) => ({ value: item, label: item }))} /></Form.Item></Col><Col span={24}><Form.Item name="owner" label="维护部门"><Input placeholder="采购管理部" /></Form.Item></Col><Col span={24}><Form.Item name="description" label="模板说明"><Input.TextArea rows={3} placeholder="说明模板适用范围和自动填充内容" /></Form.Item></Col></Row></Form>
+    </Modal>
+  </>;
+}
+
 function ModalTitle({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle?: string }) { return <div className="modal-title"><div className="modal-title-icon">{icon}</div><div><strong>{title}</strong>{subtitle && <span>{subtitle}</span>}</div></div>; }
 
 function ProcurementPortal() {
@@ -2655,7 +4440,12 @@ function ProcurementPortal() {
   const completeStage = (stageIndex = workflow.currentStage) => {
     const currentContext = getRuntimeContext(contextKey);
     const currentWorkflow = currentContext.workflow;
-    if (stageIndex !== currentWorkflow.currentStage) {
+    // 已经进入后续阶段时，前面的阶段视为已完成。这样从历史阶段页面
+    // 继续点击“进入下一阶段”不会再次触发当前阶段的门控提示。
+    if (stageIndex < currentWorkflow.currentStage) {
+      return true;
+    }
+    if (stageIndex > currentWorkflow.currentStage) {
       message.info(`请先完成“${workflowStages[currentWorkflow.currentStage].title}”`);
       return false;
     }
@@ -2706,18 +4496,42 @@ function ProcurementPortal() {
     setProjects(procurementRuntime.projects);
     setWorkflow(nextContext.workflow);
   }, [contextKey, routeContextKey]);
+  useEffect(() => {
+    const isSupplierRoute = location.pathname === '/procurement/suppliers' || location.pathname.startsWith('/procurement/suppliers/');
+    if (!isSupplierRoute || routeContextKey !== contextKey) return;
+
+    const currentContext = getRuntimeContext(contextKey);
+    const currentWorkflow = currentContext.workflow;
+    if (currentWorkflow.currentStage >= 3) return;
+
+    // 供应商核查页是一个可直接进入的业务页面。进入后同步推进项目阶段，
+    // 否则步骤条仍停留在需求拟制，核查完成时会再次被前置阶段拦截。
+    const nextWorkflow: ProjectWorkflow = {
+      ...currentWorkflow,
+      currentStage: 3,
+      completedStages: Array.from(new Set([...Array.from({ length: 3 }, (_, index) => index), ...currentWorkflow.completedStages])),
+      materialsReady: true,
+    };
+    const nextContext = { ...currentContext, workflow: nextWorkflow };
+    const nextProjects = syncProjectRowWithWorkflow(procurementRuntime.projects, currentContext.project.id, nextWorkflow);
+    procurementRuntime = { ...procurementRuntime, projects: nextProjects, contexts: { ...procurementRuntime.contexts, [contextKey]: nextContext } };
+    setWorkflow(nextWorkflow);
+    setProjects(nextProjects);
+  }, [contextKey, location.pathname, routeContextKey]);
   const view = location.pathname;
   const acceptanceView = view.endsWith('/result') ? 'result' : view.endsWith('/report') ? 'report' : view.endsWith('/evaluation') ? 'evaluation' : 'form';
-  const showProjectFlowBar = ['/procurement/requirements', '/procurement/requirements/review', '/procurement/documents', '/procurement/documents/draft', '/procurement/documents/gate', '/procurement/suppliers', '/procurement/suppliers/risk', '/procurement/contracts', '/procurement/contracts/proposal', '/procurement/contracts/fulfillment', '/procurement/contracts/fulfillment/node-detail', '/procurement/acceptance', '/procurement/acceptance/result', '/procurement/acceptance/report', '/procurement/acceptance/evaluation', '/procurement/records'].includes(view);
+  const showProjectFlowBar = !['/procurement/documents', '/procurement/documents/draft'].includes(view) && ['/procurement/requirements', '/procurement/requirements/history', '/procurement/requirements/templates', '/procurement/requirements/review', '/procurement/documents', '/procurement/documents/draft', '/procurement/documents/gate', '/procurement/suppliers', '/procurement/suppliers/risk', '/procurement/contracts', '/procurement/contracts/proposal', '/procurement/contracts/fulfillment', '/procurement/contracts/fulfillment/node-detail', '/procurement/acceptance', '/procurement/acceptance/result', '/procurement/acceptance/report', '/procurement/acceptance/evaluation', '/procurement/records'].includes(view);
   const content = view === '/platform-overview' ? <PlatformOverviewPage />
     : view === '/platform-models' ? <ModelServicesPage />
     : view === '/procurement' || view === '/procurement/' ? <Workbench onOpenModal={setModal} projects={projects} />
     : view === '/procurement/projects' ? <ProjectsPage onOpenModal={setModal} projects={projects} onUpdateStatus={updateProjectStatus} />
-    : view === '/procurement/projects/detail' ? (workflow.currentStage === 0 ? <ProjectInitialStatePage onOpenModal={setModal} /> : <ProjectDetail onOpenModal={setModal} />)
+        : view === '/procurement/projects/detail' ? (workflow.currentStage === 0 ? <ProjectInitialStatePage onOpenModal={setModal} /> : <ProjectDetail onOpenModal={setModal} />)
+        : view === '/procurement/requirements/history' ? <HistoricalProjectsPage />
+          : view === '/procurement/requirements/templates' ? <TemplateManagerPage />
         : view === '/procurement/requirements/review' ? <RequirementReviewPage />
           : view === '/procurement/requirements' ? <RequirementPage onOpenModal={setModal} onCompleteStage={() => completeStage(1)} />
-            : view === '/procurement/documents/gate' ? <ProjectStageFileGatePage onOpenModal={setModal} />
-              : view === '/procurement/documents/draft' || view === '/procurement/documents' ? <DocumentsPage onOpenModal={setModal} onCompleteStage={() => completeStage(2)} />
+              : view === '/procurement/documents/gate' ? <ProjectStageFileGatePage onOpenModal={setModal} />
+              : view === '/procurement/documents/draft' || view === '/procurement/documents' ? <ReferenceDocumentsPage onOpenModal={setModal} onCompleteStage={() => { if (!workflow.materialsReady) markMaterialsReady(); return completeStage(2); }} />
                 : view === '/procurement/contracts/proposal' || view === '/procurement/contracts' ? <ContractsPage onCompleteStage={() => completeStage(4)} />
               : view === '/procurement/contracts/fulfillment' ? <ContractsFulfillmentPage onOpenModal={setModal} nodeRows={fulfillmentNodes} onUpdateNode={updateFulfillmentNode} />
                 : view === '/procurement/contracts/fulfillment/node-detail' ? <FulfillmentNodeDetailPage onOpenModal={setModal} nodeRows={fulfillmentNodes} />

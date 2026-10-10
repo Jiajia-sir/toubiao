@@ -1988,7 +1988,7 @@ export default function RagSystemPage() {
                   {activeAssistant && (
                     <span className="chat-title-assistant-tag">{activeAssistant.name}</span>
                   )}
-                  {showPolicyPresetMessages && <Tag color="blue">内置政策问答</Tag>}
+                  {showPolicyPresetMessages && <Tag color="blue">政策问答</Tag>}
                 </div>
               </div>
               {activeAssistant && (

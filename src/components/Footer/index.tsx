@@ -34,7 +34,7 @@ const Footer: React.FC = () => {
             background: 'linear-gradient(90deg, transparent, #2563eb)',
           }}
         />
-        <span>© {currentYear} 智能文档处理平台</span>
+        <span>© {currentYear} 企业蜂窝人工智能一体化平台</span>
         <span
           style={{
             width: 24,

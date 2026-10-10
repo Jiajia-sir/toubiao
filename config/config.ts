@@ -83,7 +83,7 @@ export default defineConfig({
    * @name layout 插件
    * @doc https://umijs.org/docs/max/layout-menu
    */
-  title: '智能文档处理平台',
+  title: '企业蜂窝人工智能一体化平台',
   layout: {
     locale: true,
     ...defaultSettings,

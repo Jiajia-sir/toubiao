@@ -89,7 +89,7 @@ const Welcome: React.FC = () => {
                 fontWeight: 600,
               }}
             >
-              欢迎使用智能文档处理平台
+              欢迎使用企业蜂窝人工智能一体化平台
             </div>
             <p
               style={{
