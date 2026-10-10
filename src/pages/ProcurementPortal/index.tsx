@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import dayjs from 'dayjs';
 import { history, useLocation } from '@umijs/max';
 import {
   Alert,
@@ -3903,22 +3904,325 @@ function ReportsPage() {
   return <><PageTitle title="数据报表" subtitle="按项目、品类和部门分析采购执行情况，辅助管理决策" actions={<Button type="primary" icon={<DownloadOutlined />}>导出报表</Button>} /><Row gutter={[16, 16]} className="metric-grid"><Col xs={24} sm={12} xl={6}><MetricCard icon={<ProjectOutlined />} value="48" label="全公司项目" badge="↑ 8" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<SyncOutlined />} value="12" label="在办项目" accent="purple" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<FundOutlined />} value="68%" label="预算执行率" accent="green" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<WarningFilled />} value="3" label="风险项目" accent="orange" badge="需关注" /></Col></Row><Row gutter={[16, 16]}><Col xs={24} xl={16}><Panel title={<><FundOutlined /> 品类采购金额分布</>} extra={<span className="muted-text">单位：万元</span>}><div className="bar-chart">{[['办公设备', 146, '#2f66eb'], ['IT 设备', 118, '#4d83ee'], ['工程改造', 82, '#7c5cff'], ['专业服务', 56, '#10b981'], ['后勤物资', 34, '#f59e0b']].map(([label, value, color]) => <div className="bar-item" key={String(label)}><div className="bar-value">{value}</div><div className="bar" style={{ height: `${Number(value) * 0.7}px`, background: color as string }} /><span>{label}</span></div>)}</div></Panel></Col><Col xs={24} xl={8}><Panel title={<><WarningFilled /> 风险项目 <Badge count={3} /></>}><div className="report-risk-list">{['数据中心服务器扩容项目', '厂区绿化养护服务采购', '办公楼装修改造工程'].map((item, index) => <div key={item}><strong>{item}</strong><span>{index === 0 ? '设备到货即将超期，剩余 3 天' : index === 1 ? '预算已使用 112%，超支 ¥18,000' : '立项审批停留 6 天，进度偏慢'}</span><StatusPill tone={index === 0 ? 'orange' : index === 1 ? 'orange' : 'gray'}>{index === 0 ? '高' : index === 1 ? '中' : '低'}</StatusPill></div>)}</div></Panel></Col></Row><Panel title="采购执行趋势"><div className="fake-line-chart"><div className="line-grid" /><svg viewBox="0 0 900 220" preserveAspectRatio="none"><polyline fill="none" stroke="#2f66eb" strokeWidth="4" points="0,170 80,140 160,154 240,92 320,118 400,72 480,98 560,54 640,80 720,36 820,60 900,22" /><polyline fill="none" stroke="#10b981" strokeWidth="3" points="0,190 80,170 160,180 240,142 320,155 400,128 480,146 560,116 640,136 720,98 820,112 900,84" /></svg><div className="chart-labels"><span>2024-01</span><span>2024-04</span><span>2024-07</span><span>2024-10</span></div></div></Panel></>;
 }
 
-function AcceptancePage({ view, onOpenModal, onCompleteStage }: { view: 'form' | 'result' | 'report' | 'evaluation'; onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean }) {
+type AcceptanceCheckStatus = 'pending' | 'pass' | 'fail';
+type AcceptanceConclusion = 'pass' | 'conditional' | 'fail';
+
+type AcceptanceCheck = {
+  id: string;
+  category: string;
+  title: string;
+  requirement: string;
+  result: string;
+  status: AcceptanceCheckStatus;
+};
+
+type AcceptanceAttachment = {
+  name: string;
+  category: string;
+  filePath: string;
+  previewFileName: string;
+  size: string;
+};
+
+const defaultAcceptanceChecks: AcceptanceCheck[] = [
+  { id: 'contract', category: '合同履约情况', title: '交付节点与合同条款', requirement: '交付时间、配置、质保及服务承诺符合合同约定', result: '按合同约定于 2024-08-18 完成交付，资料齐全', status: 'pass' },
+  { id: 'quantity', category: '数量核对', title: '数量与清单', requirement: '到货数量、型号、序列号与合同清单一致', result: '120 台，序列号清单已核对', status: 'pass' },
+  { id: 'technical', category: '技术指标', title: '功能与性能指标', requirement: '核心参数、功能和性能达到技术响应文件要求', result: '抽检 20 台，功能正常；续航 12.5 小时', status: 'pass' },
+  { id: 'quality', category: '质量检查', title: '外观与配件质量', requirement: '设备无破损，配件、合格证及说明书齐全', result: '外观及配件完整，无破损', status: 'pass' },
+  { id: 'service', category: '服务情况', title: '现场配合与服务响应', requirement: '供应商现场配合、服务响应和后续保障满足要求', result: '现场联系人已到场，安装调试计划已确认', status: 'pass' },
+];
+
+const buildAcceptanceTextPreviewUrl = (content: string) => `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`;
+
+const defaultAcceptanceAttachments: AcceptanceAttachment[] = [{
+  name: '出厂检测报告.pdf',
+  category: '检测报告',
+  filePath: buildAcceptanceTextPreviewUrl('出厂检测报告\n\n项目：2024 年度办公设备集中采购\n合同编号：HT-2024-0126\n检测结论：设备外观、功能及关键性能指标符合出厂检验要求。\n质保期限：整机质保 3 年。'),
+  previewFileName: '出厂检测报告.txt',
+  size: '1.2 MB',
+}];
+
+const formatAcceptanceFileSize = (size?: number) => {
+  if (!size) return '已上传';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+};
+
+const normalizeAcceptanceAttachmentCategory = (fileName: string, category: string) => {
+  if (category === '现场照片' || /\.(jpe?g|png|gif|webp)$/i.test(fileName)) return '现场照片';
+  if (category === '检测证明' || /检测|报告/.test(fileName)) return '检测报告';
+  if (category === '验收记录' || /验收记录/.test(fileName)) return '验收记录';
+  if (category === '签字确认文件' || /签字|确认/.test(fileName)) return '签字确认文件';
+  return category || '验收资料';
+};
+
+const createAcceptanceAttachment = (fileName: string, category: string, file?: File): AcceptanceAttachment => {
+  const normalizedCategory = normalizeAcceptanceAttachmentCategory(fileName, category);
+  const previewFileName = file ? fileName : `${fileName.replace(/\.[^.]+$/, '')}.txt`;
+  const filePath = file
+    ? URL.createObjectURL(file)
+    : buildAcceptanceTextPreviewUrl(`验收附件：${fileName}\n附件类型：${normalizedCategory}\n\n该文件已关联到当前验收任务，可在附件列表中预览。`);
+  return { name: fileName, category: normalizedCategory, filePath, previewFileName, size: formatAcceptanceFileSize(file?.size) };
+};
+
+const acceptanceBasisSources = [
+  { title: '采购合同 HT-2024-0126', detail: '交付时间、合同数量、质保期限及服务承诺', tag: '主合同', fileName: '采购合同-HT-2024-0126.txt', previewContent: '采购合同 HT-2024-0126\n\n一、交付要求\n供应商应按合同约定完成 120 台设备交付，交付地点为总部园区 B 座收货区。\n\n二、质量与质保\n设备应符合采购需求及技术响应文件要求，整机质保 3 年。\n\n三、服务承诺\n供应商负责现场配合、安装调试及质保期内的售后响应。' },
+  { title: '采购需求文件', detail: '采购范围、设备配置和现场验收指标', tag: '采购需求', fileName: '采购需求文件.txt', previewContent: '采购需求文件\n\n采购范围：办公设备集中采购，共 120 台。\n\n现场验收指标：数量、型号、序列号、外观、配件、功能、性能及服务情况应逐项核验。\n\n关键要求：续航不少于 12 小时，防护等级不低于 IP67，支持标准数据接口。' },
+  { title: '技术响应文件', detail: '供应商承诺的技术参数、服务响应和实施方案', tag: '技术响应', fileName: '技术响应文件.txt', previewContent: '技术响应文件\n\n技术响应：设备核心参数及功能满足采购需求，支持连续运行和标准数据接口。\n\n实施方案：供应商安排现场联系人配合到货验收，并提供安装调试计划。\n\n服务响应：质保期内提供问题受理、远程支持和现场服务。' },
+];
+
+const acceptanceBasisClauses = [
+  { title: '合同履约情况', content: '供应商应按合同约定于 2024-08-18 完成交付，交付内容、质保期限和服务承诺应与合同一致。' },
+  { title: '数量核对', content: '本项目合同数量为 120 台；到货型号、数量、序列号、装箱清单应与合同及交付清单逐项核对一致。' },
+  { title: '技术指标', content: '设备核心参数、功能和性能应达到采购需求及技术响应文件要求，续航等关键指标以现场抽检和检测记录为准。' },
+  { title: '质量检查', content: '设备外观应无破损，配件、合格证、说明书和检测资料应齐全，设备通电测试及基础功能检查应正常。' },
+  { title: '服务情况', content: '供应商应安排现场联系人配合验收，并按合同提供安装调试、质保期内服务和后续问题响应。' },
+];
+
+function AcceptancePage({ view, onOpenModal, onCompleteStage, project, attachments, onAcceptanceUploaded }: { view: 'form' | 'result' | 'report' | 'evaluation'; onOpenModal: (key: ModalKey) => void; onCompleteStage?: () => boolean; project: ProjectDetailData; attachments: AcceptanceAttachment[]; onAcceptanceUploaded: (attachment: AcceptanceAttachment) => void }) {
+  const [checks, setChecks] = useState<AcceptanceCheck[]>(defaultAcceptanceChecks);
+  const [arrivalQuantity, setArrivalQuantity] = useState('120');
+  const [conclusion, setConclusion] = useState<AcceptanceConclusion>('pass');
+  const [conclusionNote, setConclusionNote] = useState('到货数量与合同一致，外观与功能测试均通过，续航实测 12.5 小时优于要求；建议通过验收并进入安装调试阶段。');
+  const [issueNote, setIssueNote] = useState('');
+  const [draftSavedAt, setDraftSavedAt] = useState('');
+  const [acceptanceTime, setAcceptanceTime] = useState('2024-08-18 15:30');
+  const [acceptanceLocation, setAcceptanceLocation] = useState('总部园区 B 座收货区');
+  const [acceptancePersonnel, setAcceptancePersonnel] = useState({
+    leader: '刘敏',
+    members: '王强、赵倩',
+    procurementAgent: project.owner || '张明',
+    departmentRepresentative: '陈涛（行政部）',
+  });
+  const [supplierInfo, setSupplierInfo] = useState({
+    name: '华科智能设备有限公司',
+    contact: '李海',
+    phone: '138****6821',
+  });
+  const [basisOpen, setBasisOpen] = useState(false);
+  const [basisPreviewSource, setBasisPreviewSource] = useState<(typeof acceptanceBasisSources)[number] | null>(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<AcceptanceAttachment | null>(null);
+  const acceptancePersonnelFields = [
+    { label: '验收负责人', key: 'leader' },
+    { label: '验收组成员', key: 'members' },
+    { label: '采购经办人', key: 'procurementAgent' },
+    { label: '使用部门代表', key: 'departmentRepresentative' },
+  ] as const;
+  const supplierFields = [
+    { label: '供应商名称', key: 'name', editable: false },
+    { label: '现场联系人', key: 'contact', editable: true },
+    { label: '联系电话', key: 'phone', editable: true },
+  ] as const;
+  const updateAcceptancePersonnel = (field: keyof typeof acceptancePersonnel, value: string) => {
+    setAcceptancePersonnel((current) => ({ ...current, [field]: value }));
+  };
+  const updateSupplierInfo = (field: keyof typeof supplierInfo, value: string) => {
+    setSupplierInfo((current) => ({ ...current, [field]: value }));
+  };
+  const photoFiles = attachments.filter((file) => file.category === '现场照片');
+  const reportFile = attachments.find((file) => file.category === '检测报告');
+  const recordFile = attachments.find((file) => file.category === '验收记录');
+  const confirmationFile = attachments.find((file) => file.category === '签字确认文件');
+  const acceptanceMaterials = [
+    { label: '现场照片', detail: photoFiles.length ? `${photoFiles.length} 张现场影像` : '待上传现场照片', ready: photoFiles.length > 0 },
+    { label: '检测报告', detail: reportFile?.name || '待上传检测报告', ready: Boolean(reportFile) },
+    { label: '验收记录', detail: recordFile?.name || '待上传验收记录', ready: Boolean(recordFile) },
+    { label: '签字确认文件', detail: confirmationFile?.name || '待上传签字文件', ready: Boolean(confirmationFile) },
+  ];
+  const completedChecks = checks.filter((item) => item.status !== 'pending' && item.result.trim()).length;
+  const failedChecks = checks.filter((item) => item.status === 'fail');
+  const pendingChecks = checks.length - completedChecks;
+  const completionPercent = Math.round((completedChecks / checks.length) * 100);
+  const quantityValid = Number(arrivalQuantity.replace(/[^\d.]/g, '')) > 0;
+  const conclusionReady = conclusion === 'pass' ? failedChecks.length === 0 : issueNote.trim().length > 0;
+  const readyToSubmit = quantityValid && pendingChecks === 0 && attachments.length > 0 && conclusionNote.trim().length > 0 && conclusionReady;
+  const acceptanceStatus = failedChecks.length ? '待整改' : pendingChecks ? '待核验' : '待提交';
+  const acceptanceTone: 'green' | 'orange' | 'red' = failedChecks.length ? 'red' : pendingChecks ? 'orange' : 'green';
+  const updateCheck = (id: string, values: Partial<AcceptanceCheck>) => {
+    setChecks((items) => items.map((item) => item.id === id ? { ...item, ...values } : item));
+  };
+  const saveDraft = () => {
+    const savedAt = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    setDraftSavedAt(savedAt);
+    message.success(`验收草稿已保存（${savedAt}）`);
+  };
   const submitAcceptance = () => {
+    if (!quantityValid) {
+      message.warning('请填写有效的到货数量');
+      return;
+    }
+    if (pendingChecks) {
+      message.warning(`还有 ${pendingChecks} 项验收内容未完成核验`);
+      return;
+    }
+    if (!attachments.length) {
+      message.warning('请至少上传一份验收附件');
+      return;
+    }
+    if (failedChecks.length && conclusion === 'pass') {
+      message.warning('存在不合格项，请将验收结论调整为整改后复验或验收不通过');
+      return;
+    }
+    if ((failedChecks.length || conclusion !== 'pass') && !issueNote.trim()) {
+      message.warning('存在不合格项，请填写整改或处理说明');
+      return;
+    }
+    if (!conclusionNote.trim()) {
+      message.warning('请填写验收结论说明');
+      return;
+    }
     if (onCompleteStage && !onCompleteStage()) return;
     go('/procurement/acceptance/result');
   };
-  if (view === 'result') return <AcceptanceResult />;
-  if (view === 'report') return <AcceptanceReport />;
+  if (view === 'result') return <AcceptanceResult attachments={attachments} />;
+  if (view === 'report') return <AcceptanceReport attachments={attachments} />;
   if (view === 'evaluation') return <SupplierEvaluation />;
-  return <><PageTitle breadcrumb={['合同管理', '履约管理', '现场验收']} title="现场验收" subtitle="HT-2024-0126 · 设备到货验收 · PC 端办理" actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/contracts/fulfillment')}>返回履约管理</Button><Button type="primary" icon={<SendOutlined />} onClick={submitAcceptance}>提交验收</Button></>} /><Row gutter={[16, 16]}><Col xs={24} lg={17}><Panel title="验收明细"><Row gutter={[16, 16]}><Col span={12}><label className="field-label">到货数量 *</label><Input size="large" suffix="台 / 应到 120 台" defaultValue="120" /></Col><Col span={12}><label className="field-label">外观检查</label><Radio.Group defaultValue="ok" optionType="button" buttonStyle="solid" options={[{ value: 'ok', label: '合格' }, { value: 'not', label: '不合格' }]} /></Col><Col span={12}><label className="field-label">开机测试</label><Input size="large" suffix={<StatusPill tone="green">通过</StatusPill>} defaultValue="抽检 20 台，全部正常启动" /></Col><Col span={12}><label className="field-label">续航测试</label><Input size="large" suffix={<StatusPill tone="green">达标 ≥12h</StatusPill>} defaultValue="实测 12.5 小时" /></Col><Col span={12}><label className="field-label">防护等级</label><Input size="large" suffix={<StatusPill tone="green">通过</StatusPill>} defaultValue="IP67 浸水与防尘测试" /></Col><Col span={12}><label className="field-label">API 接口测试</label><Input size="large" suffix={<StatusPill tone="green">通过</StatusPill>} defaultValue="与巡检系统对接联调" /></Col></Row></Panel><Panel title="影像与报告"><div className="photo-grid"><div className="photo-placeholder">现场照片 1<br />厂区外观</div><div className="photo-placeholder">现场照片 2<br />设备配件</div><div className="photo-placeholder">现场照片 3<br />安装环境</div></div><div className="uploaded-report"><FileTextOutlined /><div><strong>出厂检测报告.pdf</strong><span>1.2 MB · 已上传</span></div><EyeOutlined /></div></Panel><Panel title="验收结论"><Radio.Group className="conclusion-options" defaultValue="pass"><Radio value="pass"><strong>合格</strong><span>各项指标符合合同与技术要求</span></Radio><Radio value="conditional"><strong>有条件合格</strong><span>需限期整改后方可确认</span></Radio><Radio value="fail"><strong>不合格</strong><span>需退回或重新交付</span></Radio></Radio.Group><Input.TextArea rows={4} defaultValue="到货数量与合同一致，外观与功能测试均通过，续航实测 12.5 小时优于要求；建议通过验收并进入安装调试阶段。" /></Panel></Col><Col xs={24} lg={7}><Panel title="验收任务"><div className="acceptance-info"><div><span>项目</span><strong>2024年度办公设备集中采购</strong></div><div><span>供应商</span><strong>华科智能设备有限公司</strong></div><div><span>计划日期</span><strong>2024-08-18</strong></div><div><span>验收人</span><strong>刘敏、王强</strong></div></div><Alert type="info" showIcon message="提交后将自动生成验收报告草稿，并同步生成供应商履约评价任务。" /></Panel><Panel title="操作"><Button block icon={<PaperClipOutlined />} onClick={() => onOpenModal('acceptance-upload')}>上传附件</Button><Button block type="primary" icon={<SendOutlined />} onClick={submitAcceptance}>提交验收</Button></Panel></Col></Row></>;
+  return (
+    <div className="acceptance-page">
+      <PageTitle
+        breadcrumb={['合同管理', '履约管理', '现场验收']}
+        title="现场验收"
+        subtitle={<>{project.name} · HT-2024-0126 · 设备到货验收 <StatusPill tone={acceptanceTone}>{acceptanceStatus}</StatusPill></>}
+        actions={<><Button icon={<ArrowLeftOutlined />} onClick={() => go('/procurement/contracts/fulfillment')}>返回履约管理</Button><Button onClick={saveDraft} icon={<FileTextOutlined />}>保存草稿</Button><Button type="primary" icon={<SendOutlined />} disabled={!readyToSubmit} onClick={submitAcceptance}>提交验收</Button></>}
+      />
+      <Panel className="acceptance-overview-panel">
+        <div className="acceptance-overview-head">
+          <div><strong>验收基本信息</strong><span>采购项目、合同编号来自合同；验收时间和地点可直接修改。</span></div>
+          <StatusPill tone={completionPercent === 100 ? 'green' : 'orange'}>{completedChecks} / {checks.length} 项已核验</StatusPill>
+        </div>
+        <div className="acceptance-overview-progress"><Progress percent={completionPercent} showInfo={false} strokeColor={failedChecks.length ? '#f59e0b' : '#2563eb'} /><span>{completionPercent}%</span></div>
+        <div className="acceptance-overview-facts">
+          <span><small>采购项目</small><b title={project.name}>{project.name}</b></span>
+          <span><small>合同编号</small><b>HT-2024-0126</b></span>
+          <span className="acceptance-editable-fact"><small>验收时间</small><DatePicker size="small" showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" aria-label="验收时间" value={acceptanceTime ? dayjs(acceptanceTime) : null} onChange={(value) => setAcceptanceTime(value ? value.format('YYYY-MM-DD HH:mm') : '')} /></span>
+          <span className="acceptance-editable-fact"><small>验收地点</small><Input size="small" aria-label="验收地点" value={acceptanceLocation} onChange={(event) => setAcceptanceLocation(event.target.value)} /></span>
+        </div>
+      </Panel>
+      <Row gutter={[12, 12]}>
+        <Col xs={24} xl={17}>
+          <Panel title={<><SafetyCertificateOutlined /> 验收内容 <span className="panel-count">逐项核验并填写现场记录</span></>} extra={<StatusPill tone={failedChecks.length ? 'red' : 'green'}>{failedChecks.length ? `${failedChecks.length} 项不合格` : '暂无不合格项'}</StatusPill>}>
+            <div className="acceptance-quantity-row"><div><label className="field-label">数量核对 <span>*</span></label><small>合同应到 120 台，需与序列号清单一致</small></div><Input aria-label="实际到货数量" value={arrivalQuantity} onChange={(event) => setArrivalQuantity(event.target.value)} suffix="台" /></div>
+            <div className="acceptance-check-list">
+              {checks.map((item) => <div className={`acceptance-check-item ${item.status}`} key={item.id}>
+                <div className="acceptance-check-main"><div className="acceptance-check-title"><span>{item.category}</span><strong>{item.title}</strong><StatusPill tone={item.status === 'pass' ? 'green' : item.status === 'fail' ? 'red' : 'orange'}>{item.status === 'pass' ? '合格' : item.status === 'fail' ? '不合格' : '待核验'}</StatusPill></div><p>验收要求：{item.requirement}</p></div>
+                <div className="acceptance-check-result"><label>现场记录</label><Input value={item.result} onChange={(event) => updateCheck(item.id, { result: event.target.value })} placeholder="填写实测数据、抽检范围或凭证编号" /></div>
+                <Radio.Group value={item.status} onChange={(event) => updateCheck(item.id, { status: event.target.value })} optionType="button" buttonStyle="solid" size="small" options={[{ value: 'pending', label: '待核验' }, { value: 'pass', label: '合格' }, { value: 'fail', label: '不合格' }]} />
+              </div>)}
+            </div>
+            <Alert type={failedChecks.length ? 'warning' : 'info'} showIcon message={failedChecks.length ? '已发现不合格项，请在下方填写整改或处理说明。' : '验收记录应包含实测数据、抽检范围和必要的检测凭证，便于后续复核。'} />
+          </Panel>
+          <Panel title={<><CloudUploadOutlined /> 验收资料 <span className="panel-count">现场照片、检测报告、验收记录、签字确认文件</span></>} extra={<Button type="link" icon={<PaperClipOutlined />} onClick={() => onOpenModal('acceptance-upload')}>上传资料</Button>}>
+            <div className="acceptance-material-grid">{acceptanceMaterials.map((item) => <div className={`acceptance-material-item ${item.ready ? 'ready' : 'pending'}`} key={item.label}><span className="acceptance-material-icon"><FileTextOutlined /></span><div><strong>{item.label}</strong><small title={item.detail}>{item.detail}</small></div><StatusPill tone={item.ready ? 'green' : 'orange'}>{item.ready ? '已准备' : '待补充'}</StatusPill></div>)}</div>
+            <div className="acceptance-attachment-list"><div className="acceptance-attachment-head"><strong>已上传附件（{attachments.length}）</strong><span>点击预览文件内容，提交后关联验收报告与全过程档案</span></div><div className="acceptance-attachment-grid">{attachments.map((file) => <div className="acceptance-attachment-item" key={`${file.name}-${file.filePath}`}><span className="acceptance-attachment-icon"><FileTextOutlined /></span><div className="acceptance-attachment-copy"><strong title={file.name}>{file.name}</strong><small>{file.category} · {file.size}</small></div><Space size={4}><StatusPill tone="green">已上传</StatusPill><Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setAttachmentPreview(file)}>预览</Button></Space></div>)}</div></div>
+          </Panel>
+          {(failedChecks.length > 0 || conclusion !== 'pass') && <Panel title={<><WarningFilled /> 问题与整改说明</>} extra={<StatusPill tone="red">需跟进</StatusPill>}><Input.TextArea rows={4} value={issueNote} onChange={(event) => setIssueNote(event.target.value)} placeholder="请填写不合格项、责任人、整改期限和复验安排" /><span className="acceptance-field-hint">示例：续航抽检 1 台未达到 12 小时，供应商须在 7 个工作日内更换并申请复验。</span></Panel>}
+          <Panel title={<><FileDoneOutlined /> 验收结论</>} extra={draftSavedAt && <span className="muted-text">草稿已保存于 {draftSavedAt}</span>}>
+            <Radio.Group className="conclusion-options" value={conclusion} onChange={(event) => setConclusion(event.target.value)}>
+              <Radio value="pass"><strong>验收通过</strong><span>各项指标符合合同与技术要求</span></Radio>
+              <Radio value="conditional"><strong>整改后复验</strong><span>完成整改并复验后确认</span></Radio>
+              <Radio value="fail"><strong>验收不通过</strong><span>需退回或重新交付</span></Radio>
+            </Radio.Group>
+            <label className="field-label">验收意见 <span>*</span></label>
+            <Input.TextArea rows={4} value={conclusionNote} onChange={(event) => setConclusionNote(event.target.value)} placeholder="请总结验收范围、关键实测结果和最终处理意见" />
+          </Panel>
+        </Col>
+        <Col xs={24} xl={7}>
+          <Panel title={<><TeamOutlined /> 参与信息</>}>
+            <div className="acceptance-side-section"><div className="acceptance-side-section-title">验收人员 <span className="acceptance-edit-hint"><EditOutlined /> 可编辑</span></div><div className="acceptance-side-list">{acceptancePersonnelFields.map((item) => <div key={item.label}><span>{item.label}</span><Input size="small" className="acceptance-side-input" aria-label={item.label} value={acceptancePersonnel[item.key]} onChange={(event) => updateAcceptancePersonnel(item.key, event.target.value)} /></div>)}</div></div>
+            <div className="acceptance-side-section"><div className="acceptance-side-section-title"><ShopOutlined /> 供应商信息 <span className="acceptance-edit-hint"><EditOutlined /> 联系信息可编辑</span></div><div className="acceptance-side-list">{supplierFields.map((item) => <div key={item.label}><span>{item.label}</span>{item.editable ? <Input size="small" className="acceptance-side-input" aria-label={item.label} value={supplierInfo[item.key]} onChange={(event) => updateSupplierInfo(item.key, event.target.value)} /> : <strong>{supplierInfo[item.key]}</strong>}</div>)}</div></div>
+          </Panel>
+          <Panel title={<><FileDoneOutlined /> 提交检查 <StatusPill tone={acceptanceTone}>{acceptanceStatus}</StatusPill></>}>
+            <div className="acceptance-readiness"><div><span>核验完成度</span><b>{completionPercent}%</b></div><Progress percent={completionPercent} showInfo={false} strokeColor={failedChecks.length ? '#f59e0b' : '#2563eb'} /><p><CheckCircleFilled /> 已填写 {completedChecks} 项验收记录</p><p className={attachments.length ? '' : 'pending'}>{attachments.length ? <CheckCircleFilled /> : <LoadingOutlined />} {attachments.length ? `已上传 ${attachments.length} 份验收资料` : '至少上传 1 份验收资料'}</p><p className={conclusionNote.trim() ? '' : 'pending'}>{conclusionNote.trim() ? <CheckCircleFilled /> : <LoadingOutlined />} {conclusionNote.trim() ? '验收意见已填写' : '待填写验收意见'}</p></div>
+            <Alert type={readyToSubmit ? 'success' : 'info'} showIcon message={readyToSubmit ? '材料齐全，可以提交验收' : '完成清单、资料和结论后即可提交'} />
+          </Panel>
+          <Panel title="合同与验收依据"><div className="acceptance-basis-list"><div><span>合同编号</span><strong>HT-2024-0126</strong></div><div><span>合同金额</span><strong>¥462,000</strong></div><div><span>交付地点</span><strong>总部园区 B 座收货区</strong></div><div><span>验收依据</span><strong>采购需求、合同及技术响应文件</strong></div></div><Button block type="link" icon={<EyeOutlined />} onClick={() => setBasisOpen(true)}>查看验收条款依据</Button></Panel>
+          <Panel title="操作"><Button block icon={<FileTextOutlined />} onClick={saveDraft}>保存验收草稿</Button><Button block icon={<PaperClipOutlined />} onClick={() => onOpenModal('acceptance-upload')}>上传验收资料</Button><Button block type="primary" icon={<SendOutlined />} disabled={!readyToSubmit} onClick={submitAcceptance}>提交验收</Button></Panel>
+        </Col>
+      </Row>
+      <Modal
+        open={basisOpen}
+        title={<span className="acceptance-basis-modal-title"><FileProtectOutlined /> 验收条款依据</span>}
+        width={760}
+        centered
+        destroyOnClose
+        onCancel={() => { setBasisOpen(false); setBasisPreviewSource(null); }}
+        footer={<Button type="primary" onClick={() => setBasisOpen(false)}>关闭</Button>}
+      >
+        <div className="acceptance-basis-modal">
+          <div className="acceptance-basis-modal-summary">
+            <div><span>适用合同</span><strong>HT-2024-0126</strong></div>
+            <div><span>验收对象</span><strong>2024 年度办公设备集中采购 · 设备到货验收</strong></div>
+            <div><span>判定规则</span><strong>五项验收内容全部完成核验后形成验收结论</strong></div>
+          </div>
+          <div className="acceptance-basis-modal-section">
+            <div className="acceptance-basis-modal-section-title"><span>01</span><strong>依据文件</strong></div>
+            <div className="acceptance-basis-source-list">
+              {acceptanceBasisSources.map((source) => <div className="acceptance-basis-source" key={source.title}><span className="acceptance-basis-source-icon"><FileTextOutlined /></span><div><strong>{source.title}</strong><small>{source.detail}</small></div><div className="acceptance-basis-source-actions"><Tag color="blue">{source.tag}</Tag><Button type="link" size="small" icon={<EyeOutlined />} onClick={() => setBasisPreviewSource(source)}>预览</Button></div></div>)}
+            </div>
+          </div>
+          <div className="acceptance-basis-modal-section">
+            <div className="acceptance-basis-modal-section-title"><span>02</span><strong>验收条款明细</strong></div>
+            <div className="acceptance-basis-clause-list">
+              {acceptanceBasisClauses.map((clause, index) => <div className="acceptance-basis-clause" key={clause.title}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{clause.title}</strong><p>{clause.content}</p></div></div>)}
+            </div>
+          </div>
+          <Alert type="info" showIcon message="现场核验提示" description="请将数量核对结果、实测数据、抽检范围和检测凭证填写到验收内容中；如有不符合条款的情况，请选择整改后复验或验收不通过，并补充整改说明。" />
+        </div>
+      </Modal>
+      <Modal
+        open={Boolean(basisPreviewSource)}
+        title={`依据文件预览 · ${basisPreviewSource?.title || ''}`}
+        width={960}
+        centered
+        destroyOnClose
+        onCancel={() => setBasisPreviewSource(null)}
+        styles={{ body: { height: '72vh', padding: 0, overflow: 'hidden' } }}
+        footer={<Button type="primary" onClick={() => setBasisPreviewSource(null)}>关闭</Button>}
+      >
+        {basisPreviewSource && <div className="record-file-preview-workspace"><div className="record-file-preview-meta"><div><strong>{basisPreviewSource.fileName}</strong><span>{basisPreviewSource.tag} · {basisPreviewSource.detail}</span></div><Tag color="blue">依据文件预览</Tag></div><div className="record-file-preview-viewer"><DocumentFilePreview filePath={buildAcceptanceTextPreviewUrl(basisPreviewSource.previewContent)} fileName={basisPreviewSource.fileName} height="100%" /></div></div>}
+      </Modal>
+      <Modal
+        open={Boolean(attachmentPreview)}
+        title={`附件预览 · ${attachmentPreview?.name || ''}`}
+        width={960}
+        centered
+        destroyOnClose
+        onCancel={() => setAttachmentPreview(null)}
+        styles={{ body: { height: '72vh', padding: 0, overflow: 'hidden' } }}
+        footer={<Button type="primary" onClick={() => setAttachmentPreview(null)}>关闭</Button>}
+      >
+        {attachmentPreview && <div className="record-file-preview-workspace"><div className="record-file-preview-meta"><div><strong>{attachmentPreview.name}</strong><span>{attachmentPreview.category} · {attachmentPreview.size}</span></div><Tag color="green">已上传文件</Tag></div><div className="record-file-preview-viewer"><DocumentFilePreview filePath={attachmentPreview.filePath} fileName={attachmentPreview.previewFileName} height="100%" /></div></div>}
+      </Modal>
+    </div>
+  );
 }
-
-function AcceptanceResult() { return <><PageTitle title="验收提交结果" subtitle="系统已自动生成 2 份材料，可继续补充完善" actions={<Button type="primary" onClick={() => go('/procurement/projects/detail')}>返回项目详情</Button>} /><div className="result-hero"><div className="result-icon"><CheckOutlined /></div><h1>验收提交成功</h1><p>系统已自动生成 2 份材料，可继续补充完善</p></div><Row gutter={[16, 16]}><Col xs={24} md={12}><Panel title="自动生成内容"><ResultFile icon={<FileTextOutlined />} title="验收报告草稿" subtitle="设备到货验收报告 · 编号 YS-2024-0126" metrics={['合格', '120 台', '3 张']} action="查看验收报告" onClick={() => go('/procurement/acceptance/report')} /></Panel></Col><Col xs={24} md={12}><Panel title="供应商履约评价"><ResultFile icon={<StarOutlined />} title="供应商履约评价" subtitle="华科智能设备有限公司 · 综合得分 88" metrics={['及时性 90', '产品质量 92', '服务响应 82']} action="查看履约评价" onClick={() => go('/procurement/acceptance/evaluation')} /></Panel></Col></Row></>; }
+function AcceptanceResult({ attachments }: { attachments: AcceptanceAttachment[] }) {
+  const photoCount = attachments.filter((item) => item.category === '现场照片').length;
+  return <><PageTitle title="验收提交结果" subtitle="系统已自动生成 2 份材料，可继续补充完善" actions={<Button type="primary" onClick={() => go('/procurement/projects/detail')}>返回项目详情</Button>} /><div className="result-hero"><div className="result-icon"><CheckOutlined /></div><h1>验收提交成功</h1><p>系统已自动生成 2 份材料，可继续补充完善</p></div><Row gutter={[16, 16]}><Col xs={24} md={12}><Panel title="自动生成内容"><ResultFile icon={<FileTextOutlined />} title="验收报告草稿" subtitle="设备到货验收报告 · 编号 YS-2024-0126" metrics={['合格', '120 台', `${photoCount} 张照片`]} action="查看验收报告" onClick={() => go('/procurement/acceptance/report')} /></Panel></Col><Col xs={24} md={12}><Panel title="供应商履约评价"><ResultFile icon={<StarOutlined />} title="供应商履约评价" subtitle="华科智能设备有限公司 · 综合得分 88" metrics={['及时性 90', '产品质量 92', '服务响应 82']} action="查看履约评价" onClick={() => go('/procurement/acceptance/evaluation')} /></Panel></Col></Row></>;
+}
 
 function ResultFile({ icon, title, subtitle, metrics, action, onClick }: { icon: React.ReactNode; title: string; subtitle: string; metrics: string[]; action: string; onClick: () => void }) { return <div className="result-file"><div className="result-file-head"><div className="result-file-icon">{icon}</div><div><h3>{title}</h3><p>{subtitle}</p></div></div><div className="result-metrics">{metrics.map((item) => <span key={item}>{item}</span>)}</div><Button block className="result-action" onClick={onClick} icon={<EyeOutlined />}>{action}</Button></div>; }
 
-function AcceptanceReport() { return <><PageTitle title="验收报告草稿" subtitle="YS-2024-0126 · 当前为草稿状态，确认无误后提交归档" actions={<><Button icon={<DownloadOutlined />}>导出</Button><Button type="primary" onClick={() => message.success('验收报告已提交归档')}>提交归档</Button></>} /><Row gutter={[16, 16]}><Col xs={24} xl={16}><Panel title="设备到货验收报告"><DescriptionsList items={[['报告编号', 'YS-2024-0126'], ['项目名称', '2024年度办公设备集中采购'], ['供应商', '华科智能设备有限公司'], ['验收环节', '设备到货验收'], ['验收日期', '2024-08-18'], ['验收人', '张明、王强']]} /></Panel><Panel title="验收明细"><DescriptionsList items={[['到货数量', '120 台（与合同一致）'], ['外观检查', '合格'], ['开机测试', '通过'], ['续航测试', '12.5 小时 · 达标'], ['防护等级', 'IP67 通过'], ['API 接口测试', '通过']]} /></Panel><Panel title="附件（4）"><List dataSource={['出厂检测报告.pdf', '现场照片-01.jpg', '现场照片-02.jpg', '现场照片-03.jpg']} renderItem={(item) => <List.Item><Space><FileTextOutlined />{item}</Space><span className="muted-text">1.2 MB</span></List.Item>} /></Panel></Col><Col xs={24} xl={8}><Panel title="验收结论" className="conclusion-panel"><StatusPill tone="green">合格</StatusPill><h2>到货数量与合同一致，外观与功能测试均通过，续航实测 12.5 小时优于要求；建议通过验收并进入安装调试阶段。</h2></Panel></Col></Row></>; }
+function AcceptanceReport({ attachments }: { attachments: AcceptanceAttachment[] }) {
+  const [selectedAttachment, setSelectedAttachment] = useState<AcceptanceAttachment | null>(null);
+  return <>
+    <PageTitle title="验收报告草稿" subtitle="YS-2024-0126 · 当前为草稿状态，确认无误后提交归档" actions={<><Button icon={<DownloadOutlined />}>导出</Button><Button type="primary" onClick={() => message.success('验收报告已提交归档')}>提交归档</Button></>} />
+    <Row gutter={[16, 16]}>
+      <Col xs={24} xl={16}>
+        <Panel title="设备到货验收报告"><DescriptionsList items={[['报告编号', 'YS-2024-0126'], ['项目名称', '2024年度办公设备集中采购'], ['供应商', '华科智能设备有限公司'], ['验收环节', '设备到货验收'], ['验收日期', '2024-08-18'], ['验收人', '张明、王强']]} /></Panel>
+        <Panel title="验收明细"><DescriptionsList items={[['到货数量', '120 台（与合同一致）'], ['外观检查', '合格'], ['开机测试', '通过'], ['续航测试', '12.5 小时 · 达标'], ['防护等级', 'IP67 通过'], ['API 接口测试', '通过']]} /></Panel>
+        <Panel title={`附件（${attachments.length}）`}>
+          {attachments.length ? <List dataSource={attachments} renderItem={(item) => <List.Item actions={[<Button key="preview" type="link" icon={<EyeOutlined />} onClick={() => setSelectedAttachment(item)}>预览</Button>]}><List.Item.Meta avatar={<FileTextOutlined />} title={item.name} description={`${item.category} · ${item.size}`} /></List.Item>} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已上传附件" />}
+        </Panel>
+      </Col>
+      <Col xs={24} xl={8}><Panel title="验收结论" className="conclusion-panel"><StatusPill tone="green">合格</StatusPill><h2>到货数量与合同一致，外观与功能测试均通过，续航实测 12.5 小时优于要求；建议通过验收并进入安装调试阶段。</h2></Panel></Col>
+    </Row>
+    <Modal open={Boolean(selectedAttachment)} title={`附件预览 · ${selectedAttachment?.name || ''}`} width={960} centered destroyOnClose onCancel={() => setSelectedAttachment(null)} styles={{ body: { height: '72vh', padding: 0, overflow: 'hidden' } }} footer={<Button type="primary" onClick={() => setSelectedAttachment(null)}>关闭</Button>}>
+      {selectedAttachment && <div className="record-file-preview-workspace"><div className="record-file-preview-meta"><div><strong>{selectedAttachment.name}</strong><span>{selectedAttachment.category} · {selectedAttachment.size}</span></div><Tag color="green">已上传文件</Tag></div><div className="record-file-preview-viewer"><DocumentFilePreview filePath={selectedAttachment.filePath} fileName={selectedAttachment.previewFileName} height="100%" /></div></div>}
+    </Modal>
+  </>;
+}
 
 function SupplierEvaluation() { return <><PageTitle title="供应商履约评价" subtitle="设备到货环节 · 2024-08-18" actions={<Button type="primary" onClick={() => message.success('履约评价已提交')}>提交评价</Button>} /><Row gutter={[16, 16]}><Col xs={24} xl={16}><Panel className="supplier-evaluation-card"><div className="evaluation-company"><Avatar shape="square" size={52} icon={<BankOutlined />} /><div><h2>华科智能设备有限公司</h2><span>HT-2024-0126 · 设备到货验收</span></div><StatusPill tone="green">A 级</StatusPill></div><div className="evaluation-score"><strong>88</strong><span>综合得分<br />履约表现良好</span><p>交付质量与产品表现优秀，服务响应仍有提升空间</p></div></Panel><Panel title="评分维度"><div className="evaluation-list">{[['交付及时性', '90', '优', '提前 2 天'], ['产品质量', '92', '优', '续航实测 12.5h 优于要求'], ['安装调试', '85', '良', '待进入安装调试阶段后补充评价'], ['服务响应', '82', '待改进', '生产阶段沟通响应偏慢，催办 2 次']].map(([name, value, level, desc]) => <div key={name}><div><strong>{name}</strong><b>{value}</b><StatusPill tone={level === '待改进' ? 'orange' : 'green'}>{level}</StatusPill></div><Progress percent={Number(value)} showInfo={false} strokeColor={level === '待改进' ? '#f59e0b' : '#10b981'} /><span>{desc}</span></div>)}</div></Panel></Col><Col xs={24} xl={8}><Panel title="系统评价标签"><div className="tag-cloud"><Tag color="green">产品优于承诺</Tag><Tag color="green">资料齐全</Tag><Tag color="orange">生产准备逾期 2 天</Tag><Tag color="orange">沟通响应偏慢</Tag></div></Panel><Panel title={<><InfoCircleOutlined /> 改进建议</>}><p>建议供应商在后续安装调试与培训阶段提升沟通响应速度，并提前 3 日同步实施计划。</p></Panel></Col></Row></>; }
 
@@ -3999,18 +4303,21 @@ function ModelServicesPage() {
   return <div className="platform-page"><PageTitle title="模型与推理服务" subtitle="统一适配多推理框架，管理模型接入、版本与健康状态" actions={<><Button icon={<SyncOutlined />}>同步服务</Button><Button type="primary" icon={<PlusOutlined />}>接入新模型</Button></>} /><Row gutter={[16, 16]} className="metric-grid"><Col xs={24} sm={12} xl={6}><MetricCard icon={<FundOutlined />} value="36" label="在线模型" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<ClockCircleOutlined />} value="284ms" label="平均首字延迟" accent="blue" badge="↓ 较昨日优化 12%" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<ThunderboltFilled />} value="2,840" label="吞吐量" accent="green" /></Col><Col xs={24} sm={12} xl={6}><MetricCard icon={<WarningFilled />} value="1" label="异常告警" accent="red" badge="1 个服务需关注" /></Col></Row><Panel><div className="model-filter"><Space><Button type="primary">全部模型</Button><Button>对话模型</Button><Button>向量模型</Button><Button>多模态</Button><Button>重排序</Button></Space><Space><Button>按调用量排序</Button><Button icon={<EllipsisOutlined />} /></Space></div><Table pagination={false} rowKey="name" dataSource={models.map(([name, framework, version, latency, calls, health]) => ({ name, framework, version, latency, calls, health }))} columns={[{ title: '模型 / 服务', dataIndex: 'name', render: (value, record) => <div className="model-name-cell"><span className="model-dot"><ThunderboltFilled /></span><div><strong>{value}</strong><span>私有部署 · {record.framework}</span></div></div> }, { title: '推理框架', dataIndex: 'framework', render: (value) => <StatusPill tone="blue">{value}</StatusPill> }, { title: '版本', dataIndex: 'version' }, { title: '首字延迟', dataIndex: 'latency' }, { title: '今日调用', dataIndex: 'calls' }, { title: '健康检查', dataIndex: 'health', render: (value) => <span className={value.startsWith('异常') ? 'health-error' : 'health-ok'}><i /> {value}</span> }, { title: '操作', render: (_, record) => <Space><Button size="small">详情</Button><Button size="small">测试</Button>{record.health.startsWith('异常') && <Button size="small" danger>重启</Button>}</Space> }]} /></Panel><Row gutter={[16, 16]}><Col xs={24} md={12}><Panel title="多推理框架适配"><div className="framework-list">{[['vLLM', '高吞吐 · PageAttention', '12 个模型'], ['TGI', 'HF 官方 · 连续批处理', '8 个模型'], ['Ollama / 自定义', '轻量本地 · 私有协议', '16 个模型']].map(([name, desc, count]) => <div key={name}><span><ThunderboltFilled /></span><div><strong>{name}</strong><p>{desc}</p></div><b>{count}<ArrowRightOutlined /></b></div>)}</div></Panel></Col><Col xs={24} md={12}><Panel title="健康检查策略" extra={<Switch defaultChecked />}><div className="health-settings"><div><span>探测间隔</span><b>每 10 秒</b></div><div><span>超时阈值</span><b>3000 ms</b></div><div><span>失败重试</span><b>3 次</b></div><div><span>故障转移</span><StatusPill tone="green">自动切换备用节点</StatusPill></div></div></Panel></Col></Row></div>;
 }
 
-function ProcurementModal({ modal, onClose, onOpenModal, onUploaded, onProjectCreated }: { modal: ModalKey; onClose: () => void; onOpenModal: (key: ModalKey) => void; onUploaded?: () => void; onProjectCreated?: (project: ProjectDetailData) => void }) {
+function ProcurementModal({ modal, onClose, onOpenModal, onUploaded, onProjectCreated, onAcceptanceUploaded }: { modal: ModalKey; onClose: () => void; onOpenModal: (key: ModalKey) => void; onUploaded?: () => void; onProjectCreated?: (project: ProjectDetailData) => void; onAcceptanceUploaded?: (attachment: AcceptanceAttachment) => void }) {
   const { project } = useProjectWorkflow();
   const [form] = Form.useForm();
   const [selectedReferences, setSelectedReferences] = useState(['技术参数', '验收方式']);
   const [uploadReady, setUploadReady] = useState(false);
+  const [acceptanceUploadName, setAcceptanceUploadName] = useState('');
+  const [acceptanceUploadCategory, setAcceptanceUploadCategory] = useState('验收报告');
+  const [acceptanceUploadFile, setAcceptanceUploadFile] = useState<File | null>(null);
   const [ignoreReason, setIgnoreReason] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<string>(RECOMMENDED_METHOD);
   const [recommendationValues, setRecommendationValues] = useState<NewProjectFormValues>();
   const [similarFilter, setSimilarFilter] = useState<'all' | 'goods' | 'recent'>('all');
   const [similarSorted, setSimilarSorted] = useState(false);
   if (!modal) return null;
-  const close = () => { setUploadReady(false); setIgnoreReason(''); onClose(); };
+  const close = () => { setUploadReady(false); setAcceptanceUploadName(''); setAcceptanceUploadCategory('验收报告'); setAcceptanceUploadFile(null); setIgnoreReason(''); onClose(); };
   const resetNewProject = () => { form.resetFields(); setSelectedMethod(RECOMMENDED_METHOD); setRecommendationValues(undefined); };
   const cancelNewProject = () => { resetNewProject(); close(); };
   const openRecommendation = async () => {
@@ -4115,7 +4422,51 @@ function ProcurementModal({ modal, onClose, onOpenModal, onUploaded, onProjectCr
     );
   }
   if (modal === 'missing') return <Modal open title={<ModalTitle icon={<WarningFilled />} title="提交失败" subtitle="必备材料不完整，暂时无法提交需求准备，请补充后再提交" />} width={520} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="upload" type="primary" icon={<CloudUploadOutlined />} onClick={() => { onClose(); setTimeout(() => (window as any).__openProcurementModal?.('upload'), 0); }}>立即补充</Button>]}><div className="missing-modal"><Alert type="error" showIcon message="当前缺少 1 项必备材料" /><div className="missing-list"><div><FileProtectOutlined /><strong>项目立项依据</strong><StatusPill tone="red">必备</StatusPill></div></div><div className="other-status"><p><CheckCircleFilled /> 项目立项申请表 <b>已上传</b></p><p><CheckCircleFilled /> 预算审批文件 <b>已上传</b></p><p><LoadingOutlined /> 采购需求说明 <b>待完善（可后补）</b></p></div><p className="muted-text">💡 补充材料后，提交按钮将自动变为可用状态</p></div></Modal>;
-  if (modal === 'acceptance-upload') return <Modal open title={<ModalTitle icon={<CloudUploadOutlined />} title="上传验收附件" subtitle="上传验收报告、现场照片、检测证明等材料" />} width={620} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="submit" type="primary" icon={<CheckOutlined />} disabled={!uploadReady} onClick={() => { message.success('验收附件已上传'); close(); }}>确认上传</Button>]}><Form layout="vertical" className="modal-form"><Form.Item label="附件类型" required><Select defaultValue="验收报告" options={[{ value: '验收报告', label: '验收报告' }, { value: '现场照片', label: '现场照片' }, { value: '检测证明', label: '检测证明' }, { value: '其他验收材料', label: '其他验收材料' }]} /></Form.Item><Form.Item label="选择文件" required><Upload.Dragger accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip" maxCount={1} beforeUpload={() => { setUploadReady(true); return false; }} onChange={({ fileList }) => setUploadReady(fileList.length > 0)}><p className="upload-icon"><UploadOutlined /></p><p>点击上传或拖拽文件到此处</p><span>支持 PDF / Word / Excel / JPG / PNG / ZIP，单个文件不超过 50 MB</span></Upload.Dragger></Form.Item><Form.Item label="文件说明"><Input.TextArea rows={3} placeholder="请填写附件说明，例如设备外观、配件清点或检测结果" /></Form.Item><Alert type="info" showIcon message="上传后附件将关联到当前验收任务，并记录在项目全过程档案中。" /></Form></Modal>;
+  if (modal === 'acceptance-upload') return (
+    <Modal
+      open
+      title={<ModalTitle icon={<CloudUploadOutlined />} title="上传验收附件" subtitle="上传后可在验收资料列表中直接预览文件内容" />}
+      width={620}
+      centered
+      onCancel={close}
+      footer={[
+        <Button key="cancel" onClick={close}>取消</Button>,
+        <Button key="submit" type="primary" icon={<CheckOutlined />} disabled={!uploadReady} onClick={() => {
+          if (acceptanceUploadName) {
+            onAcceptanceUploaded?.(createAcceptanceAttachment(acceptanceUploadName, acceptanceUploadCategory, acceptanceUploadFile || undefined));
+            message.success('验收附件已上传，可点击预览查看');
+            close();
+          }
+        }}>确认上传</Button>,
+      ]}
+    >
+      <Form layout="vertical" className="modal-form">
+        <Form.Item label="附件类型" required>
+          <Select value={acceptanceUploadCategory} onChange={setAcceptanceUploadCategory} options={[{ value: '验收报告', label: '验收报告' }, { value: '现场照片', label: '现场照片' }, { value: '检测证明', label: '检测证明' }, { value: '验收记录', label: '验收记录' }, { value: '签字确认文件', label: '签字确认文件' }, { value: '其他验收材料', label: '其他验收材料' }]} />
+        </Form.Item>
+        <Form.Item label="选择文件" required>
+          <Upload.Dragger
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip"
+            maxCount={1}
+            beforeUpload={(file) => { setUploadReady(true); setAcceptanceUploadName(file.name); setAcceptanceUploadFile(file); return false; }}
+            onChange={({ fileList }) => {
+              const selectedFile = fileList[0]?.originFileObj;
+              setUploadReady(fileList.length > 0);
+              setAcceptanceUploadName(fileList[0]?.name || '');
+              setAcceptanceUploadFile(selectedFile ? (selectedFile as File) : null);
+            }}
+          >
+            <p className="upload-icon"><UploadOutlined /></p>
+            <p>点击上传或拖拽文件到此处</p>
+            <span>支持 PDF / Word / Excel / JPG / PNG / ZIP，单个文件不超过 50 MB</span>
+          </Upload.Dragger>
+        </Form.Item>
+        {acceptanceUploadName && <div className="upload-file-row"><FileTextOutlined /><strong>{acceptanceUploadName}</strong><span>{acceptanceUploadFile ? `${formatAcceptanceFileSize(acceptanceUploadFile.size)} · 可预览` : '待关联到验收任务'}</span></div>}
+        <Form.Item label="文件说明"><Input.TextArea rows={3} placeholder="请填写附件说明，例如设备外观、配件清点或检测结果" /></Form.Item>
+        <Alert type="info" showIcon message="上传后附件将关联到当前验收任务，支持图片、PDF、Word、Excel 等文件在线预览。" />
+      </Form>
+    </Modal>
+  );
   if (modal === 'upload') return <Modal open title={<ModalTitle icon={<CloudUploadOutlined />} title="补充材料" subtitle="上传完成后，材料状态将更新为「已上传」" />} width={620} centered onCancel={close} footer={[<Button key="cancel" onClick={close}>取消</Button>, <Button key="submit" type="primary" icon={<CheckOutlined />} disabled={!uploadReady} onClick={() => { onUploaded?.(); message.success('材料已上传'); close(); }}>确认上传</Button>]}><Form layout="vertical" className="modal-form"><Form.Item label="材料类型" required><Select defaultValue="项目立项依据" options={[{ value: '项目立项依据', label: '项目立项依据 · 必备' }, { value: '其他补充材料', label: '其他补充材料' }]} /></Form.Item><Form.Item label="上传文件" required><Upload.Dragger beforeUpload={() => { setUploadReady(true); return false; }} showUploadList={false}><p className="upload-icon"><UploadOutlined /></p><p>点击上传或拖拽文件到此处</p><span>支持 PDF / Word / Excel / JPG / PNG，单个文件不超过 50 MB</span></Upload.Dragger></Form.Item>{uploadReady && <div className="upload-file-row"><FileTextOutlined /><strong>项目立项依据.pdf</strong><span>1.6 MB · 上传完成</span></div>}<Form.Item label="文件说明"><Input.TextArea rows={3} placeholder="请简要说明本份材料的用途或来源，便于审核人员查阅" /></Form.Item><div className="switch-row"><div><strong>是否设为当前版本</strong><span>开启后，本条材料将替换原有版本作为最新有效版本</span></div><Switch defaultChecked /></div></Form></Modal>;
   if (modal === 'similar') {
     const similarCases = [
@@ -4480,6 +4831,7 @@ function ProcurementPortal() {
   const [workflow, setWorkflow] = useState<ProjectWorkflow>(() => initialContext.workflow);
   const [fulfillmentNodes, setFulfillmentNodes] = useState<FulfillmentNodeRow[]>(() => fulfillmentRuntimeNodes);
   const [projectStatusLogs, setProjectStatusLogs] = useState<ProcurementRecord[]>(() => procurementRuntimeAuditRecords);
+  const [acceptanceAttachments, setAcceptanceAttachments] = useState<AcceptanceAttachment[]>(defaultAcceptanceAttachments);
   const startNewProject = (createdProject: ProjectDetailData) => {
     const nextWorkflow: ProjectWorkflow = { currentStage: 0, completedStages: [], materialsReady: false };
     const nextProjects: Project[] = [{
@@ -4563,6 +4915,10 @@ function ProcurementPortal() {
     procurementRuntimeAuditRecords = [nextLog, ...procurementRuntimeAuditRecords];
     setProjectStatusLogs(procurementRuntimeAuditRecords);
   };
+  const addAcceptanceAttachment = (attachment: AcceptanceAttachment) => {
+    if (!attachment.name) return;
+    setAcceptanceAttachments((items) => items.some((item) => item.name === attachment.name) ? items.map((item) => item.name === attachment.name ? attachment : item) : [...items, attachment]);
+  };
   const workflowContextValue = { workflow, project, markMaterialsReady, completeStage };
   useEffect(() => {
     document.body.classList.add('procurement-mode');
@@ -4622,13 +4978,13 @@ function ProcurementPortal() {
                 : view === '/procurement/contracts/fulfillment/node-detail' ? <FulfillmentNodeDetailPage onOpenModal={setModal} nodeRows={fulfillmentNodes} />
                   : view === '/procurement/suppliers/risk' ? <SupplierRiskPage onOpenModal={setModal} />
                   : view === '/procurement/suppliers' ? <SuppliersPage onOpenModal={setModal} onCompleteStage={() => completeStage(3)} />
-                    : view.startsWith('/procurement/acceptance') ? <AcceptancePage view={acceptanceView as any} onOpenModal={setModal} onCompleteStage={() => completeStage(5)} />
+                    : view.startsWith('/procurement/acceptance') ? <AcceptancePage view={acceptanceView as any} project={project} attachments={acceptanceAttachments} onAcceptanceUploaded={addAcceptanceAttachment} onOpenModal={setModal} onCompleteStage={() => completeStage(5)} />
                       : view === '/procurement/records' ? <RecordsPage onOpenModal={setModal} onCompleteStage={() => completeStage(6)} extraRecords={projectStatusLogs} />
                         : view === '/procurement/roles' ? <RolesPage />
                           : view === '/procurement/policy-assistant' ? <PolicyAssistantPage />
                             : view === '/procurement/knowledge-base' ? <KnowledgeBasePage />
                           : <ReportsPage />;
-  return <ProjectWorkflowContext.Provider value={workflowContextValue}><div className="procurement-page">{showProjectFlowBar && <ProjectFlowBar />}{content}<ProcurementModal modal={modal} onClose={() => setModal(null)} onOpenModal={setModal} onUploaded={markMaterialsReady} onProjectCreated={startNewProject} /></div></ProjectWorkflowContext.Provider>;
+  return <ProjectWorkflowContext.Provider value={workflowContextValue}><div className="procurement-page">{showProjectFlowBar && <ProjectFlowBar />}{content}<ProcurementModal modal={modal} onClose={() => setModal(null)} onOpenModal={setModal} onUploaded={markMaterialsReady} onProjectCreated={startNewProject} onAcceptanceUploaded={addAcceptanceAttachment} /></div></ProjectWorkflowContext.Provider>;
 }
 
 export default ProcurementPortal;
